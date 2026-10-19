@@ -1,5 +1,7 @@
 """SNMPv2-MIB system group: identity, OS detection, uptime / reboot check."""
 
+import re
+
 from netsync.models import State
 from netsync.plugins.base import CheckResult, DeviceContext, MetricSample, Module, PollResult
 from netsync.snmp.client import text
@@ -48,6 +50,20 @@ class SystemModule(Module):
             d.hardware = text(ent.get(ENT_MODEL)) or d.hardware
         except Exception:
             pass
+
+        if profile:
+            if profile.hardware_regex and (m := re.search(profile.hardware_regex, d.sys_descr or "")):
+                d.hardware = m.group(1).strip()
+            vendor_oids = {k: o for k, o in (("version", profile.version_oid), ("serial", profile.serial_oid),
+                                             ("hardware", profile.hardware_oid)) if o}
+            if vendor_oids:
+                try:
+                    r = await ctx.snmp.get(*vendor_oids.values())
+                    for field, oid in vendor_oids.items():
+                        if value := text(r.get(oid)):
+                            setattr(d, field, value)
+                except Exception:
+                    pass
         return []
 
     async def poll(self, ctx: DeviceContext):

@@ -16,6 +16,11 @@ class Profile:
     oid_prefix: str | None = None
     descr_regex: str | None = None
     version_regex: str | None = None
+    # Optional vendor OIDs (scalar GETs) that override what sysDescr / ENTITY-MIB give us.
+    version_oid: str | None = None
+    serial_oid: str | None = None
+    hardware_oid: str | None = None
+    hardware_regex: str | None = None  # extract the model from sysDescr
 
     def matches(self, sys_object_id: str, sys_descr: str) -> bool:
         if self.oid_prefix and not (sys_object_id + ".").startswith(self.oid_prefix + "."):
@@ -30,7 +35,10 @@ PROFILES: list[Profile] = [
     Profile("nxos", "Cisco", "switch", "1.3.6.1.4.1.9", r"NX-OS", r"Version ([\w.()]+)"),
     Profile("asa", "Cisco", "firewall", "1.3.6.1.4.1.9", r"Adaptive Security Appliance", r"Version ([\w.()]+)"),
     Profile("ios", "Cisco", "router", "1.3.6.1.4.1.9", r"IOS", r"Version ([\w.()]+)"),
-    Profile("routeros", "MikroTik", "router", "1.3.6.1.4.1.14988", None, r"RouterOS ([\w.]+)"),
+    Profile("routeros", "MikroTik", "router", "1.3.6.1.4.1.14988",
+            version_oid="1.3.6.1.4.1.14988.1.1.4.4.0",  # mtxrLicVersion
+            serial_oid="1.3.6.1.4.1.14988.1.1.7.3.0",  # mtxrSerialNumber
+            hardware_regex=r"RouterOS (.+)"),
     Profile("fortios", "Fortinet", "firewall", "1.3.6.1.4.1.12356"),
     Profile("panos", "Palo Alto", "firewall", "1.3.6.1.4.1.25461"),
     Profile("junos", "Juniper", "router", "1.3.6.1.4.1.2636", None, r"JUNOS ([\w.\-]+)"),
