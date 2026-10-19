@@ -46,13 +46,22 @@ class HostResourcesModule(Module):
         for index in await ctx.snmp.walk(HR_PROCESSOR_LOAD):
             specs.append(ComponentSpec("processor", index, f"CPU {len(specs)}"))
 
-        for index, r in (await ctx.snmp.table(STORAGE_COLS)).items():
-            descr = text(r.get("descr")) or index
+        rows = [(index, r, text(r.get("descr")) or index) for index, r in (await ctx.snmp.table(STORAGE_COLS)).items()]
+        # Shortest mount path first, so "/" wins over bind mounts of the same filesystem.
+        rows.sort(key=lambda x: len(x[2]))
+        seen_fs: set[tuple[int, int]] = set()
+        for index, r, descr in rows:
             if not r.get("size"):
                 continue
             if r.get("type") == TYPE_RAM:
                 specs.append(ComponentSpec("mempool", index, "Memory", attrs={"units": r.get("units", 1)}))
             elif r.get("type") in (TYPE_FIXED_DISK, TYPE_NETWORK_DISK) and not descr.startswith(SKIP_MOUNTS):
+                # Bind mounts (chroot jails, container volumes) report the exact same size/used
+                # as the filesystem they come from - monitor that filesystem only once.
+                fs_key = (r["size"] * r.get("units", 1), r.get("used", 0) * r.get("units", 1))
+                if fs_key in seen_fs:
+                    continue
+                seen_fs.add(fs_key)
                 specs.append(ComponentSpec("storage", index, descr, attrs={"units": r.get("units", 1)}))
         return specs
 
