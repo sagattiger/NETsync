@@ -33,6 +33,12 @@ async def get_note(device_id: int, user: CurrentUser, session: Session):
 async def save_note(device_id: int, body: NoteIn, session: Session, user=require(Role.OPERATOR)):
     await get_device_for(session, user, device_id)
     note = await session.get(DeviceNote, device_id)
+    if not body.content.strip():
+        # An emptied note is removed instead of kept as a blank "edited by" record.
+        if note:
+            await session.delete(note)
+            await session.commit()
+        return {"content": "", "updated_at": None, "updated_by": None}
     if note is None:
         note = DeviceNote(device_id=device_id)
         session.add(note)
