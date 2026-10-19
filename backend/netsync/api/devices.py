@@ -17,13 +17,14 @@ from netsync.poller.worker import enqueue_job
 
 router = APIRouter(prefix="/devices", tags=["devices"])
 
+# range -> (span, time_bucket width). asyncpg needs timedelta objects for interval parameters.
 RANGES = {
-    "1h": (timedelta(hours=1), "1 minute"),
-    "6h": (timedelta(hours=6), "2 minutes"),
-    "24h": (timedelta(hours=24), "5 minutes"),
-    "7d": (timedelta(days=7), "30 minutes"),
-    "30d": (timedelta(days=30), "2 hours"),
-    "1y": (timedelta(days=365), "1 day"),
+    "1h": (timedelta(hours=1), timedelta(minutes=1)),
+    "6h": (timedelta(hours=6), timedelta(minutes=2)),
+    "24h": (timedelta(hours=24), timedelta(minutes=5)),
+    "7d": (timedelta(days=7), timedelta(minutes=30)),
+    "30d": (timedelta(days=30), timedelta(hours=2)),
+    "1y": (timedelta(days=365), timedelta(days=1)),
 }
 
 
