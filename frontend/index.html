@@ -9,7 +9,7 @@
       (function () {
         var t = null;
         try { t = localStorage.getItem("netsync_theme"); } catch (e) {}
-        if (t !== "light" && t !== "dark") t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        if (t !== "light" && t !== "dark") t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; // "system" or unset
         document.documentElement.setAttribute("data-theme", t);
       })();
     </script>

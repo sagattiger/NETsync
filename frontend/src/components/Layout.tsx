@@ -1,8 +1,9 @@
 import { ReactNode, useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, auth, Me } from "../api";
+import { api, auth, Me, prefs } from "../api";
 import { useTheme } from "../theme";
+import { Avatar } from "./Avatar";
 import { Icon } from "./Icon";
 
 interface Overview { devices: Record<string, number>; services: Record<string, number>; unhandled: number }
@@ -94,14 +95,29 @@ export default function Layout() {
   useLiveEvents();
   const nav = useNavigate();
   const location = useLocation();
-  const { theme, toggle } = useTheme();
+  const { theme, toggle, setChoice } = useTheme();
   const [q, setQ] = useState("");
   const [drawer, setDrawer] = useState(false);
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/auth/me") });
 
   useEffect(() => setDrawer(false), [location.pathname]);
 
+  // Apply the user's saved UI settings (theme follows them across browsers).
+  useEffect(() => {
+    if (!me) return;
+    prefs.set(me.preferences);
+    if (me.preferences.theme) setChoice(me.preferences.theme);
+  }, [me, setChoice]);
+
   const logout = () => { auth.set(null); nav("/login"); };
+  const qc = useQueryClient();
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    toggle();
+    api<Me>("/auth/me", { method: "PATCH", body: { preferences: { theme: next } } })
+      .then((m) => qc.setQueryData(["me"], m))
+      .catch(() => { /* keep the local choice */ });
+  };
 
   return (
     <div className="min-h-full bg-gap">
@@ -126,16 +142,16 @@ export default function Layout() {
           <div className="ml-auto flex items-center gap-1 sm:gap-2">
             <StatusPills />
             <span className="w-px h-6 bg-line mx-1 hidden sm:block" />
-            <button onClick={toggle} className="p-2 rounded-lg text-fg2 hover:bg-inset hover:text-strong" title={theme === "dark" ? "Light mode" : "Dark mode"} aria-label="Toggle theme">
+            <button onClick={toggleTheme} className="p-2 rounded-lg text-fg2 hover:bg-inset hover:text-strong" title={theme === "dark" ? "Light mode" : "Dark mode"} aria-label="Toggle theme">
               <Icon name={theme === "dark" ? "sun" : "moon"} className="w-[18px] h-[18px]" />
             </button>
-            <div className="hidden sm:flex items-center gap-2 pl-1">
-              <span className="w-7 h-7 rounded-full bg-chip text-strong text-xs font-semibold flex items-center justify-center uppercase">{me?.username?.[0] ?? "?"}</span>
+            <Link to="/profile" title="Your profile" className="flex items-center gap-2 pl-1 pr-1.5 py-1 rounded-lg hover:bg-inset">
+              <Avatar name={me?.full_name || me?.username} url={me?.avatar_url} size={28} />
               <div className="leading-tight hidden lg:block">
-                <div className="text-xs font-medium text-strong">{me?.username}</div>
+                <div className="text-xs font-medium text-strong">{me?.full_name || me?.username}</div>
                 <div className="text-xxs text-muted capitalize">{me?.role}</div>
               </div>
-            </div>
+            </Link>
             <button onClick={logout} className="p-2 rounded-lg text-fg2 hover:bg-inset hover:text-strong" title="Log out" aria-label="Log out">
               <Icon name="logout" className="w-[18px] h-[18px]" />
             </button>
@@ -164,7 +180,13 @@ export default function Layout() {
               <input className="input w-full" placeholder="Search devices…" value={q} onChange={(e) => setQ(e.target.value)} />
             </form>
             <SidebarNav me={me} onNavigate={() => setDrawer(false)} />
-            <div className="px-5 py-3 border-t border-line text-xs text-muted">{me?.username} · <span className="capitalize">{me?.role}</span></div>
+            <Link to="/profile" className="px-4 py-3 border-t border-line flex items-center gap-3 hover:bg-active/50">
+              <Avatar name={me?.full_name || me?.username} url={me?.avatar_url} size={32} />
+              <div className="leading-tight">
+                <div className="text-sm font-medium text-strong">{me?.full_name || me?.username}</div>
+                <div className="text-xs text-muted">View profile</div>
+              </div>
+            </Link>
           </div>
         </div>
       )}

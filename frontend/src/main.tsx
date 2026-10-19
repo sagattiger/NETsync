@@ -16,6 +16,7 @@ import Rules from "./pages/Rules";
 import Notifications from "./pages/Notifications";
 import Users from "./pages/Users";
 import Plugins from "./pages/Plugins";
+import Profile from "./pages/Profile";
 
 const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 10_000, retry: 1 } } });
 
@@ -40,6 +41,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="/setup/notifications" element={<Notifications />} />
             <Route path="/setup/users" element={<Users />} />
             <Route path="/setup/plugins" element={<Plugins />} />
+            <Route path="/profile" element={<Profile />} />
           </Route>
         </Routes>
       </BrowserRouter>

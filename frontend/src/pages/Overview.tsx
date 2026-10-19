@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api, Device, Service } from "../api";
+import { PinnedEvents } from "../components/EventComments";
 import { Page, PageHeader } from "../components/Layout";
 import ServiceTable from "../components/ServiceTable";
 import { VendorLogo } from "../components/VendorLogo";
@@ -47,6 +48,8 @@ export default function Overview() {
             </table>
           </Card>
         )}
+
+        <PinnedEvents showDevice />
 
         <Card title={`Unhandled problems · ${problems.length}`}>
           {problems.length ? <ServiceTable services={problems} showHost /> : <Empty>Everything is OK.</Empty>}

@@ -22,6 +22,16 @@ const PATHS: Record<string, string> = {
   play: "M7 4l13 8-13 8V4z",
   plus: "M12 5v14M5 12h14",
   chevron: "M9 6l6 6-6 6",
+  pin: "M9 4h6l-1 5 3 3v2H7v-2l3-3-1-5zM12 14v6",
+  message: "M4 5h16v11H9l-5 4V5z",
+  edit: "M4 20h4L19 9l-4-4L4 16v4zM13 7l4 4",
+  trash: "M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3",
+  camera: "M4 8h3l2-3h6l2 3h3v11H4V8zM12 16a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
+  check: "M5 12l5 5L20 7",
+  user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c0-4 3.6-7 8-7s8 3 8 7",
+  note: "M6 3h9l4 4v14H6V3zM14 3v5h5M9 13h7M9 17h5",
+  lock: "M6 11h12v10H6V11zM8 11V7a4 4 0 0 1 8 0v4",
+  palette: "M12 3a9 9 0 1 0 0 18c1 0 1.5-.8 1.5-1.5 0-1.2-1-1.5-1-2.5 0-.8.7-1.5 1.5-1.5H17a4 4 0 0 0 4-4c0-4.7-4-8.5-9-8.5zM7.5 12h.01M10 7.5h.01M15 7.5h.01",
 };
 
 export function Icon({ name, className = "w-4 h-4", strokeWidth = 1.75 }: { name: keyof typeof PATHS | string; className?: string; strokeWidth?: number }) {

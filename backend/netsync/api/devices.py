@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import case, func, select, text
 
+from netsync.api.collab import author_avatars, comment_out, comments_for
 from netsync.api.deps import CurrentUser, Session, device_scope, get_device_for, require
 from netsync.api.schemas import (
     ComponentOut,
@@ -169,7 +170,18 @@ async def history(device_id: int, user: CurrentUser, session: Session, limit: in
         .order_by(StateChange.time.desc())
         .limit(min(limit, 1000))
     )
+    events = list(await session.execute(q))
+    comments = await comments_for(session, [device_id])
+    avatars = await author_avatars(session, comments)
+    by_event: dict[tuple, list] = {}
+    for c in comments:
+        by_event.setdefault((c.service_id, c.event_time), []).append(comment_out(c, avatars))
     return [
-        {"time": sc.time, "service": name, "old_state": sc.old_state, "new_state": sc.new_state, "output": sc.output}
-        for sc, name in await session.execute(q)
+        {
+            "time": sc.time, "service_id": sc.service_id, "service": name, "old_state": sc.old_state,
+            "new_state": sc.new_state, "output": sc.output,
+            "comments": (cs := by_event.get((sc.service_id, sc.time), [])),
+            "pinned": any(c["pinned"] for c in cs),
+        }
+        for sc, name in events
     ]

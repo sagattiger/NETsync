@@ -22,6 +22,24 @@ HYPERTABLES = {
 }
 
 
+# Columns added after a table first shipped. create_all() never alters existing tables,
+# so these are applied idempotently on startup until proper Alembic migrations land.
+ADDED_COLUMNS = {
+    "users": [
+        "full_name VARCHAR(128)",
+        "phone VARCHAR(64)",
+        "job_title VARCHAR(128)",
+        "timezone VARCHAR(64)",
+        "preferences JSON NOT NULL DEFAULT '{}'",
+        "avatar BYTEA",
+        "avatar_mime VARCHAR(32)",
+        "avatar_version INTEGER NOT NULL DEFAULT 0",
+        "last_login TIMESTAMPTZ",
+        "password_changed_at TIMESTAMPTZ",
+    ],
+}
+
+
 async def init_db() -> None:
     """Create tables and TimescaleDB hypertables. Safe to run repeatedly."""
     from netsync.models import Base
@@ -31,6 +49,9 @@ async def init_db() -> None:
         await conn.execute(text("SELECT pg_advisory_xact_lock(7061)"))
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS timescaledb"))
         await conn.run_sync(Base.metadata.create_all)
+        for table, columns in ADDED_COLUMNS.items():
+            for column in columns:
+                await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column}"))
         for table, retention in HYPERTABLES.items():
             await conn.execute(
                 text(f"SELECT create_hypertable('{table}', 'time', if_not_exists => TRUE, migrate_data => TRUE)")

@@ -92,5 +92,29 @@ body { @apply bg-bg text-fg text-sm antialiased font-sans; }
   .seg > button[data-active="true"] { @apply bg-seg-active text-on-seg-active; }
 }
 
+/* compact table density (profile setting) */
+[data-density="compact"] .tbl td { @apply py-1.5; }
+[data-density="compact"] .tbl th { @apply py-1.5; }
+
+/* rendered markdown (device notes, comments) */
+.md { @apply text-sm text-fg leading-relaxed break-words; }
+.md > * + * { @apply mt-3; }
+.md h1 { @apply text-xl font-semibold text-strong mt-5; }
+.md h2 { @apply text-lg font-semibold text-strong mt-5 pb-1 border-b border-line; }
+.md h3 { @apply text-base font-semibold text-strong mt-4; }
+.md a { @apply text-accent underline underline-offset-2; }
+.md ul { @apply list-disc pl-5 space-y-1; }
+.md ol { @apply list-decimal pl-5 space-y-1; }
+.md li > input[type="checkbox"] { @apply mr-1.5 accent-accent; }
+.md code { @apply font-mono text-[0.85em] px-1.5 py-0.5 rounded bg-inset border border-line; }
+.md pre { @apply p-3 rounded-lg bg-inset border border-line overflow-x-auto; }
+.md pre code { @apply p-0 border-0 bg-transparent; }
+.md blockquote { @apply pl-3 border-l-2 border-accent text-fg2; }
+.md table { @apply w-full text-left border border-line rounded-lg; }
+.md th { @apply px-3 py-1.5 bg-inset border-b border-line text-xs font-medium text-muted; }
+.md td { @apply px-3 py-1.5 border-b border-line; }
+.md hr { @apply border-line; }
+.md img { @apply max-w-full rounded-lg; }
+
 /* thin scrollbars that follow the theme */
 * { scrollbar-width: thin; scrollbar-color: rgb(var(--edge)) transparent; }

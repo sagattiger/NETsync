@@ -1,13 +1,15 @@
 import { Fragment, ReactNode, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, Component, Device, fmtAgo, fmtBps, fmtBytes, fmtUptime, Me, PluginInfo, Service, SyslogMsg } from "../api";
+import { api, Component, Device, fmtAgo, fmtBps, fmtBytes, fmtUptime, Me, PluginInfo, prefs, Service, SyslogMsg } from "../api";
 import { Icon } from "../components/Icon";
 import { MetricChart } from "../components/MetricChart";
 import ServiceTable from "../components/ServiceTable";
 import { VendorLogo } from "../components/VendorLogo";
 import { Bar, Card, Empty, hideLg, hideMd, hideSm, Segmented, StateBadge, StateDot, stateText } from "../components/ui";
 import { SyslogTable } from "./Syslog";
+import EventsTab from "./device/EventsTab";
+import NotesTab from "./device/NotesTab";
 
 const RANGES: [string, string][] = [["1h", "1h"], ["6h", "6h"], ["24h", "24h"], ["7d", "7d"], ["30d", "30d"], ["1y", "1y"]];
 
@@ -26,7 +28,7 @@ export default function DevicePage() {
   const tab = params["*"] || "overview";
   const nav = useNavigate();
   const qc = useQueryClient();
-  const [range, setRange] = useState("24h");
+  const [range, setRange] = useState(() => prefs.get().default_range ?? "24h");
 
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/auth/me") });
   const { data: device } = useQuery({ queryKey: ["device", id], queryFn: () => api<Device>(`/devices/${id}`), refetchInterval: 30_000 });
@@ -46,8 +48,9 @@ export default function DevicePage() {
     ["health", "Health", health.length],
     ["services", "Services", services.length],
     ...pluginTabs.map((t) => [t.id, t.label] as [string, string]),
-    ["syslog", "Syslog"],
     ["events", "Events"],
+    ["notes", "Notes"],
+    ["syslog", "Syslog"],
     ...(canEdit ? [["settings", "Settings"] as [string, string]] : []),
   ];
   const worst = services.reduce((w, s) => Math.max(w, s.state), 0);
@@ -114,6 +117,7 @@ export default function DevicePage() {
         {tab === "services" && <Card><ServiceTable services={services} canAck={canEdit} /></Card>}
         {tab === "syslog" && <DeviceSyslog deviceId={id} />}
         {tab === "events" && <EventsTab deviceId={id} />}
+        {tab === "notes" && <NotesTab deviceId={id} canEdit={canEdit} />}
         {tab === "settings" && <SettingsTab device={device} isAdmin={me?.role === "admin"} />}
         {pluginTabs.filter((t) => t.id === tab).map((t) =>
           t.view === "iframe" && t.url ? (
@@ -326,32 +330,6 @@ function DeviceSyslog({ deviceId }: { deviceId: number }) {
     refetchInterval: 15_000,
   });
   return <Card title="Syslog">{data.length ? <SyslogTable rows={data} /> : <Empty>No syslog messages from this device yet</Empty>}</Card>;
-}
-
-function EventsTab({ deviceId }: { deviceId: number }) {
-  const { data = [] } = useQuery({
-    queryKey: ["history", deviceId],
-    queryFn: () => api<{ time: string; service: string; old_state: number; new_state: number; output: string }[]>(`/devices/${deviceId}/history`),
-  });
-  return (
-    <Card title="State changes">
-      {!data.length ? <Empty>No events yet</Empty> : (
-        <table className="tbl">
-          <thead><tr><th>Time</th><th>Service</th><th>Change</th><th className={hideMd}>Output</th></tr></thead>
-          <tbody>
-            {data.map((e, i) => (
-              <tr key={i}>
-                <td className="text-xs whitespace-nowrap text-fg2">{new Date(e.time).toLocaleString()}</td>
-                <td className="text-strong">{e.service}</td>
-                <td className="whitespace-nowrap"><StateBadge state={e.old_state} small /> <span className="text-muted mx-1">→</span> <StateBadge state={e.new_state} small /></td>
-                <td className={`text-fg2 ${hideMd}`}>{e.output}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </Card>
-  );
 }
 
 function SettingsTab({ device, isAdmin }: { device: Device; isAdmin: boolean }) {

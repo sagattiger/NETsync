@@ -33,7 +33,52 @@ export interface SyslogMsg {
   severity: number; hostname: string | null; program: string | null; message: string;
 }
 
-export interface Me { id: number; username: string; email: string | null; role: string; groups: string[] }
+export interface Preferences {
+  theme?: "dark" | "light" | "system";
+  default_range?: string;
+  time_format?: "24h" | "12h";
+  refresh_interval?: string;
+  landing_page?: string;
+  table_density?: "comfortable" | "compact";
+}
+
+export interface Me {
+  id: number; username: string; email: string | null; full_name: string | null; phone: string | null;
+  job_title: string | null; timezone: string | null; role: string; groups: string[];
+  preferences: Preferences; avatar_url: string | null;
+  created_at: string; last_login: string | null; password_changed_at: string | null;
+}
+
+export interface EventComment {
+  id: number; device_id: number; service_id: number; event_time: string; body: string; pinned: boolean;
+  author: string; author_id: number | null; author_avatar: string | null; created_at: string; updated_at: string | null;
+}
+
+export interface DeviceEvent {
+  time: string; service_id: number; service: string | null; old_state: number; new_state: number;
+  output: string | null; comments: EventComment[]; pinned: boolean;
+}
+
+export interface PinnedEvent extends DeviceEvent { device_id: number; hostname: string; pinned_at: string }
+
+// Current user's UI preferences, set once /auth/me has loaded (see Layout).
+let currentPrefs: Preferences = {};
+export const prefs = {
+  get: () => currentPrefs,
+  set: (p: Preferences) => {
+    currentPrefs = p;
+    document.documentElement.setAttribute("data-density", p.table_density ?? "comfortable");
+  },
+  refreshMs: (fallback: number) => (currentPrefs.refresh_interval ? Number(currentPrefs.refresh_interval) * 1000 : fallback),
+};
+
+export function fmtDateTime(iso: string | null | undefined): string {
+  if (!iso) return "-";
+  return new Date(iso).toLocaleString(undefined, {
+    year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+    hour12: currentPrefs.time_format === "12h",
+  });
+}
 
 export interface PluginInfo {
   name: string; version: string; description: string; builtin: boolean;

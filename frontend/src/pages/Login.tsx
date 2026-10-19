@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, auth } from "../api";
+import { api, auth, Me } from "../api";
 import { Icon } from "../components/Icon";
 import { useTheme } from "../theme";
 
@@ -19,7 +19,8 @@ export default function Login() {
     try {
       const { token } = await api<{ token: string }>("/auth/login", { body: { username, password } });
       auth.set(token);
-      nav("/");
+      const me = await api<Me>("/auth/me").catch(() => null);
+      nav(me?.preferences.landing_page ?? "/");
     } catch (err: any) {
       setError(err.message);
     } finally {

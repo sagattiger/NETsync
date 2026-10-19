@@ -15,7 +15,9 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
+    LargeBinary,
     SmallInteger,
     String,
     Table,
@@ -91,6 +93,19 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(16), default=Role.VIEWER)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = utcnow_col()
+
+    # Profile
+    full_name: Mapped[str | None] = mapped_column(String(128))
+    phone: Mapped[str | None] = mapped_column(String(64))
+    job_title: Mapped[str | None] = mapped_column(String(128))
+    timezone: Mapped[str | None] = mapped_column(String(64))
+    # UI settings: theme, default_range, time_format, refresh_interval...
+    preferences: Mapped[dict] = mapped_column(JSON, default=dict)
+    avatar: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
+    avatar_mime: Mapped[str | None] = mapped_column(String(32))
+    avatar_version: Mapped[int] = mapped_column(Integer, default=0)
+    last_login: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    password_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     groups: Mapped[list["DeviceGroup"]] = relationship(secondary=user_groups, lazy="selectin")
 
@@ -224,6 +239,39 @@ class StateChange(Base):
     old_state: Mapped[int] = mapped_column(SmallInteger)
     new_state: Mapped[int] = mapped_column(SmallInteger)
     output: Mapped[str | None] = mapped_column(Text)
+
+
+class DeviceNote(Base):
+    """Free-form markdown notes for a device (one document per device)."""
+
+    __tablename__ = "device_notes"
+
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"), primary_key=True)
+    content: Mapped[str] = mapped_column(Text, default="")
+    updated_at: Mapped[datetime] = utcnow_col()
+    updated_by: Mapped[str | None] = mapped_column(String(64))
+
+
+class EventComment(Base):
+    """A comment on a state change event. Pinned comments keep the event on top
+    (e.g. "known issue, fix scheduled for October 31st").
+
+    Events live in the state_changes hypertable and are identified by
+    (service_id, event_time)."""
+
+    __tablename__ = "event_comments"
+    __table_args__ = (Index("ix_event_comments_event", "device_id", "service_id", "event_time"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"))
+    service_id: Mapped[int] = mapped_column(Integer)
+    event_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    body: Mapped[str] = mapped_column(Text)
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False)
+    author_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    author: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = utcnow_col()
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 # --------------------------------------------------------------------------- rules / alerting
