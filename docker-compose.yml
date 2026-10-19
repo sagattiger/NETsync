@@ -1,9 +1,15 @@
 name: netsync
 
+# Resolvers used by every container (device hostnames, SMTP, Telegram, webhooks).
+x-dns: &dns
+  - 10.128.100.102
+  - 10.128.100.105
+
 x-backend: &backend
   build: ./backend
   image: netsync-backend:latest
   restart: unless-stopped
+  dns: *dns
   env_file: .env
   environment:
     NETSYNC_DATABASE_URL: postgresql+asyncpg://netsync:${POSTGRES_PASSWORD}@db:5432/netsync
@@ -43,7 +49,9 @@ services:
       NETSYNC_REDIS_URL: redis://redis:6379/0
       NETSYNC_SYSLOG_PORT: "1514"  # unprivileged inside the container, published as 514
     sysctls:
-      net.ipv4.ping_group_range: "0 2147483647"  # unprivileged ICMP for the latency plugin
+      # Unprivileged ICMP for the latency plugin. Must stay within 0-65535 so it is
+      # accepted inside unprivileged LXC containers (only those GIDs are mapped).
+      net.ipv4.ping_group_range: "0 65535"
     ports:
       - "514:1514/udp"
       - "514:1514/tcp"
@@ -51,6 +59,7 @@ services:
   web:
     build: ./frontend
     restart: unless-stopped
+    dns: *dns
     depends_on: [api]
     ports:
       - "${HTTP_PORT:-8080}:80"
