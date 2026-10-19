@@ -9,6 +9,7 @@ import logging
 import signal
 from datetime import UTC, datetime, timedelta
 
+from redis.exceptions import TimeoutError as RedisTimeoutError
 from sqlalchemy import or_, select
 
 from netsync import __version__
@@ -101,6 +102,8 @@ class Worker:
                 if item:
                     job = json.loads(item[1])
                     asyncio.create_task(self.run_device(int(job["device_id"]), job.get("type") == "discover"))
+            except (TimeoutError, RedisTimeoutError):
+                continue
             except Exception:
                 log.exception("job listener error")
                 await asyncio.sleep(5)

@@ -23,7 +23,10 @@ _redis: aioredis.Redis | None = None
 def redis() -> aioredis.Redis:
     global _redis
     if _redis is None:
-        _redis = aioredis.from_url(get_settings().redis_url, decode_responses=True)
+        # socket_timeout must exceed the BLPOP wait used by the worker's job listener.
+        _redis = aioredis.from_url(
+            get_settings().redis_url, decode_responses=True, socket_timeout=30, health_check_interval=30
+        )
     return _redis
 
 
