@@ -41,7 +41,7 @@ export default function Rules() {
     <>
       <PageHeader title="Threshold rules" sub="First matching rule (lowest priority number) wins; otherwise defaults apply"
         actions={isAdmin && <button className="btn btn-primary" onClick={() => setEditing({ check: "cpu_util", name: "" })}>+ New rule</button>} />
-      <div className="p-5 space-y-4">
+      <div className="px-4 sm:px-6 pb-8 space-y-4">
         <Card title="Rules">
           {!rules.length ? <Empty>No custom rules - defaults are used</Empty> : (
             <table className="tbl">

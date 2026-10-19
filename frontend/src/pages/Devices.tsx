@@ -2,22 +2,20 @@ import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, Device, fmtAgo, fmtUptime, Group, Me } from "../api";
-import { PageHeader } from "../components/Layout";
-import { Card, Empty, Modal, StateBadge } from "../components/ui";
-
-const TYPE_ICON: Record<string, string> = {
-  router: "⇄", switch: "▤", firewall: "▣", server: "▥", network: "◈",
-};
+import { Icon } from "../components/Icon";
+import { Page, PageHeader } from "../components/Layout";
+import { VendorLogo } from "../components/VendorLogo";
+import { Card, Empty, hideLg, hideMd, hideSm, Modal, Segmented, StateBadge } from "../components/ui";
 
 function Counts({ d }: { d: Device }) {
   const pill = (n: number | undefined, cls: string) =>
-    n ? <span className={`px-1.5 rounded-sm text-xxs font-bold ${cls}`}>{n}</span> : null;
+    n ? <span className={`px-1.5 py-0.5 rounded-md text-xxs font-semibold tabular-nums ${cls}`}>{n}</span> : null;
   return (
     <div className="flex gap-1">
-      {pill(d.services_ok, "bg-ok/20 text-ok")}
-      {pill(d.services_warn, "bg-warn text-black")}
-      {pill(d.services_crit, "bg-crit text-white")}
-      {pill(d.services_unknown, "bg-unknown text-black")}
+      {pill(d.services_ok, "bg-ok/10 text-ok")}
+      {pill(d.services_warn, "bg-warn/15 text-warn")}
+      {pill(d.services_crit, "bg-crit/10 text-crit")}
+      {pill(d.services_unknown, "bg-unknown/15 text-unknown")}
     </div>
   );
 }
@@ -37,51 +35,57 @@ export default function Devices() {
     <>
       <PageHeader
         title="Devices"
-        sub={`${data.length} devices`}
+        sub={`${data.length} device${data.length === 1 ? "" : "s"}`}
         actions={
           <>
-            <input className="input text-xs w-56" placeholder="Filter hostname / IP…" defaultValue={q}
+            <input className="input py-1.5 text-xs w-full sm:w-56" placeholder="Filter hostname / IP…" defaultValue={q}
               onKeyDown={(e) => { if (e.key === "Enter") setParams({ q: (e.target as HTMLInputElement).value }); }} />
-            {me?.role !== "viewer" && <button className="btn btn-primary" onClick={() => setAdding(true)}>+ Add device</button>}
+            {me?.role !== "viewer" && (
+              <button className="btn btn-primary" onClick={() => setAdding(true)}><Icon name="plus" className="w-3.5 h-3.5" /> Add device</button>
+            )}
           </>
         }
       />
-      <div className="p-5">
+      <Page>
         <Card>
           {isLoading ? <Empty>Loading…</Empty> : !data.length ? <Empty>No devices yet. Add your first device.</Empty> : (
             <table className="tbl">
               <thead>
                 <tr>
-                  <th className="w-16">State</th><th>Device</th><th>Platform</th><th>Location</th>
-                  <th>Services</th><th className="text-right">Ports</th><th>Uptime</th><th>Last polled</th>
+                  <th>Device</th><th className={hideMd}>Platform</th><th className={hideLg}>Location</th>
+                  <th className={hideSm}>Services</th><th className={`text-right ${hideLg}`}>Ports</th>
+                  <th className={hideLg}>Uptime</th><th className={hideMd}>Polled</th><th className="text-right">State</th>
                 </tr>
               </thead>
               <tbody>
                 {data.map((d) => (
                   <tr key={d.id} className={d.disabled ? "opacity-50" : ""}>
-                    <td><StateBadge state={d.status} small /></td>
                     <td>
-                      <Link to={`/devices/${d.id}`} className="font-medium text-accent hover:underline">
-                        <span className="text-muted mr-1.5">{TYPE_ICON[d.device_type ?? "network"] ?? "◈"}</span>{d.hostname}
+                      <Link to={`/devices/${d.id}`} className="flex items-center gap-3 group">
+                        <VendorLogo device={d} size={34} />
+                        <div className="min-w-0">
+                          <div className="font-medium text-strong group-hover:text-accent transition-colors truncate">{d.hostname}</div>
+                          <div className="text-xs text-muted">{d.ip}</div>
+                        </div>
                       </Link>
-                      <div className="text-xxs text-muted">{d.ip} {d.sys_name && d.sys_name !== d.hostname ? `· ${d.sys_name}` : ""}</div>
                     </td>
-                    <td>
-                      <div>{[d.vendor, d.hardware].filter(Boolean).join(" ") || "-"}</div>
-                      <div className="text-xxs text-muted">{[d.os, d.version].filter(Boolean).join(" ")}</div>
+                    <td className={hideMd}>
+                      <div className="text-fg">{[d.vendor, d.hardware].filter(Boolean).join(" ") || "-"}</div>
+                      <div className="text-xs text-muted">{[d.os, d.version].filter(Boolean).join(" ")}</div>
                     </td>
-                    <td className="text-gray-300 text-xs">{d.sys_location ?? "-"}</td>
-                    <td><Counts d={d} /></td>
-                    <td className="text-right tabular-nums">{d.ports ?? 0}</td>
-                    <td className="text-xs tabular-nums">{fmtUptime(d.uptime)}</td>
-                    <td className="text-xs text-muted">{fmtAgo(d.last_polled)}</td>
+                    <td className={`text-fg2 text-xs ${hideLg}`}>{d.sys_location ?? "-"}</td>
+                    <td className={hideSm}><Counts d={d} /></td>
+                    <td className={`text-right tabular-nums ${hideLg}`}>{d.ports ?? 0}</td>
+                    <td className={`text-xs tabular-nums text-fg2 ${hideLg}`}>{fmtUptime(d.uptime)}</td>
+                    <td className={`text-xs text-muted ${hideMd}`}>{fmtAgo(d.last_polled)}</td>
+                    <td className="text-right"><StateBadge state={d.status} small /></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
         </Card>
-      </div>
+      </Page>
       {adding && <AddDevice onClose={() => setAdding(false)} />}
     </>
   );
@@ -119,22 +123,20 @@ function AddDevice({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal title="Add device" onClose={onClose}>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-4">
         <div className="col-span-2"><label className="label">Hostname</label>
           <input className="input w-full" value={f.hostname} onChange={(e) => set("hostname", e.target.value)} placeholder="core-sw1.example.net" /></div>
-        <div><label className="label">IP (optional)</label>
+        <div className="col-span-2 sm:col-span-1"><label className="label">IP address (optional)</label>
           <input className="input w-full" value={f.ip} onChange={(e) => set("ip", e.target.value)} /></div>
-        <div className="grid grid-cols-2 gap-2">
-          <div><label className="label">SNMP</label>
-            <select className="input w-full" value={f.snmp_version} onChange={(e) => set("snmp_version", e.target.value)}>
-              <option value="1">v1</option><option value="2c">v2c</option><option value="3">v3</option>
-            </select></div>
-          <div><label className="label">Port</label>
-            <input className="input w-full" value={f.snmp_port} onChange={(e) => set("snmp_port", e.target.value)} /></div>
-        </div>
+        <div className="col-span-2 sm:col-span-1"><label className="label">SNMP version</label>
+          <Segmented value={f.snmp_version} onChange={(v) => set("snmp_version", v)} options={[["1", "v1"], ["2c", "v2c"], ["3", "v3"]]} /></div>
         {f.snmp_version !== "3" ? (
-          <div className="col-span-2"><label className="label">Community</label>
-            <input className="input w-full" value={f.snmp_community} onChange={(e) => set("snmp_community", e.target.value)} /></div>
+          <>
+            <div className="col-span-2 sm:col-span-1"><label className="label">Community</label>
+              <input className="input w-full" value={f.snmp_community} onChange={(e) => set("snmp_community", e.target.value)} /></div>
+            <div className="col-span-2 sm:col-span-1"><label className="label">Port</label>
+              <input className="input w-full" value={f.snmp_port} onChange={(e) => set("snmp_port", e.target.value)} /></div>
+          </>
         ) : (
           <>
             <div className="col-span-2"><label className="label">Username</label>
@@ -156,18 +158,18 @@ function AddDevice({ onClose }: { onClose: () => void }) {
         {groups.length > 0 && (
           <div className="col-span-2"><label className="label">Groups</label>
             <div className="flex flex-wrap gap-2">
-              {groups.map((g) => (
-                <label key={g.id} className="btn cursor-pointer">
-                  <input type="checkbox" checked={f.group_ids.includes(g.id)}
-                    onChange={(e) => set("group_ids", e.target.checked ? [...f.group_ids, g.id] : f.group_ids.filter((x) => x !== g.id))} />
-                  {g.name}
-                </label>
-              ))}
+              {groups.map((g) => {
+                const on = f.group_ids.includes(g.id);
+                return (
+                  <button key={g.id} type="button" onClick={() => set("group_ids", on ? f.group_ids.filter((x) => x !== g.id) : [...f.group_ids, g.id])}
+                    className={`btn ${on ? "border-accent text-strong bg-accent/10" : ""}`}>{g.name}</button>
+                );
+              })}
             </div></div>
         )}
       </div>
-      {error && <div className="text-crit text-xs mt-3">{error}</div>}
-      <div className="mt-4 flex justify-end gap-2">
+      {error && <div className="text-crit text-xs mt-4">{error}</div>}
+      <div className="mt-6 flex justify-end gap-2">
         <button className="btn" onClick={onClose}>Cancel</button>
         <button className="btn btn-primary" onClick={save} disabled={!f.hostname}>Add & discover</button>
       </div>

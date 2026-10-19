@@ -2,18 +2,95 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---------------------------------------------------------------- themes
+   Values are "R G B" triplets so Tailwind opacity modifiers work (bg-ok/15). */
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: 244 243 239;          /* #F4F3EF page + card background */
+  --gap: 244 243 239;
+  --sidebar: 236 235 230;     /* #ECEBE6 inner panel */
+  --surface: 244 243 239;     /* cards: same as page, separated by border */
+  --inset: 236 235 230;       /* #ECEBE6 */
+  --chip: 224 223 219;        /* #E0DFDB */
+  --line: 214 213 209;        /* #D6D5D1 divider */
+  --edge: 198 197 194;        /* #C6C5C2 card border */
+  --fg: 26 26 26;             /* #1A1A1A */
+  --fg2: 66 66 66;            /* #424242 */
+  --strong: 26 26 26;
+  --muted: 97 97 97;          /* #616161 */
+  --faint: 190 190 187;       /* #BEBEBB */
+  --active: 224 223 219;      /* #E0DFDB */
+  --accent: 255 88 174;       /* #FF58AE */
+  --primary: 26 26 26;        /* #1A1A1A buttons */
+  --on-primary: 255 255 255;
+  --seg: 255 255 255;         /* tab group */
+  --seg-edge: 219 219 219;    /* #DBDBDB */
+  --seg-active: 26 26 26;
+  --on-seg-active: 255 255 255;
+  --ok: 30 150 86;
+  --warn: 176 122 0;
+  --crit: 208 44 44;
+  --unknown: 196 102 0;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: 16 16 16;             /* #101010 */
+  --gap: 22 22 22;            /* #161616 */
+  --sidebar: 26 26 26;        /* #1A1A1A */
+  --surface: 26 26 26;        /* #1A1A1A */
+  --inset: 33 33 33;
+  --chip: 42 42 42;
+  --line: 49 49 49;           /* #313131 */
+  --edge: 49 49 49;
+  --fg: 227 227 227;          /* #E3E3E3 */
+  --fg2: 190 190 190;
+  --strong: 245 245 245;      /* #F5F5F5 */
+  --muted: 140 140 140;
+  --faint: 90 90 90;
+  --active: 60 60 60;         /* #3C3C3C */
+  --accent: 255 87 174;       /* #FF57AE */
+  --primary: 245 245 245;
+  --on-primary: 16 16 16;
+  --seg: 22 22 22;
+  --seg-edge: 49 49 49;
+  --seg-active: 60 60 60;
+  --on-seg-active: 245 245 245;
+  --ok: 61 214 140;
+  --warn: 255 196 61;
+  --crit: 255 95 95;
+  --unknown: 255 160 70;
+}
+
 html, body, #root { height: 100%; }
-body { @apply bg-bg text-gray-200 text-sm antialiased; font-family: Inter, "Segoe UI", Roboto, sans-serif; }
+body { @apply bg-bg text-fg text-sm antialiased font-sans; }
+::selection { background: rgb(var(--accent) / 0.25); }
 
 @layer components {
-  .card { @apply bg-panel border border-line rounded; }
-  .card-title { @apply px-3 py-2 border-b border-line text-xs font-semibold uppercase tracking-wide text-muted; }
+  .card { @apply bg-surface border border-edge rounded-xl; }
+  .card-title { @apply px-4 py-3 border-b border-line text-sm font-medium text-strong; }
+
   .tbl { @apply w-full text-left; }
-  .tbl th { @apply px-2 py-1.5 text-xxs uppercase tracking-wide text-muted font-semibold border-b border-line bg-panel2; }
-  .tbl td { @apply px-2 py-1.5 border-b border-line/60 align-top; }
-  .tbl tr:hover td { @apply bg-panel2/60; }
-  .btn { @apply inline-flex items-center gap-1 px-3 py-1.5 rounded bg-panel2 border border-line hover:border-accent text-gray-200 text-xs; }
-  .btn-primary { @apply bg-accent/90 text-black border-accent hover:bg-accent; }
-  .input { @apply bg-bg border border-line rounded px-2 py-1.5 text-sm outline-none focus:border-accent; }
-  .label { @apply block text-xxs uppercase tracking-wide text-muted mb-1; }
+  .tbl th { @apply px-3 py-2 text-xs font-medium text-muted border-b border-line bg-inset/60 whitespace-nowrap; }
+  .tbl td { @apply px-3 py-2.5 border-b border-line/70 align-middle; }
+  .tbl tbody tr:last-child td { @apply border-b-0; }
+  .tbl tbody tr:hover td { @apply bg-inset/50; }
+
+  .btn { @apply inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-edge text-fg text-xs font-medium hover:bg-inset transition-colors disabled:opacity-40; }
+  .btn-primary { @apply bg-primary text-on-primary border-primary hover:bg-primary/90; }
+  .btn-accent { @apply bg-accent text-white border-accent hover:bg-accent/90; }
+  .btn-ghost { @apply border-transparent hover:bg-inset; }
+
+  .input { @apply bg-surface border border-edge rounded-lg px-3 py-2 text-sm text-fg placeholder:text-muted outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition; }
+  .label { @apply block text-xs font-medium text-muted mb-1.5; }
+  .link { @apply text-strong font-medium hover:text-accent transition-colors; }
+
+  .seg { @apply inline-flex p-0.5 rounded-lg bg-seg border border-seg-edge; }
+  .seg > button { @apply px-2.5 py-1 rounded-md text-xs text-muted hover:text-fg transition-colors; }
+  .seg > button[data-active="true"] { @apply bg-seg-active text-on-seg-active; }
 }
+
+/* thin scrollbars that follow the theme */
+* { scrollbar-width: thin; scrollbar-color: rgb(var(--edge)) transparent; }

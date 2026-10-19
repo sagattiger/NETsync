@@ -1,8 +1,8 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import ReactECharts from "echarts-for-react";
 import { api, Series } from "../api";
-
-const PALETTE = ["#15d1a0", "#4aa3ff", "#ffb547", "#e36bff", "#ff5d5d", "#9be15d"];
+import { token, useTheme } from "../theme";
 
 export interface MetricDef { name: string; label?: string; scale?: number }
 
@@ -12,6 +12,7 @@ export function MetricChart({
   deviceId: number; componentId?: number; metrics: MetricDef[]; range: string;
   unit?: string; height?: number; format?: (v: number) => string; area?: boolean;
 }) {
+  const { theme } = useTheme();
   const names = metrics.map((m) => m.name);
   const { data, isLoading } = useQuery({
     queryKey: ["metrics", deviceId, componentId, names, range],
@@ -19,41 +20,61 @@ export function MetricChart({
       api<Series>(`/devices/${deviceId}/metrics?${names.map((n) => `name=${n}`).join("&")}&component_id=${componentId}&range=${range}`),
     refetchInterval: 60_000,
   });
-  const fmt = format ?? ((v: number) => `${v.toFixed(1)}${unit}`);
+  const fmt = format ?? ((v: number) => `${Number.isInteger(v) ? v : v.toFixed(1)}${unit}`);
+  const empty = !isLoading && metrics.every((m) => !(data?.[m.name]?.length));
 
-  const option = {
-    backgroundColor: "transparent",
-    color: PALETTE,
-    grid: { left: 64, right: 16, top: 28, bottom: 28 },
-    legend: { top: 0, right: 0, textStyle: { color: "#8b98a5", fontSize: 11 }, itemHeight: 8 },
-    tooltip: {
-      trigger: "axis",
-      backgroundColor: "#232930",
-      borderColor: "#38414b",
-      textStyle: { color: "#e5e7eb", fontSize: 12 },
-      valueFormatter: (v: number) => (v == null ? "-" : fmt(v)),
-    },
-    xAxis: { type: "time", axisLine: { lineStyle: { color: "#38414b" } }, axisLabel: { color: "#8b98a5", fontSize: 10 } },
-    yAxis: {
-      type: "value",
-      splitLine: { lineStyle: { color: "#2b323a" } },
-      axisLabel: { color: "#8b98a5", fontSize: 10, formatter: (v: number) => fmt(v) },
-    },
-    series: metrics.map((m) => ({
-      name: m.label ?? m.name,
-      type: "line",
-      showSymbol: false,
-      smooth: false,
-      lineStyle: { width: 1.5 },
-      areaStyle: area ? { opacity: 0.12 } : undefined,
-      data: (data?.[m.name] ?? []).map(([t, avg]) => [t, avg * (m.scale ?? 1)]),
-    })),
-  };
+  const option = useMemo(() => {
+    // accent first, then neutral and two supporting hues
+    const palette = [token("accent"), token("fg2"), "#5b8def", "#f5a524", "#3dd68c", "#a78bfa"];
+    return {
+      backgroundColor: "transparent",
+      color: palette,
+      animationDuration: 300,
+      grid: { left: 8, right: 12, top: 30, bottom: 4, containLabel: true },
+      legend: { top: 0, right: 0, icon: "roundRect", itemWidth: 10, itemHeight: 3, textStyle: { color: token("muted"), fontSize: 11 } },
+      tooltip: {
+        trigger: "axis",
+        backgroundColor: token("surface"),
+        borderColor: token("edge"),
+        textStyle: { color: token("fg"), fontSize: 12 },
+        axisPointer: { lineStyle: { color: token("edge") } },
+        valueFormatter: (v: number) => (v == null ? "-" : fmt(v)),
+      },
+      xAxis: {
+        type: "time",
+        axisLine: { lineStyle: { color: token("line") } },
+        axisTick: { show: false },
+        axisLabel: { color: token("muted"), fontSize: 10, hideOverlap: true },
+        splitLine: { show: false },
+      },
+      yAxis: {
+        type: "value",
+        splitLine: { lineStyle: { color: token("line", 0.6) } },
+        axisLabel: { color: token("muted"), fontSize: 10, formatter: (v: number) => fmt(v) },
+      },
+      series: metrics.map((m, i) => ({
+        name: m.label ?? m.name,
+        type: "line",
+        showSymbol: false,
+        symbolSize: 4,
+        connectNulls: false,
+        lineStyle: { width: 1.75 },
+        areaStyle: area && i === 0 ? { opacity: theme === "dark" ? 0.14 : 0.1 } : undefined,
+        data: (data?.[m.name] ?? []).map(([t, avg]) => [t, avg * (m.scale ?? 1)]),
+      })),
+    };
+    // theme is a dependency so token() is re-read after switching
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, theme, area, unit]);
 
   return (
     <div style={{ height }} className="relative">
-      {isLoading && <div className="absolute inset-0 flex items-center justify-center text-muted text-xs">loading…</div>}
-      <ReactECharts option={option} style={{ height }} notMerge />
+      {(isLoading || empty) && (
+        <div className="absolute inset-0 flex items-center justify-center text-muted text-xs pointer-events-none">
+          {isLoading ? "Loading…" : "No data for this range yet"}
+        </div>
+      )}
+      <ReactECharts key={theme} option={option} style={{ height }} notMerge opts={{ renderer: "svg" }} />
     </div>
   );
 }

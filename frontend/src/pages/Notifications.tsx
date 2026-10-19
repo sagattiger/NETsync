@@ -29,7 +29,7 @@ export default function Notifications() {
     <>
       <PageHeader title="Notifications" sub="Who gets alerted, how, and for what"
         actions={<button className="btn btn-primary" onClick={() => setAdding(true)}>+ New notification rule</button>} />
-      <div className="p-5 space-y-3">
+      <div className="px-4 sm:px-6 pb-8 space-y-3">
         {msg && <div className="text-xs text-accent">{msg}</div>}
         <Card>
           {!rules.length ? <Empty>No notification rules - nobody is alerted yet</Empty> : (

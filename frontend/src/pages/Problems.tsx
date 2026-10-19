@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, Service } from "../api";
-import { PageHeader } from "../components/Layout";
+import { Page, PageHeader } from "../components/Layout";
 import ServiceTable from "../components/ServiceTable";
-import { Card } from "../components/ui";
+import { Card, Segmented } from "../components/ui";
 
 export default function Problems() {
   const [showAcked, setShowAcked] = useState(true);
@@ -19,22 +19,17 @@ export default function Problems() {
     <>
       <PageHeader
         title="Problems"
-        sub={`${rows.length} service problems`}
+        sub={`${rows.length} service problem${rows.length === 1 ? "" : "s"}`}
         actions={
           <>
-            <select className="input text-xs" value={minState} onChange={(e) => setMinState(+e.target.value)}>
-              <option value={1}>WARN and worse</option>
-              <option value={2}>CRIT and worse</option>
-            </select>
-            <label className="btn cursor-pointer">
-              <input type="checkbox" checked={showAcked} onChange={(e) => setShowAcked(e.target.checked)} /> show acknowledged
-            </label>
+            <Segmented value={minState} onChange={setMinState} options={[[1, "Warning +"], [2, "Critical"]]} />
+            <Segmented value={showAcked ? "all" : "open"} onChange={(v) => setShowAcked(v === "all")} options={[["all", "All"], ["open", "Unhandled"]]} />
           </>
         }
       />
-      <div className="p-5">
+      <Page>
         <Card><ServiceTable services={rows} showHost /></Card>
-      </div>
+      </Page>
     </>
   );
 }

@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "./index.css";
 import { auth } from "./api";
+import { ThemeProvider } from "./theme";
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
 import Overview from "./pages/Overview";
@@ -24,6 +25,7 @@ function Protected({ children }: { children: React.ReactNode }) {
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
+    <ThemeProvider>
     <QueryClientProvider client={qc}>
       <BrowserRouter>
         <Routes>
@@ -42,5 +44,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>
+    </ThemeProvider>
   </React.StrictMode>,
 );

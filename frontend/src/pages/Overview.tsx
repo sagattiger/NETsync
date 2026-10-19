@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api, Device, Service } from "../api";
-import { PageHeader } from "../components/Layout";
+import { Page, PageHeader } from "../components/Layout";
 import ServiceTable from "../components/ServiceTable";
+import { VendorLogo } from "../components/VendorLogo";
 import { Card, Empty, StateBadge, Tile } from "../components/ui";
 
 export default function Overview() {
@@ -18,17 +19,17 @@ export default function Overview() {
   const { data: devices = [] } = useQuery({ queryKey: ["devices"], queryFn: () => api<Device[]>("/devices") });
   const down = devices.filter((d) => d.status === 2);
   const s = ov?.services ?? {};
+  const totalServices = Object.values(s).reduce((a, b) => a + b, 0);
 
   return (
     <>
-      <PageHeader title="Overview" sub="Unhandled problems across all devices you can see" />
-      <div className="p-5 space-y-4">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <Tile label="Devices" value={devices.length} />
-          <Tile label="Devices down" value={down.length} tone={down.length ? 2 : 0} />
-          <Tile label="Services OK" value={s.OK ?? 0} tone={0} />
-          <Tile label="Services WARN" value={s.WARN ?? 0} tone={(s.WARN ?? 0) ? 1 : undefined} />
-          <Tile label="Services CRIT" value={s.CRIT ?? 0} tone={(s.CRIT ?? 0) ? 2 : undefined} />
+      <PageHeader title="Overview" sub="Unhandled problems across the devices you can see" />
+      <Page>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <Tile label="Devices" value={devices.length} hint={down.length ? `${down.length} down` : "all reachable"} />
+          <Tile label="Services" value={totalServices} hint={`${s.OK ?? 0} OK`} />
+          <Tile label="Warning" value={s.WARN ?? 0} tone={(s.WARN ?? 0) ? 1 : undefined} />
+          <Tile label="Critical" value={s.CRIT ?? 0} tone={(s.CRIT ?? 0) ? 2 : undefined} hint={`${ov?.unhandled ?? 0} unhandled`} />
         </div>
 
         {down.length > 0 && (
@@ -37,9 +38,9 @@ export default function Overview() {
               <tbody>
                 {down.map((d) => (
                   <tr key={d.id}>
-                    <td className="w-16"><StateBadge state={d.status} small /></td>
-                    <td><Link className="text-accent hover:underline" to={`/devices/${d.id}`}>{d.hostname}</Link></td>
-                    <td className="text-gray-300">{d.status_reason}</td>
+                    <td className="w-12"><VendorLogo device={d} size={32} /></td>
+                    <td><Link className="link" to={`/devices/${d.id}`}>{d.hostname}</Link><div className="text-xs text-muted">{d.status_reason}</div></td>
+                    <td className="text-right"><StateBadge state={d.status} small /></td>
                   </tr>
                 ))}
               </tbody>
@@ -47,10 +48,10 @@ export default function Overview() {
           </Card>
         )}
 
-        <Card title={`Unhandled service problems (${problems.length})`}>
-          {problems.length ? <ServiceTable services={problems} showHost /> : <Empty>All good, nothing to see here.</Empty>}
+        <Card title={`Unhandled problems · ${problems.length}`}>
+          {problems.length ? <ServiceTable services={problems} showHost /> : <Empty>Everything is OK.</Empty>}
         </Card>
-      </div>
+      </Page>
     </>
   );
 }

@@ -24,7 +24,7 @@ export default function Users() {
     <>
       <PageHeader title="Users & groups" sub="Viewers and operators only see devices in their groups"
         actions={<button className="btn btn-primary" onClick={() => setAdding(true)}>+ New user</button>} />
-      <div className="p-5 grid xl:grid-cols-3 gap-4">
+      <div className="px-4 sm:px-6 pb-8 grid xl:grid-cols-3 gap-4">
         <Card title="Users" className="xl:col-span-2">
           <table className="tbl">
             <thead><tr><th>User</th><th>Email</th><th>Role</th><th>Groups</th><th></th></tr></thead>
@@ -32,7 +32,7 @@ export default function Users() {
               {users.map((u) => (
                 <tr key={u.id} className={u.is_active ? "" : "opacity-50"}>
                   <td className="font-medium">{u.username}</td><td>{u.email ?? "-"}</td>
-                  <td><span className="px-1.5 py-0.5 rounded bg-line text-xxs uppercase">{u.role}</span></td>
+                  <td><span className="px-1.5 py-0.5 rounded bg-chip text-xxs uppercase">{u.role}</span></td>
                   <td className="text-xs">{u.role === "admin" ? "all" : u.groups.map((g) => g.name).join(", ") || "-"}</td>
                   <td className="text-right">
                     <button className="text-xs text-muted hover:text-crit"

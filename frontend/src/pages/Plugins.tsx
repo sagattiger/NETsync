@@ -13,14 +13,14 @@ export default function Plugins() {
     items.length ? (
       <div className="flex gap-1 flex-wrap items-center">
         <span className="text-xxs text-muted w-16">{label}</span>
-        {items.map((i) => <span key={i} className="px-1.5 rounded bg-line text-xxs font-mono">{i}</span>)}
+        {items.map((i) => <span key={i} className="px-1.5 rounded bg-chip text-xxs font-mono">{i}</span>)}
       </div>
     ) : null;
 
   return (
     <>
       <PageHeader title="Plugins & nodes" sub="Installed extensions and polling nodes" />
-      <div className="p-5 space-y-4">
+      <div className="px-4 sm:px-6 pb-8 space-y-4">
         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
           {data.map((p) => (
             <Card key={p.name}>
@@ -29,7 +29,7 @@ export default function Plugins() {
                   <div className="font-semibold">{p.name}</div>
                   <div className="text-xxs text-muted">v{p.version} {p.builtin && "· built-in"}</div>
                 </div>
-                <div className="text-xs text-gray-300">{p.description}</div>
+                <div className="text-xs text-fg2">{p.description}</div>
                 {chips("modules", p.modules)}
                 {chips("channels", p.channels)}
                 {chips("services", p.services)}
