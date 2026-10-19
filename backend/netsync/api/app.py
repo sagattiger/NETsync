@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 
 from netsync import __version__
 from netsync.alerting import EVENTS_CHANNEL, redis
-from netsync.api import admin, auth, collab, devices, monitoring, syslog
+from netsync.api import about, admin, auth, collab, dashboards, devices, monitoring, syslog
 from netsync.db import SessionLocal, init_db
 from netsync.models import Role, User
 from netsync.plugins.registry import registry
@@ -44,7 +44,7 @@ def create_app() -> FastAPI:
 
     api = APIRouter(prefix="/api")
     for r in (auth.router, auth.avatars, devices.router, monitoring.router, admin.router, syslog.router,
-              collab.router):
+              collab.router, dashboards.router, about.router):
         api.include_router(r)
     for plugin in registry.plugins.values():
         if plugin.router is not None:

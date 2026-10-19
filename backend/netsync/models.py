@@ -274,6 +274,25 @@ class EventComment(Base):
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class Dashboard(Base):
+    """A user-built page of widgets (graphs, device status, problem lists).
+
+    ``widgets`` is a list of {id, type, title, size, device_id, component_id, preset, ...};
+    widget data is always fetched through the regular device-scoped endpoints."""
+
+    __tablename__ = "dashboards"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(128))
+    description: Mapped[str | None] = mapped_column(Text)
+    owner_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    owner: Mapped[str] = mapped_column(String(64))
+    shared: Mapped[bool] = mapped_column(Boolean, default=False)
+    widgets: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = utcnow_col()
+    updated_at: Mapped[datetime] = utcnow_col()
+
+
 # --------------------------------------------------------------------------- rules / alerting
 
 class ThresholdRule(Base):

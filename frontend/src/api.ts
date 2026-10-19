@@ -61,6 +61,22 @@ export interface DeviceEvent {
 
 export interface PinnedEvent extends DeviceEvent { device_id: number; hostname: string; pinned_at: string }
 
+export type WidgetType = "graph" | "device" | "problems" | "services";
+export interface Widget {
+  id: string; type: WidgetType; title: string; size: "s" | "m" | "l";
+  device_id: number | null; component_id: number | null; preset: string | null;
+}
+export interface Dashboard {
+  id: number; name: string; description: string | null; owner: string; owner_id: number | null;
+  shared: boolean; widgets: Widget[]; created_at: string; updated_at: string; can_edit: boolean;
+}
+
+export function fmtDuration(sec: number | null | undefined): string {
+  if (sec == null) return "-";
+  const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
+  return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
+}
+
 // Current user's UI preferences, set once /auth/me has loaded (see Layout).
 let currentPrefs: Preferences = {};
 export const prefs = {

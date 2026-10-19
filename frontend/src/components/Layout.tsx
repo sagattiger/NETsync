@@ -32,6 +32,7 @@ const NAV: { section: string; items: { to: string; label: string; icon: string; 
     section: "Monitor",
     items: [
       { to: "/", label: "Overview", icon: "grid" },
+      { to: "/dashboards", label: "Dashboards", icon: "palette" },
       { to: "/problems", label: "Problems", icon: "alert" },
       { to: "/devices", label: "Devices", icon: "server" },
       { to: "/syslog", label: "Syslog", icon: "list" },
@@ -163,7 +164,9 @@ export default function Layout() {
       <aside className="hidden lg:flex fixed left-0 top-14 bottom-0 w-64 p-2">
         <div className="flex-1 flex flex-col bg-sidebar border border-line rounded-xl overflow-hidden">
           <SidebarNav me={me} />
-          <div className="px-5 py-3 border-t border-line text-xxs text-muted">NETsync v0.1</div>
+          <Link to="/about" className="px-5 py-3 border-t border-line text-xxs text-muted hover:text-strong flex items-center justify-between">
+            <span>NETsync v{__APP_VERSION__}</span><span>About</span>
+          </Link>
         </div>
       </aside>
 
@@ -180,6 +183,7 @@ export default function Layout() {
               <input className="input w-full" placeholder="Search devices…" value={q} onChange={(e) => setQ(e.target.value)} />
             </form>
             <SidebarNav me={me} onNavigate={() => setDrawer(false)} />
+            <Link to="/about" className="px-5 py-2.5 border-t border-line text-xs text-muted hover:text-strong">About NETsync v{__APP_VERSION__}</Link>
             <Link to="/profile" className="px-4 py-3 border-t border-line flex items-center gap-3 hover:bg-active/50">
               <Avatar name={me?.full_name || me?.username} url={me?.avatar_url} size={32} />
               <div className="leading-tight">

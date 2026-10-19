@@ -17,6 +17,9 @@ import Notifications from "./pages/Notifications";
 import Users from "./pages/Users";
 import Plugins from "./pages/Plugins";
 import Profile from "./pages/Profile";
+import About from "./pages/About";
+import Dashboards from "./pages/dashboards/Dashboards";
+import DashboardView from "./pages/dashboards/DashboardView";
 
 const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 10_000, retry: 1 } } });
 
@@ -42,6 +45,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="/setup/users" element={<Users />} />
             <Route path="/setup/plugins" element={<Plugins />} />
             <Route path="/profile" element={<Profile />} />
+            <Route path="/dashboards" element={<Dashboards />} />
+            <Route path="/dashboards/:id" element={<DashboardView />} />
+            <Route path="/about" element={<About />} />
           </Route>
         </Routes>
       </BrowserRouter>

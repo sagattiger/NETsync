@@ -10,6 +10,8 @@ import { Bar, Card, Empty, hideLg, hideMd, hideSm, Segmented, StateBadge, StateD
 import { SyslogTable } from "./Syslog";
 import EventsTab from "./device/EventsTab";
 import NotesTab from "./device/NotesTab";
+import NetstatTab from "./device/NetstatTab";
+import { AddToDashboard } from "../components/AddToDashboard";
 
 const RANGES: [string, string][] = [["1h", "1h"], ["6h", "6h"], ["24h", "24h"], ["7d", "7d"], ["30d", "30d"], ["1y", "1y"]];
 
@@ -40,6 +42,7 @@ export default function DevicePage() {
 
   const ports = components.filter((c) => c.kind === "port");
   const health = components.filter((c) => ["processor", "mempool", "storage", "sensor"].includes(c.kind));
+  const netstat = components.find((c) => c.kind === "netstat");
   const pluginTabs = plugins.flatMap((p) => p.ui_tabs);
   const canEdit = me?.role !== "viewer";
   const tabs: [string, string, number?][] = [
@@ -47,6 +50,7 @@ export default function DevicePage() {
     ["ports", "Ports", ports.length],
     ["health", "Health", health.length],
     ["services", "Services", services.length],
+    ...(netstat ? [["netstat", "Network stack"] as [string, string]] : []),
     ...pluginTabs.map((t) => [t.id, t.label] as [string, string]),
     ["events", "Events"],
     ["notes", "Notes"],
@@ -54,7 +58,7 @@ export default function DevicePage() {
     ...(canEdit ? [["settings", "Settings"] as [string, string]] : []),
   ];
   const worst = services.reduce((w, s) => Math.max(w, s.state), 0);
-  const showRange = ["overview", "ports", "health", ...pluginTabs.map((t) => t.id)].includes(tab);
+  const showRange = ["overview", "ports", "health", "netstat", ...pluginTabs.map((t) => t.id)].includes(tab);
 
   async function action(kind: "discover" | "poll") {
     await api(`/devices/${id}/${kind}`, { method: "POST" });
@@ -118,6 +122,7 @@ export default function DevicePage() {
         {tab === "syslog" && <DeviceSyslog deviceId={id} />}
         {tab === "events" && <EventsTab deviceId={id} />}
         {tab === "notes" && <NotesTab deviceId={id} canEdit={canEdit} />}
+        {tab === "netstat" && <NetstatTab deviceId={id} component={netstat} range={range} />}
         {tab === "settings" && <SettingsTab device={device} isAdmin={me?.role === "admin"} />}
         {pluginTabs.filter((t) => t.id === tab).map((t) =>
           t.view === "iframe" && t.url ? (
@@ -258,6 +263,9 @@ function PortsTab({ deviceId, ports, range }: { deviceId: number; ports: Compone
                 </tr>
                 {open === p.id && (
                   <tr><td colSpan={7} className="bg-inset/40">
+                    <div className="flex justify-end -mb-2">
+                      <AddToDashboard deviceId={deviceId} preset="port_traffic" componentId={p.id} />
+                    </div>
                     <div className="grid lg:grid-cols-2 gap-6 py-2">
                       <div>
                         <div className="text-xs text-muted mb-1">Traffic</div>

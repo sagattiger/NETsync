@@ -29,6 +29,8 @@ DEFAULT_LEVELS: dict[str, Levels] = {
     "if": Levels(80, 95),  # port utilization %
     "ping_rtt": Levels(150, 300),
     "ping_loss": Levels(10, 50),
+    "tcp_retrans": Levels(5, 10),  # % of sent segments retransmitted
+    "udp_errors": Levels(5, 50),  # received datagrams dropped per second
 }
 
 
