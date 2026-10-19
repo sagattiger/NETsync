@@ -1,0 +1,59 @@
+name: netsync
+
+x-backend: &backend
+  build: ./backend
+  image: netsync-backend:latest
+  restart: unless-stopped
+  env_file: .env
+  environment:
+    NETSYNC_DATABASE_URL: postgresql+asyncpg://netsync:${POSTGRES_PASSWORD}@db:5432/netsync
+    NETSYNC_REDIS_URL: redis://redis:6379/0
+  depends_on:
+    db: { condition: service_healthy }
+    redis: { condition: service_started }
+
+services:
+  db:
+    image: timescale/timescaledb:2.17.2-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: netsync
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: netsync
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U netsync"]
+      interval: 5s
+      retries: 20
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+
+  api:
+    <<: *backend
+    command: ["netsync-api"]
+
+  worker:
+    <<: *backend
+    command: ["netsync-worker"]
+    environment:
+      NETSYNC_DATABASE_URL: postgresql+asyncpg://netsync:${POSTGRES_PASSWORD}@db:5432/netsync
+      NETSYNC_REDIS_URL: redis://redis:6379/0
+      NETSYNC_SYSLOG_PORT: "1514"  # unprivileged inside the container, published as 514
+    sysctls:
+      net.ipv4.ping_group_range: "0 2147483647"  # unprivileged ICMP for the latency plugin
+    ports:
+      - "514:1514/udp"
+      - "514:1514/tcp"
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on: [api]
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+
+volumes:
+  pgdata:

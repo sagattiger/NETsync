@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+node_modules/
+frontend/dist/
+mibs/compiled/
+.DS_Store
