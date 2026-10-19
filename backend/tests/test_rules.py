@@ -1,15 +1,14 @@
-from types import SimpleNamespace
-
 from netsync.models import State, ThresholdRule
 from netsync.plugins.base import CheckResult
 from netsync.rules.engine import RuleSet
 
-device = SimpleNamespace(id=1, groups=[SimpleNamespace(id=10)])
+DEVICE_ID, GROUPS = 1, {10}
 
 
 def test_defaults_apply():
     rs = RuleSet([])
-    state, out = rs.evaluate(CheckResult("cpu_util", "CPU utilization", value=95, unit="%", output="95%"), device)
+    cr = CheckResult("cpu_util", "CPU utilization", value=95, unit="%", output="95%")
+    state, out = rs.evaluate(cr, DEVICE_ID, GROUPS)
     assert state == State.CRIT
     assert "CRIT" in out
 
@@ -17,7 +16,7 @@ def test_defaults_apply():
 def test_explicit_state_wins_over_ok_level():
     rs = RuleSet([])
     cr = CheckResult("if", "Interface Gi0/1", state=State.CRIT, value=1, output="down")
-    assert rs.evaluate(cr, device)[0] == State.CRIT
+    assert rs.evaluate(cr, DEVICE_ID, GROUPS)[0] == State.CRIT
 
 
 def test_rule_priority_and_regex():
@@ -27,13 +26,22 @@ def test_rule_priority_and_regex():
                       priority=10, enabled=True),
     ]
     rs = RuleSet(rules)
-    assert rs.evaluate(CheckResult("storage_used", "Filesystem /backup", value=92), device)[0] == State.OK
-    assert rs.evaluate(CheckResult("storage_used", "Filesystem /", value=92), device)[0] == State.CRIT
+    assert rs.evaluate(CheckResult("storage_used", "Filesystem /backup", value=92), DEVICE_ID, GROUPS)[0] == State.OK
+    assert rs.evaluate(CheckResult("storage_used", "Filesystem /", value=92), DEVICE_ID, GROUPS)[0] == State.CRIT
+
+
+def test_group_scoped_rule():
+    rules = [ThresholdRule(id=1, name="core", check="cpu_util", warn=50, crit=60, device_group_id=10,
+                           priority=1, enabled=True)]
+    rs = RuleSet(rules)
+    cr = CheckResult("cpu_util", "CPU utilization", value=55)
+    assert rs.evaluate(cr, DEVICE_ID, {10})[0] == State.WARN
+    assert rs.evaluate(cr, DEVICE_ID, set())[0] == State.OK  # falls back to defaults (80/90)
 
 
 def test_below_direction():
     rules = [ThresholdRule(id=1, name="x", check="signal", warn=-70, crit=-80, direction="below",
                            priority=1, enabled=True)]
     rs = RuleSet(rules)
-    assert rs.evaluate(CheckResult("signal", "Signal", value=-85), device)[0] == State.CRIT
-    assert rs.evaluate(CheckResult("signal", "Signal", value=-60), device)[0] == State.OK
+    assert rs.evaluate(CheckResult("signal", "Signal", value=-85), DEVICE_ID, GROUPS)[0] == State.CRIT
+    assert rs.evaluate(CheckResult("signal", "Signal", value=-60), DEVICE_ID, GROUPS)[0] == State.OK

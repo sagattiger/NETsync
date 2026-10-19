@@ -8,7 +8,7 @@ from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from netsync.config import get_settings
-from netsync.models import Component, Device, Metric, Service, State, StateChange
+from netsync.models import Component, Device, Metric, Service, State, StateChange, device_group_members
 from netsync.plugins.base import AlertEvent, CheckResult, DeviceContext, MetricSample
 from netsync.plugins.registry import registry
 from netsync.rules.engine import get_ruleset
@@ -92,13 +92,17 @@ async def store_results(
         await session.execute(insert(Metric), rows)
 
     rules = await get_ruleset(session)
+    # Query group ids explicitly: device.groups may be unloaded and lazy loading is not allowed in async.
+    group_ids = set(await session.scalars(
+        select(device_group_members.c.group_id).where(device_group_members.c.device_id == device.id)
+    ))
     services = {
         s.name: s for s in await session.scalars(select(Service).where(Service.device_id == device.id))
     }
     events: list[tuple[int, AlertEvent]] = []
     url = get_settings().public_url.rstrip("/")
     for cr in checks:
-        state, output = rules.evaluate(cr, device)
+        state, output = rules.evaluate(cr, device.id, group_ids)
         svc = services.get(cr.name)
         if svc is None:
             svc = Service(device_id=device.id, name=cr.name, check=cr.check, state=State.UNKNOWN, last_change=now)

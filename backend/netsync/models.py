@@ -142,7 +142,7 @@ class Device(Base):
 
     groups: Mapped[list[DeviceGroup]] = relationship(secondary=device_group_members, lazy="selectin")
     components: Mapped[list["Component"]] = relationship(
-        back_populates="device", cascade="all, delete-orphan", lazy="noload"
+        back_populates="device", cascade="all, delete-orphan", lazy="raise", passive_deletes=True
     )
 
 

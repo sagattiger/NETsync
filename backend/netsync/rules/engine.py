@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from netsync.models import Device, State, ThresholdRule
+from netsync.models import State, ThresholdRule
 from netsync.plugins.base import CheckResult
 
 
@@ -37,12 +37,11 @@ class RuleSet:
         self.rules = sorted((r for r in rules if r.enabled), key=lambda r: r.priority)
         self._regex = {r.id: re.compile(r.item_regex) for r in self.rules if r.item_regex}
 
-    def levels(self, check: str, device: Device, item: str) -> Levels | None:
-        group_ids = {g.id for g in device.groups}
+    def levels(self, check: str, device_id: int, group_ids: set[int], item: str) -> Levels | None:
         for r in self.rules:
             if r.check != check:
                 continue
-            if r.device_id is not None and r.device_id != device.id:
+            if r.device_id is not None and r.device_id != device_id:
                 continue
             if r.device_group_id is not None and r.device_group_id not in group_ids:
                 continue
@@ -51,12 +50,12 @@ class RuleSet:
             return Levels(r.warn, r.crit, r.direction or "above")
         return DEFAULT_LEVELS.get(check)
 
-    def evaluate(self, cr: CheckResult, device: Device) -> tuple[int, str]:
+    def evaluate(self, cr: CheckResult, device_id: int, group_ids: set[int]) -> tuple[int, str]:
         state = cr.state if cr.state is not None else State.OK
         output = cr.output
         if cr.value is None:
             return state, output
-        lv = self.levels(cr.check, device, cr.name)
+        lv = self.levels(cr.check, device_id, group_ids, cr.name)
         if lv:
             above = lv.direction == "above"
 
