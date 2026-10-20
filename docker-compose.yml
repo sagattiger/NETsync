@@ -2,6 +2,7 @@ name: netsync
 
 # Resolvers used by every container (device hostnames, SMTP, Telegram, webhooks).
 x-dns: &dns
+  - 10.128.100.201
   - 10.128.100.102
   - 10.128.100.105
 
