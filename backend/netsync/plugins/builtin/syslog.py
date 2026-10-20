@@ -52,12 +52,15 @@ class SyslogService(BackgroundService):
 
     async def refresh_devices(self) -> None:
         async with SessionLocal() as s:
-            rows = (await s.execute(select(Device.id, Device.ip, Device.hostname, Device.sys_name))).all()
+            rows = (await s.execute(
+                select(Device.id, Device.ip, Device.hostname, Device.sys_name, Device.ip_addresses)
+            )).all()
         m: dict[str, int] = {}
-        for did, ip, hostname, sys_name in rows:
-            for key in (ip, hostname, sys_name):
+        for did, ip, hostname, sys_name, addresses in rows:
+            # every interface address of the device, so logs sent from any interface match
+            for key in (*(addresses or []), ip, hostname, sys_name, (hostname or "").split(".")[0]):
                 if key:
-                    m[key.lower()] = did
+                    m.setdefault(key.lower(), did)
         self.device_map = m
 
     async def writer(self, stop: asyncio.Event) -> None:

@@ -146,6 +146,9 @@ class Device(Base):
     version: Mapped[str | None] = mapped_column(String(128))
     serial: Mapped[str | None] = mapped_column(String(128))
     device_type: Mapped[str | None] = mapped_column(String(32))  # router, switch, firewall, server, ...
+    # Every IPv4 address the device owns (IP-MIB) plus the resolved polling address.
+    # Used to match syslog/traps that arrive from an interface other than the polled one.
+    ip_addresses: Mapped[list] = mapped_column(JSON, default=list)
 
     status: Mapped[int] = mapped_column(SmallInteger, default=State.UNKNOWN)
     status_reason: Mapped[str | None] = mapped_column(Text)

@@ -1,6 +1,9 @@
 """SNMPv2-MIB system group: identity, OS detection, uptime / reboot check."""
 
+import asyncio
+import ipaddress
 import re
+import socket
 
 from netsync.models import State
 from netsync.plugins.base import CheckResult, DeviceContext, MetricSample, Module, PollResult
@@ -15,6 +18,34 @@ SYS_NAME = "1.3.6.1.2.1.1.5.0"
 SYS_LOCATION = "1.3.6.1.2.1.1.6.0"
 ENT_SERIAL = "1.3.6.1.2.1.47.1.1.1.1.11.1"
 ENT_MODEL = "1.3.6.1.2.1.47.1.1.1.1.13.1"
+
+
+IP_AD_ENT_ADDR = "1.3.6.1.2.1.4.20.1.1"  # IP-MIB ipAddrTable
+
+
+async def device_addresses(ctx: DeviceContext) -> list[str]:
+    """All IPv4 addresses of the device: its IP-MIB address table plus the address we poll.
+
+    Syslog and traps are sent from whichever interface faces the receiver, which is often
+    not the address the device is monitored on."""
+    addrs: set[str] = set()
+    try:
+        for value in (await ctx.snmp.walk(IP_AD_ENT_ADDR)).values():
+            if isinstance(value, str):
+                addrs.add(value)
+    except Exception:
+        pass
+    host = ctx.snmp.host
+    try:
+        ipaddress.ip_address(host)
+        addrs.add(host)
+    except ValueError:
+        try:
+            infos = await asyncio.get_running_loop().getaddrinfo(host, None, family=socket.AF_INET)
+            addrs.update(i[4][0] for i in infos)
+        except OSError:
+            pass
+    return sorted(a for a in addrs if not a.startswith(("127.", "0.")))
 
 
 def fmt_uptime(seconds: int) -> str:
@@ -64,6 +95,8 @@ class SystemModule(Module):
                             setattr(d, field, value)
                 except Exception:
                     pass
+
+        d.ip_addresses = await device_addresses(ctx)
         return []
 
     async def poll(self, ctx: DeviceContext):
