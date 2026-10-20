@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import re
 import time
 from datetime import UTC, datetime, timedelta
 
@@ -85,6 +86,14 @@ async def on_syslog(rows) -> None:
 
 # --------------------------------------------------------------------------- worker
 
+FIRST_SECTION = re.compile(r"^\s*(?:#+\s*)?\*{0,2}What happened", re.I | re.M)
+
+
+def trim_preamble(answer: str) -> str:
+    """Small models like to open with "Okay, here's a breakdown..." - start at the first section."""
+    m = FIRST_SECTION.search(answer)
+    return answer[m.start():].lstrip() if m and m.start() > 0 else answer
+
 async def run_job(job_id: int) -> None:
     enabled, cfg = await cached_settings(plugin(), ttl=5)
     async with SessionLocal() as s:
@@ -103,7 +112,7 @@ async def run_job(job_id: int) -> None:
                 _, prompt = await context.event_prompt(s, job)
             else:
                 _, prompt = await context.syslog_prompt(s, job)
-            answer = await ollama.chat(cfg, context.system_prompt(cfg), prompt)
+            answer = trim_preamble(await ollama.chat(cfg, context.system_prompt(cfg), prompt))
             job.status, job.result = "done", answer
             if job.kind == "event":
                 s.add(EventComment(device_id=job.device_id, service_id=job.service_id, event_time=job.event_time,

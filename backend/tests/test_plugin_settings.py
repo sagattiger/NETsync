@@ -37,3 +37,11 @@ def test_system_prompt_includes_settings():
 
 def test_reasoning_is_stripped():
     assert THINK.sub("", "<think>long reasoning</think>\n**What happened** x").strip() == "**What happened** x"
+
+
+def test_preamble_is_trimmed():
+    from netsync.plugins.builtin.ai.service import trim_preamble
+
+    assert trim_preamble("Okay, here's a breakdown:\n\n**What happened:** x").startswith("**What happened")
+    assert trim_preamble("**What happened** y") == "**What happened** y"
+    assert trim_preamble("no sections at all") == "no sections at all"
