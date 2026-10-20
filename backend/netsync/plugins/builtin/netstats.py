@@ -43,6 +43,7 @@ COUNTERS = {
 }
 
 KIND, INDEX = "netstat", "0"
+MIN_SEGS_FOR_RETRANS = 10  # segments/s sent before the retransmit percentage is meaningful
 
 
 def rate_fmt(v: float) -> str:
@@ -89,9 +90,13 @@ class NetstatsModule(Module):
         retrans = rates.get("tcp_retrans_segs", 0)
         retrans_pct = retrans / out_segs * 100 if out_segs > 0 else 0.0
         result.metrics.append(MetricSample("tcp_retrans_pct", retrans_pct))
+        # On an almost idle host a couple of retransmits are a huge percentage (e.g. 5 of 8
+        # segments = 62%): only judge the rate when there is real traffic.
+        judged = out_segs >= MIN_SEGS_FOR_RETRANS
         result.checks.append(CheckResult(
-            "tcp_retrans", "TCP", value=retrans_pct, unit="%",
-            output=(f"{cur.get('tcp_estab', 0)} established, retransmits {retrans_pct:.2f}%, "
+            "tcp_retrans", "TCP", value=retrans_pct if judged else None, unit="%",
+            output=(f"{cur.get('tcp_estab', 0)} established, retransmits {retrans_pct:.2f}%"
+                    f"{'' if judged else f' (low traffic, {out_segs:.1f} segs/s - not evaluated)'}, "
                     f"failed opens {rate_fmt(rates.get('tcp_attempt_fails', 0))}, "
                     f"resets {rate_fmt(rates.get('tcp_estab_resets', 0) + rates.get('tcp_out_rsts', 0))}, "
                     f"errors {rate_fmt(rates.get('tcp_in_errs', 0))}"),

@@ -50,6 +50,18 @@ async def test_rates_and_checks_over_two_polls():
     assert checks["udp_errors"].value == approx(6)
 
 
+async def test_retransmit_rate_not_judged_on_idle_host():
+    mod = NetstatsModule()
+    t0 = datetime.now(UTC)
+    stored = {"ts": t0.timestamp(), "tcp_out_segs": 1000, "tcp_retrans_segs": 0}
+    # 80 segments in 100 s (0.8/s), 50 of them retransmits = 62.5% but meaningless
+    res = await mod.poll(DeviceContext(None, snmp_with(tcp_estab=2, tcp_out_segs=1080, tcp_retrans_segs=50),
+                                       [component(stored)], t0 + timedelta(seconds=100)))
+    tcp = next(c for c in res.checks if c.check == "tcp_retrans")
+    assert tcp.value is None
+    assert "low traffic" in tcp.output
+
+
 async def test_counter_wrap_is_skipped():
     mod = NetstatsModule()
     t0 = datetime.now(UTC)
