@@ -5,7 +5,7 @@ import { api, Component, Device, fmtAgo, fmtBps, fmtBytes, fmtUptime, Me, Plugin
 import { Icon } from "../components/Icon";
 import { MetricChart } from "../components/MetricChart";
 import ServiceTable from "../components/ServiceTable";
-import { VendorLogo } from "../components/VendorLogo";
+import { osLabel, VendorLogo, VirtBadge } from "../components/VendorLogo";
 import { Bar, Card, Empty, hideLg, hideMd, hideSm, Segmented, StateBadge, StateDot, stateText } from "../components/ui";
 import { SyslogTable } from "./Syslog";
 import EventsTab from "./device/EventsTab";
@@ -76,6 +76,7 @@ export default function DevicePage() {
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <h1 className="text-xl font-semibold text-strong tracking-tight truncate">{device.hostname}</h1>
                 <StateBadge state={device.status} />
+                <VirtBadge virtualization={device.virtualization} />
                 {device.disabled && <span className="text-xxs px-2 py-0.5 rounded-full bg-chip text-fg2">Disabled</span>}
               </div>
               <div className="text-xs text-muted mt-1 line-clamp-2 md:line-clamp-1">{device.sys_descr}</div>
@@ -91,7 +92,7 @@ export default function DevicePage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-x-6 gap-y-3 mt-5">
           <Meta label="IP address">{device.ip}</Meta>
           <Meta label="Platform">{[device.vendor, device.hardware].filter(Boolean).join(" ")}</Meta>
-          <Meta label="Operating system">{[device.os, device.version].filter(Boolean).join(" ")}</Meta>
+          <Meta label="Operating system">{osLabel(device.os, device.version)}</Meta>
           <Meta label="Uptime">{fmtUptime(device.uptime)}</Meta>
           <Meta label="Location">{device.sys_location}</Meta>
           <Meta label="Last polled">{fmtAgo(device.last_polled)}</Meta>
@@ -179,7 +180,7 @@ function OverviewTab({ device, components, services, range }: { device: Device; 
         <Card title="Device">
           <table className="tbl"><tbody>
             {([
-              ["System name", device.sys_name], ["Hardware", device.hardware], ["Serial", device.serial],
+              ["System name", device.sys_name], ["Hardware", device.hardware], ["Kernel", device.kernel], ["Serial", device.serial],
               ["Contact", device.sys_contact], ["Object ID", device.sys_object_id],
               ["SNMP", `v${device.snmp_version} · port ${device.snmp_port}`],
               ["Poll time", device.poll_duration != null ? `${device.poll_duration.toFixed(2)} s` : null],

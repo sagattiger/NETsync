@@ -96,10 +96,16 @@ class SyslogService(BackgroundService):
                 })
             try:
                 async with SessionLocal() as s:
-                    await s.execute(insert(SyslogMessage), rows)
+                    ids = (await s.execute(insert(SyslogMessage).returning(SyslogMessage.id, sort_by_parameter_order=True), rows)).scalars().all()
                     await s.commit()
+                for row, row_id in zip(rows, ids, strict=False):
+                    row["id"] = row_id
             except Exception:
                 log.exception("failed to store %d syslog messages", len(rows))
+                continue
+            from netsync.plugins.registry import registry
+
+            await registry.run_hooks("syslog", rows)
 
     async def run(self, stop: asyncio.Event) -> None:
         s = get_settings()

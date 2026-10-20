@@ -68,7 +68,7 @@ def comment_out(c: EventComment, avatars: dict[int, str | None]) -> dict:
         "id": c.id, "device_id": c.device_id, "service_id": c.service_id, "event_time": c.event_time,
         "body": c.body, "pinned": c.pinned, "author": c.author, "author_id": c.author_id,
         "author_avatar": avatars.get(c.author_id) if c.author_id else None,
-        "created_at": c.created_at, "updated_at": c.updated_at,
+        "created_at": c.created_at, "updated_at": c.updated_at, "ai": bool(c.ai),
     }
 
 

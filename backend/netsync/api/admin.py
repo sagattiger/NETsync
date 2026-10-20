@@ -1,11 +1,15 @@
 """Users, device groups, plugins and nodes."""
 
+from typing import Any
+
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 
 from netsync.api.deps import CurrentUser, Session, require
 from netsync.api.schemas import GroupIn, GroupOut, UserIn, UserOut, UserUpdate
-from netsync.models import DeviceGroup, Node, Role, User
+from netsync.models import DeviceGroup, Node, PluginSetting, Role, User
+from netsync.plugins import settings as plugin_settings
 from netsync.plugins.registry import registry
 from netsync.security import hash_password
 
@@ -85,20 +89,62 @@ async def delete_group(group_id: int, session: Session):
 
 
 @router.get("/plugins")
-async def plugins(user: CurrentUser):
-    return [
-        {
+async def plugins(user: CurrentUser, session: Session):
+    out = []
+    for p in registry.plugins.values():
+        enabled, _ = await plugin_settings.get_settings(session, p)
+        out.append({
             "name": p.name,
+            "label": p.label or p.name,
             "version": p.version,
             "description": p.description,
             "builtin": p.builtin,
+            "enabled": enabled,
+            "configurable": bool(p.settings),
             "modules": [m.name for m in p.modules],
             "channels": [c.name for c in p.channels],
             "services": [s.name for s in p.services],
             "ui_tabs": [t.__dict__ for t in p.ui_tabs],
-        }
-        for p in registry.plugins.values()
-    ]
+        })
+    return out
+
+
+class PluginSettingsIn(BaseModel):
+    enabled: bool
+    config: dict[str, Any] = {}
+
+
+def _plugin(name: str):
+    if name not in registry.plugins:
+        raise HTTPException(404, "Plugin not found")
+    return registry.plugins[name]
+
+
+@router.get("/plugins/{name}/settings", dependencies=[require(Role.ADMIN)])
+async def get_plugin_settings(name: str, session: Session):
+    p = _plugin(name)
+    enabled, config = await plugin_settings.get_settings(session, p)
+    return {"name": p.name, "label": p.label or p.name, "enabled": enabled, "fields": p.settings,
+            "actions": p.actions, "config": plugin_settings.masked(p, config)}
+
+
+@router.put("/plugins/{name}/settings", dependencies=[require(Role.ADMIN)])
+async def save_plugin_settings(name: str, body: PluginSettingsIn, session: Session):
+    p = _plugin(name)
+    _, current = await plugin_settings.get_settings(session, p)
+    try:
+        config = plugin_settings.coerce(p, body.config, current)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    row = await session.get(PluginSetting, p.name)
+    if row is None:
+        row = PluginSetting(name=p.name)
+        session.add(row)
+    row.enabled = body.enabled
+    row.config = {k: v for k, v in config.items() if k in {f["key"] for f in p.settings}}
+    await session.commit()
+    plugin_settings.invalidate(p.name)
+    return await get_plugin_settings(name, session)
 
 
 @router.get("/nodes")

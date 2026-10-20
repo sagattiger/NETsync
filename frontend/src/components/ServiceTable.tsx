@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, fmtAgo, Service } from "../api";
+import { AskAIButton } from "./AskAI";
 import { Empty, hideLg, hideMd, Modal, StateBadge } from "./ui";
 
 export default function ServiceTable({ services, showHost, canAck = true }: { services: Service[]; showHost?: boolean; canAck?: boolean }) {
@@ -33,7 +34,7 @@ export default function ServiceTable({ services, showHost, canAck = true }: { se
             <th className={hideMd}>Summary</th>
             <th className={`w-24 ${hideLg}`}>Since</th>
             <th className={`w-24 ${hideLg}`}>Checked</th>
-            {canAck && <th className="w-24"></th>}
+            {canAck && <th className="w-44"></th>}
           </tr>
         </thead>
         <tbody>
@@ -57,6 +58,9 @@ export default function ServiceTable({ services, showHost, canAck = true }: { se
               <td className={`text-muted text-xs whitespace-nowrap ${hideLg}`}>{fmtAgo(s.last_check)}</td>
               {canAck && (
                 <td className="text-right whitespace-nowrap">
+                  {s.state > 0 && s.state < 3 && (
+                    <AskAIButton target={{ kind: "service", service_id: s.id }} title={`AI · ${s.hostname ? `${s.hostname} · ` : ""}${s.name}`} />
+                  )}
                   {s.state > 0 && !s.acknowledged && (
                     <button className="btn btn-ghost px-2 py-1" onClick={() => setAckFor(s)}>Acknowledge</button>
                   )}

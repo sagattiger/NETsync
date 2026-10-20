@@ -5,7 +5,7 @@ from sqlalchemy import select
 
 from netsync.api.deps import CurrentUser, Session, device_scope
 from netsync.api.schemas import SyslogOut
-from netsync.models import Role, SyslogMessage
+from netsync.models import AIJob, Role, SyslogMessage
 
 router = APIRouter(prefix="/syslog", tags=["syslog"])
 
@@ -34,4 +34,15 @@ async def search(
         # unmatched messages (no device) are only visible to admins
         query = device_scope(query.where(SyslogMessage.device_id.is_not(None)), user, SyslogMessage.device_id)
     query = query.order_by(SyslogMessage.time.desc()).limit(min(limit, 2000))
-    return list(await session.scalars(query))
+    rows = [SyslogOut.model_validate(m) for m in await session.scalars(query)]
+    if rows:
+        # latest AI analysis per message (sticker in the UI)
+        jobs = await session.execute(
+            select(AIJob.syslog_id, AIJob.id, AIJob.status)
+            .where(AIJob.kind == "syslog", AIJob.syslog_id.in_([r.id for r in rows]))
+            .order_by(AIJob.created_at)
+        )
+        latest = {sid: {"job_id": jid, "status": st} for sid, jid, st in jobs}
+        for r in rows:
+            r.ai = latest.get(r.id)
+    return rows

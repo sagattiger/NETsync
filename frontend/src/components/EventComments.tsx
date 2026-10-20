@@ -3,8 +3,10 @@ import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, DeviceEvent, EventComment, fmtDateTime, Me, PinnedEvent } from "../api";
+import { AskAIButton } from "./AskAI";
 import { Avatar } from "./Avatar";
 import { Icon } from "./Icon";
+import { Markdown } from "./Markdown";
 import { StateBadge } from "./ui";
 
 const useMe = () => useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/auth/me") }).data;
@@ -15,17 +17,29 @@ function invalidate(qc: ReturnType<typeof useQueryClient>, deviceId: number) {
 }
 
 function CommentLine({ c, compact }: { c: EventComment; compact?: boolean }) {
+  const size = compact ? 22 : 28;
   return (
     <div className="flex gap-2.5">
-      <Avatar name={c.author} url={c.author_avatar} size={compact ? 22 : 28} />
+      {c.ai ? (
+        <span style={{ width: size, height: size }} className="rounded-full bg-accent/15 text-accent inline-flex items-center justify-center shrink-0">
+          <Icon name="sparkles" className="w-1/2 h-1/2" />
+        </span>
+      ) : <Avatar name={c.author} url={c.author_avatar} size={size} />}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-2 text-xs">
           <span className="font-medium text-strong">{c.author}</span>
+          {c.ai && <span className="text-xxs font-semibold px-1.5 rounded bg-accent/15 text-accent">AI</span>}
           <span className="text-muted" title={fmtDateTime(c.created_at)}>{fmtDateTime(c.created_at)}</span>
           {c.pinned && <span className="inline-flex items-center gap-0.5 text-accent font-medium"><Icon name="pin" className="w-3 h-3" />pinned</span>}
           {c.updated_at && <span className="text-muted">(edited)</span>}
         </div>
-        <div className={`text-fg whitespace-pre-wrap break-words ${compact ? "text-xs mt-0.5 line-clamp-3" : "text-sm mt-1"}`}>{c.body}</div>
+        {c.ai ? (
+          <div className={compact ? "mt-0.5 line-clamp-4 [&_.md]:text-xs" : "mt-1.5 rounded-lg bg-accent/[0.04] border border-accent/15 p-3"}>
+            <Markdown source={c.body} />
+          </div>
+        ) : (
+          <div className={`text-fg whitespace-pre-wrap break-words ${compact ? "text-xs mt-0.5 line-clamp-3" : "text-sm mt-1"}`}>{c.body}</div>
+        )}
       </div>
     </div>
   );
@@ -56,6 +70,7 @@ export function CommentSticker({ event }: { event: DeviceEvent }) {
         </span>
       )}
       <span className="inline-flex items-center gap-1 pl-1.5 pr-2 h-6 rounded-full bg-accent/15 text-accent text-xs font-semibold">
+        {event.comments.some((c) => c.ai) && <Icon name="sparkles" className="w-3.5 h-3.5" />}
         <Icon name="message" className="w-3.5 h-3.5" />{n}
       </span>
       {/* hover card: portalled with fixed position so table scroll containers don't clip it */}
@@ -138,6 +153,12 @@ export function CommentThread({ deviceId, event }: { deviceId: number; event: De
                 <input type="checkbox" className="accent-accent" checked={pin} onChange={(e) => setPin(e.target.checked)} />
                 <Icon name="pin" className="w-3.5 h-3.5" /> Pin this event
               </label>
+            )}
+            {(event.new_state === 1 || event.new_state === 2) && (
+              <span className="ml-auto">
+                <AskAIButton target={{ kind: "event", service_id: event.service_id, event_time: event.time }}
+                  title={`AI · ${event.service ?? "Event"}`} />
+              </span>
             )}
             {error && <span className="text-xs text-crit">{error}</span>}
           </div>

@@ -80,6 +80,8 @@ async def dispatch(events: list[tuple[int, AlertEvent]]) -> None:
                     await channel.send(ev, rule.config)
                 except Exception:
                     log.exception("notification %s via %s failed", rule.name, rule.channel)
+    # plugins (e.g. the AI assistant) get every committed state change
+    await registry.run_hooks("state_change", events)
 
 
 async def active_downtime_device_ids(session, at: datetime) -> set[int]:

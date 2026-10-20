@@ -59,6 +59,9 @@ class DeviceOut(ORM):
     version: str | None
     serial: str | None
     device_type: str | None
+    virtualization: str | None = None
+    kernel: str | None = None
+    ip_addresses: list[str] = []
     status: int
     status_reason: str | None
     disabled: bool
@@ -202,3 +205,4 @@ class SyslogOut(ORM):
     hostname: str | None
     program: str | None
     message: str
+    ai: dict | None = None

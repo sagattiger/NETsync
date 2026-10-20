@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, Device, fmtAgo, fmtUptime, Group, Me } from "../api";
 import { Icon } from "../components/Icon";
 import { Page, PageHeader } from "../components/Layout";
-import { VendorLogo } from "../components/VendorLogo";
+import { osLabel, VendorLogo, VirtBadge } from "../components/VendorLogo";
 import { Card, Empty, hideLg, hideMd, hideSm, Modal, Segmented, StateBadge } from "../components/ui";
 
 function Counts({ d }: { d: Device }) {
@@ -65,13 +65,13 @@ export default function Devices() {
                         <VendorLogo device={d} size={34} />
                         <div className="min-w-0">
                           <div className="font-medium text-strong group-hover:text-accent transition-colors truncate">{d.hostname}</div>
-                          <div className="text-xs text-muted">{d.ip}</div>
+                          <div className="text-xs text-muted flex items-center gap-1.5">{d.ip ?? d.ip_addresses?.[0]}<VirtBadge virtualization={d.virtualization} /></div>
                         </div>
                       </Link>
                     </td>
                     <td className={hideMd}>
                       <div className="text-fg">{[d.vendor, d.hardware].filter(Boolean).join(" ") || "-"}</div>
-                      <div className="text-xs text-muted">{[d.os, d.version].filter(Boolean).join(" ")}</div>
+                      <div className="text-xs text-muted">{osLabel(d.os, d.version)}</div>
                     </td>
                     <td className={`text-fg2 text-xs ${hideLg}`}>{d.sys_location ?? "-"}</td>
                     <td className={hideSm}><Counts d={d} /></td>

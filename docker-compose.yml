@@ -10,6 +10,8 @@ x-backend: &backend
   image: netsync-backend:latest
   restart: unless-stopped
   dns: *dns
+  extra_hosts:
+    - "host.docker.internal:host-gateway"  # reach services on the Docker host, e.g. a local Ollama
   env_file: .env
   environment:
     NETSYNC_DATABASE_URL: postgresql+asyncpg://netsync:${POSTGRES_PASSWORD}@db:5432/netsync

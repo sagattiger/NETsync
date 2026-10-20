@@ -1,5 +1,5 @@
 from netsync.plugins.base import Plugin
-from netsync.plugins.builtin import latency
+from netsync.plugins.builtin import ai, latency
 from netsync.plugins.builtin.host_resources import HostResourcesModule
 from netsync.plugins.builtin.interfaces import InterfacesModule
 from netsync.plugins.builtin.netstats import NetstatsModule
@@ -30,4 +30,5 @@ BUILTIN_PLUGINS = [
         builtin=True,
     ),
     latency.plugin,
+    ai.plugin,
 ]

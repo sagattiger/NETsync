@@ -23,6 +23,7 @@ const PATHS: Record<string, string> = {
   plus: "M12 5v14M5 12h14",
   chevron: "M9 6l6 6-6 6",
   pin: "M9 4h6l-1 5 3 3v2H7v-2l3-3-1-5zM12 14v6",
+  sparkles: "M10 3l1.6 4.4L16 9l-4.4 1.6L10 15l-1.6-4.4L4 9l4.4-1.6L10 3zM18 13l.8 2.2L21 16l-2.2.8L18 19l-.8-2.2L15 16l2.2-.8L18 13z",
   message: "M4 5h16v11H9l-5 4V5z",
   edit: "M4 20h4L19 9l-4-4L4 16v4zM13 7l4 4",
   trash: "M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3",

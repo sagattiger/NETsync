@@ -44,6 +44,7 @@ const NAV: { section: string; items: { to: string; label: string; icon: string; 
       { to: "/setup/rules", label: "Threshold rules", icon: "sliders" },
       { to: "/setup/notifications", label: "Notifications", icon: "bell", admin: true },
       { to: "/setup/users", label: "Users & groups", icon: "users", admin: true },
+      { to: "/setup/plugins?configure=ai", label: "AI assistant", icon: "sparkles", admin: true },
       { to: "/setup/plugins", label: "Plugins & nodes", icon: "puzzle" },
     ],
   },

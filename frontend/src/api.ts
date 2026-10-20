@@ -8,8 +8,8 @@ export interface Device {
   snmp_version: string; snmp_port: number;
   sys_name: string | null; sys_descr: string | null; sys_object_id: string | null;
   sys_location: string | null; sys_contact: string | null; uptime: number | null;
-  vendor: string | null; os: string | null; hardware: string | null; version: string | null;
-  serial: string | null; device_type: string | null;
+  ip_addresses?: string[]; vendor: string | null; os: string | null; hardware: string | null; version: string | null;
+  serial: string | null; device_type: string | null; virtualization: string | null; kernel: string | null;
   status: number; status_reason: string | null; disabled: boolean;
   last_polled: string | null; last_discovered: string | null; poll_duration: number | null;
   groups: Group[];
@@ -31,6 +31,7 @@ export interface Service {
 export interface SyslogMsg {
   id: number; time: string; device_id: number | null; source_ip: string; facility: number;
   severity: number; hostname: string | null; program: string | null; message: string;
+  ai?: { job_id: number; status: AIJobStatus } | null;
 }
 
 export interface Preferences {
@@ -52,6 +53,7 @@ export interface Me {
 export interface EventComment {
   id: number; device_id: number; service_id: number; event_time: string; body: string; pinned: boolean;
   author: string; author_id: number | null; author_avatar: string | null; created_at: string; updated_at: string | null;
+  ai?: boolean;
 }
 
 export interface DeviceEvent {
@@ -97,7 +99,7 @@ export function fmtDateTime(iso: string | null | undefined): string {
 }
 
 export interface PluginInfo {
-  name: string; version: string; description: string; builtin: boolean;
+  name: string; label: string; version: string; description: string; builtin: boolean; enabled: boolean; configurable: boolean;
   modules: string[]; channels: string[]; services: string[];
   ui_tabs: { id: string; label: string; view: string; metrics: string[]; url?: string | null }[];
 }
@@ -169,4 +171,25 @@ export function fmtBytes(n: number | null | undefined): string {
   let i = 0;
   while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
   return `${n.toFixed(1)} ${u[i]}`;
+}
+
+export type AIJobStatus = "pending" | "running" | "done" | "error";
+export interface AIJob {
+  id: number; kind: "event" | "syslog"; status: AIJobStatus; auto: boolean; model: string | null;
+  result: string | null; error: string | null; duration: number | null; device_id: number | null;
+  service_id: number | null; event_time: string | null; syslog_id: number | null;
+  requested_by: string | null; created_at: string; finished_at: string | null;
+}
+export type AskTarget =
+  | { kind: "service"; service_id: number }
+  | { kind: "event"; service_id: number; event_time: string }
+  | { kind: "syslog"; syslog_id: number; syslog_time: string };
+
+export interface SettingField {
+  key: string; label: string; type: "text" | "secret" | "number" | "bool" | "select" | "textarea" | "model";
+  help?: string; section?: string; options?: [string, string][]; min?: number; max?: number; float?: boolean;
+}
+export interface PluginSettings {
+  name: string; label: string; enabled: boolean; fields: SettingField[];
+  actions: { id: string; label: string; method: string; path: string }[]; config: Record<string, any>;
 }

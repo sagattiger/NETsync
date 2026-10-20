@@ -25,8 +25,13 @@ HYPERTABLES = {
 # Columns added after a table first shipped. create_all() never alters existing tables,
 # so these are applied idempotently on startup until proper Alembic migrations land.
 ADDED_COLUMNS = {
+    "event_comments": [
+        "ai BOOLEAN NOT NULL DEFAULT false",
+    ],
     "devices": [
         "ip_addresses JSON NOT NULL DEFAULT '[]'",
+        "virtualization VARCHAR(16)",
+        "kernel VARCHAR(64)",
     ],
     "users": [
         "full_name VARCHAR(128)",

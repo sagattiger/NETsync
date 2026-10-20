@@ -49,5 +49,14 @@ class Registry:
     def services(self) -> list[BackgroundService]:
         return [s for p in self.plugins.values() for s in p.services]
 
+    async def run_hooks(self, event: str, payload) -> None:
+        """Call every plugin hook registered for ``event``; a failing hook never breaks the caller."""
+        for plugin in self.plugins.values():
+            for hook in plugin.hooks.get(event, []):
+                try:
+                    await hook(payload)
+                except Exception:
+                    log.exception("plugin %s hook %s failed", plugin.name, event)
+
 
 registry = Registry()

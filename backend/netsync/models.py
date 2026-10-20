@@ -149,6 +149,8 @@ class Device(Base):
     # Every IPv4 address the device owns (IP-MIB) plus the resolved polling address.
     # Used to match syslog/traps that arrive from an interface other than the polled one.
     ip_addresses: Mapped[list] = mapped_column(JSON, default=list)
+    virtualization: Mapped[str | None] = mapped_column(String(16))  # lxc, vm, or None
+    kernel: Mapped[str | None] = mapped_column(String(64))
 
     status: Mapped[int] = mapped_column(SmallInteger, default=State.UNKNOWN)
     status_reason: Mapped[str | None] = mapped_column(Text)
@@ -275,6 +277,37 @@ class EventComment(Base):
     author: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = utcnow_col()
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ai: Mapped[bool] = mapped_column(Boolean, default=False)  # written by the AI assistant
+
+
+class AIJob(Base):
+    """An AI analysis of an event (state change) or a syslog message.
+
+    Created automatically (WARN/CRIT events, severe syslog) or by "Ask AI"; processed by the
+    worker. Event results are also posted as an AI comment on the event."""
+
+    __tablename__ = "ai_jobs"
+    __table_args__ = (
+        Index("ix_ai_jobs_event", "service_id", "event_time"),
+        Index("ix_ai_jobs_syslog", "syslog_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16))  # event | syslog
+    device_id: Mapped[int | None] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"), index=True)
+    service_id: Mapped[int | None] = mapped_column(Integer)
+    event_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    syslog_id: Mapped[int | None] = mapped_column(BigInteger)
+    syslog_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(16), default="pending")  # pending | running | done | error
+    auto: Mapped[bool] = mapped_column(Boolean, default=False)
+    model: Mapped[str | None] = mapped_column(String(128))
+    result: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+    duration: Mapped[float | None] = mapped_column(Float)
+    requested_by: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = utcnow_col(index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Dashboard(Base):

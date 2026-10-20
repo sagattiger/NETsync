@@ -172,3 +172,13 @@ class Plugin:
     ui_tabs: list[UITab] = field(default_factory=list)
     router: APIRouter | None = None
     builtin: bool = False
+    label: str | None = None  # human friendly name for the UI
+    # Admin-editable settings, rendered by the UI. Each field:
+    # {key, label, type: text|secret|number|bool|select|textarea|model, help?, options?: [[value, label]], min?, max?}
+    settings: list[dict[str, Any]] = field(default_factory=list)
+    defaults: dict[str, Any] = field(default_factory=dict)
+    enabled_by_default: bool = True
+    # Buttons in the settings dialog: {id, label, method, path} - path is relative to /api/plugins/<name>
+    actions: list[dict[str, Any]] = field(default_factory=list)
+    # Event hooks called by the core, e.g. {"state_change": [fn(events)], "syslog": [fn(rows)]}
+    hooks: dict[str, list] = field(default_factory=dict)

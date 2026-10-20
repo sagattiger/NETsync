@@ -7,6 +7,7 @@ import socket
 
 from netsync.models import State
 from netsync.plugins.base import CheckResult, DeviceContext, MetricSample, Module, PollResult
+from netsync.snmp import linux
 from netsync.snmp.client import text
 from netsync.snmp.profiles import detect
 
@@ -46,6 +47,30 @@ async def device_addresses(ctx: DeviceContext) -> list[str]:
         except OSError:
             pass
     return sorted(a for a in addrs if not a.startswith(("127.", "0.")))
+
+
+KERNEL = re.compile(r"^Linux \S+ (\S+)")
+
+
+async def refine_linux(ctx: DeviceContext) -> None:
+    """Distribution, Proxmox host vs LXC container, and VM detection from installed packages.
+
+    The kernel in sysDescr is not enough: LXC containers report the Proxmox host's kernel."""
+    d = ctx.device
+    if m := KERNEL.match(d.sys_descr or ""):
+        d.kernel = m.group(1)
+    try:
+        packages = [text(v) for v in (await ctx.snmp.walk(linux.HR_SW_INSTALLED_NAME)).values()]
+        cpus = [text(v) for v in (await ctx.snmp.walk(linux.HR_DEVICE_DESCR)).values()]
+    except Exception:
+        return
+    info = linux.detect(packages, d.sys_descr or "", cpus)
+    if info is None:
+        return
+    d.os, d.vendor, d.version, d.virtualization = info.os, info.vendor, info.version, info.virtualization
+    d.device_type = "container" if info.virtualization == "lxc" else "server"
+    if info.hardware:
+        d.hardware = info.hardware
 
 
 def fmt_uptime(seconds: int) -> str:
@@ -95,6 +120,9 @@ class SystemModule(Module):
                             setattr(d, field, value)
                 except Exception:
                     pass
+
+        if d.os in ("linux", "proxmox", "generic") or (d.sys_descr or "").startswith("Linux"):
+            await refine_linux(ctx)
 
         d.ip_addresses = await device_addresses(ctx)
         return []
