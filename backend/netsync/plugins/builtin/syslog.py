@@ -21,6 +21,10 @@ log = logging.getLogger(__name__)
 RFC5424 = re.compile(r"^<(\d{1,3})>1 (\S+) (\S+) (\S+) (\S+) (\S+) (-|\[.*?\]) ?(.*)$", re.S)
 RFC3164 = re.compile(r"^<(\d{1,3})>(?:([A-Z][a-z]{2} [ \d]\d \d\d:\d\d:\d\d) )?(?:(\S+) )?([^:\[\s]+)?(?:\[\d+\])?: ?(.*)$", re.S)
 PRI_ONLY = re.compile(r"^<(\d{1,3})>(.*)$", re.S)
+# MikroTik RouterOS: "<pri>[Mmm dd hh:mm:ss host ]topic,topic message" - topics instead of "program:".
+ROUTEROS = re.compile(
+    r"^<(\d{1,3})>(?:[A-Z][a-z]{2} [ \d]\d \d\d:\d\d:\d\d )?(?:(\S+) )?([a-z0-9-]+(?:,[a-z0-9!-]+)+) (.*)$", re.S
+)
 
 
 def parse(raw: str) -> dict:
@@ -32,6 +36,9 @@ def parse(raw: str) -> dict:
     if m := RFC3164.match(raw):
         pri, _ts, host, prog, msg = m.groups()
         return {"pri": int(pri), "hostname": host, "program": prog, "message": msg}
+    if m := ROUTEROS.match(raw):
+        pri, host, topics, msg = m.groups()
+        return {"pri": int(pri), "hostname": host, "program": topics, "message": msg}
     if m := PRI_ONLY.match(raw):
         return {"pri": int(m.group(1)), "hostname": None, "program": None, "message": m.group(2)}
     return {"pri": 13, "hostname": None, "program": None, "message": raw}

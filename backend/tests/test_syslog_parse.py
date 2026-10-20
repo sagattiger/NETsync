@@ -20,5 +20,19 @@ def test_rfc5424():
     assert p == {"pri": 165, "hostname": "router1", "program": "dhcpd", "message": "lease granted"}
 
 
+def test_routeros_default_format():
+    p = parse("<190>system,info log rule changed by tcp-msg(winbox):netadmin@172.16.100.10")
+    assert p["program"] == "system,info"
+    assert p["hostname"] is None
+    assert p["message"] == "log rule changed by tcp-msg(winbox):netadmin@172.16.100.10"
+
+
+def test_routeros_bsd_format():
+    p = parse("<190>Oct 20 01:53:06 rou001 system,info,account user netadmin logged in from 172.16.100.10 via winbox")
+    assert p["hostname"] == "rou001"
+    assert p["program"] == "system,info,account"
+    assert p["message"].startswith("user netadmin logged in")
+
+
 def test_garbage():
     assert parse("hello")["message"] == "hello"
