@@ -109,6 +109,13 @@ class ServiceOut(ORM):
 
 class ProblemOut(ServiceOut):
     hostname: str = ""
+    resolved: bool = False
+    problem_state: int = 0  # state of the latest problem event (what a resolved row was)
+    problem_since: datetime | None = None
+    resolved_at: datetime | None = None
+    duration: float | None = None  # seconds the problem has been / was active
+    event: dict[str, Any] | None = None  # latest problem event with the episode comment thread
+    ai_status: str | None = None  # pending / running AI analysis
 
 
 class AckIn(BaseModel):

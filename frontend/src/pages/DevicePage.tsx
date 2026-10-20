@@ -154,7 +154,11 @@ function OverviewTab({ device, components, services, range }: { device: Device; 
   const up = ports.filter((p) => p.values.oper === 1).length;
   const mem = components.find((c) => c.kind === "mempool");
   const storage = components.filter((c) => c.kind === "storage");
-  const problems = services.filter((s) => s.state > 0);
+  const { data: problems = [] } = useQuery({
+    queryKey: ["problems", "device", device.id],
+    queryFn: () => api<Service[]>(`/problems?device_id=${device.id}`),
+    refetchInterval: prefs.refreshMs(30_000),
+  });
   const hasCpu = components.some((c) => c.kind === "processor");
   const counts = [0, 1, 2, 3].map((st) => services.filter((s) => s.state === st).length);
 
@@ -203,8 +207,8 @@ function OverviewTab({ device, components, services, range }: { device: Device; 
         )}
       </div>
       <div className="xl:col-span-2 space-y-4">
-        <Card title={`Problems · ${problems.length}`}>
-          {problems.length ? <ServiceTable services={problems} /> : <Empty>No problems on this device</Empty>}
+        <Card title={`Problems · ${problems.filter((p) => !p.resolved).length}`}>
+          {problems.length ? <ServiceTable services={problems} problems /> : <Empty>No problems on this device</Empty>}
         </Card>
         {hasCpu && (
           <Card title="Processor" flush={false}>

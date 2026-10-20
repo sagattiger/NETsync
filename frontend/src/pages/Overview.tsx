@@ -51,8 +51,8 @@ export default function Overview() {
 
         <PinnedEvents showDevice />
 
-        <Card title={`Unhandled problems · ${problems.length}`}>
-          {problems.length ? <ServiceTable services={problems} showHost /> : <Empty>Everything is OK.</Empty>}
+        <Card title={`Unhandled problems · ${problems.filter((p) => !p.resolved).length}`}>
+          {problems.length ? <ServiceTable services={problems} showHost problems /> : <Empty>Everything is OK.</Empty>}
         </Card>
       </Page>
     </>

@@ -63,7 +63,7 @@ function ServicesWidget({ deviceId, problemsOnly }: { deviceId: number | null; p
     ...s, hostname: s.hostname ?? devices.find((d) => d.id === s.device_id)?.hostname,
   }));
   if (!rows.length) return <Empty>{problemsOnly ? "No problems" : "No services"}</Empty>;
-  return <div className="max-h-80 overflow-y-auto"><ServiceTable services={rows} showHost={!deviceId} canAck={false} /></div>;
+  return <div className="max-h-80 overflow-y-auto"><ServiceTable services={rows} showHost={!deviceId} canAck={false} problems={problemsOnly} /></div>;
 }
 
 export function WidgetBody({ w, range }: { w: Widget; range: string }) {

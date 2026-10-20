@@ -12,8 +12,7 @@ import { StateBadge } from "./ui";
 const useMe = () => useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/auth/me") }).data;
 
 function invalidate(qc: ReturnType<typeof useQueryClient>, deviceId: number) {
-  qc.invalidateQueries({ queryKey: ["history", deviceId] });
-  qc.invalidateQueries({ queryKey: ["pinned"] });
+  for (const key of [["history", deviceId], ["pinned"], ["problems"]]) qc.invalidateQueries({ queryKey: key });
 }
 
 function CommentLine({ c, compact }: { c: EventComment; compact?: boolean }) {

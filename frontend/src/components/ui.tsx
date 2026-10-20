@@ -6,11 +6,11 @@ const STATE_TONE = ["text-ok bg-ok/10", "text-warn bg-warn/15", "text-crit bg-cr
 const STATE_TEXT = ["text-ok", "text-warn", "text-crit", "text-unknown"];
 const STATE_BG = ["bg-ok", "bg-warn", "bg-crit", "bg-unknown"];
 
-export function StateBadge({ state, small }: { state: number; small?: boolean }) {
+export function StateBadge({ state, small, label }: { state: number; small?: boolean; label?: string }) {
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full font-semibold tracking-wide ${STATE_TONE[state] ?? "text-muted bg-inset"} ${small ? "text-xxs px-2 py-0.5" : "text-xs px-2.5 py-1"}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-full font-semibold tracking-wide whitespace-nowrap ${STATE_TONE[state] ?? "text-muted bg-inset"} ${small ? "text-xxs px-2 py-0.5" : "text-xs px-2.5 py-1"}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${STATE_BG[state] ?? "bg-muted"}`} />
-      {STATES[state] ?? "PEND"}
+      {label ?? STATES[state] ?? "PEND"}
     </span>
   );
 }

@@ -26,6 +26,9 @@ export interface Service {
   state: number; output: string | null; perf: Record<string, number>;
   last_check: string | null; last_change: string | null;
   acknowledged: boolean; ack_comment: string | null; ack_by: string | null; hostname?: string;
+  // problem list only
+  resolved?: boolean; problem_state?: number; problem_since?: string | null; resolved_at?: string | null;
+  duration?: number | null; event?: DeviceEvent | null; ai_status?: AIJobStatus | null;
 }
 
 export interface SyslogMsg {
@@ -192,4 +195,14 @@ export interface SettingField {
 export interface PluginSettings {
   name: string; label: string; enabled: boolean; fields: SettingField[];
   actions: { id: string; label: string; method: string; path: string }[]; config: Record<string, any>;
+}
+
+/** "45s", "12m 5s", "3h 12m", "2d 4h" */
+export function fmtElapsed(sec: number | null | undefined): string {
+  if (sec == null) return "-";
+  const s = Math.max(0, Math.floor(sec));
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+  return `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h`;
 }

@@ -1,9 +1,9 @@
 """Problems, acknowledgements, downtimes, threshold rules, notification rules."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 
 from netsync.api.deps import CurrentUser, Session, device_scope, get_device_for, require
 from netsync.api.schemas import (
@@ -16,7 +16,10 @@ from netsync.api.schemas import (
     RuleIn,
     RuleOut,
 )
-from netsync.models import Device, Downtime, NotificationRule, Role, Service, State, ThresholdRule
+from netsync.api.collab import author_avatars, comment_out
+from netsync.models import (
+    AIJob, Device, Downtime, EventComment, NotificationRule, Role, Service, State, StateChange, ThresholdRule,
+)
 from netsync.plugins.base import AlertEvent
 from netsync.plugins.registry import registry
 from netsync.rules import engine
@@ -48,21 +51,101 @@ async def overview(user: CurrentUser, session: Session):
     }
 
 
+RESOLVED_VISIBLE_SECONDS = 120
+
+
+def problem_episode(history: list, current_state: int):
+    """Given a service's state changes (newest first), return (episode_events, started, resolved_at).
+
+    An episode runs from the change out of OK up to now (active), or up to the change back
+    to OK (resolved). ``episode_events`` are the non-OK changes in it, newest first."""
+    events = list(history)
+    resolved_at = None
+    if current_state == State.OK:
+        if not events or events[0].new_state != State.OK or events[0].old_state == State.OK:
+            return [], None, None
+        resolved_at = events[0].time
+        events = events[1:]
+    episode = []
+    for ev in events:
+        if ev.new_state == State.OK:
+            break
+        episode.append(ev)
+        if ev.old_state == State.OK:
+            break  # this change opened the problem
+    if not episode:
+        return [], None, None  # e.g. UNKNOWN -> OK on the first check is not a resolved problem
+    return episode, episode[-1].time, resolved_at
+
+
 @router.get("/problems", response_model=list[ProblemOut])
-async def problems(user: CurrentUser, session: Session, include_acked: bool = True):
+async def problems(user: CurrentUser, session: Session, include_acked: bool = True,
+                   include_resolved: bool = True, device_id: int | None = None):
+    """Open problems, plus problems resolved within the last 120 s (shown green, then dropped)."""
+    now = datetime.now(UTC)
+    cond = Service.state > State.OK
+    if include_resolved:
+        cond = or_(cond, and_(Service.state == State.OK,
+                              Service.last_change >= now - timedelta(seconds=RESOLVED_VISIBLE_SECONDS)))
     q = (
         select(Service, Device.hostname)
         .join(Device, Device.id == Service.device_id)
-        .where(Service.state > State.OK)
+        .where(cond)
         .order_by(Service.state.desc(), Service.last_change.desc())
     )
     if not include_acked:
-        q = q.where(Service.acknowledged.is_(False))
-    q = device_scope(q, user)
-    return [
-        ProblemOut.model_validate(svc).model_copy(update={"hostname": hostname})
-        for svc, hostname in await session.execute(q)
-    ]
+        q = q.where(or_(Service.acknowledged.is_(False), Service.state == State.OK))
+    if device_id:
+        q = q.where(Service.device_id == device_id)
+    rows = list(await session.execute(device_scope(q, user)))
+    if not rows:
+        return []
+
+    service_ids = [svc.id for svc, _ in rows]
+    history: dict[int, list] = {}
+    for sc in await session.scalars(
+        select(StateChange).where(StateChange.service_id.in_(service_ids),
+                                  StateChange.time >= now - timedelta(days=30))
+        .order_by(StateChange.service_id, StateChange.time.desc())
+    ):
+        if len(history.setdefault(sc.service_id, [])) < 50:
+            history[sc.service_id].append(sc)
+
+    comments = list(await session.scalars(
+        select(EventComment).where(EventComment.service_id.in_(service_ids)).order_by(EventComment.created_at)))
+    avatars = await author_avatars(session, comments)
+    by_event: dict[tuple, list[dict]] = {}
+    for c in comments:
+        by_event.setdefault((c.service_id, c.event_time), []).append(comment_out(c, avatars))
+
+    jobs = {(j.service_id, j.event_time): j.status for j in await session.scalars(
+        select(AIJob).where(AIJob.service_id.in_(service_ids), AIJob.status.in_(["pending", "running"])))}
+
+    out = []
+    for svc, hostname in rows:
+        episode, started, resolved_at = problem_episode(history.get(svc.id, []), svc.state)
+        if svc.state == State.OK and resolved_at is None:
+            continue  # went OK without ever being a problem (e.g. first check)
+        latest = episode[0] if episode else None
+        thread = [c for ev in reversed(episode) for c in by_event.get((svc.id, ev.time), [])]
+        event = None
+        if latest:
+            event = {"time": latest.time, "service_id": svc.id, "service": svc.name, "old_state": latest.old_state,
+                     "new_state": latest.new_state, "output": latest.output, "comments": thread,
+                     "pinned": any(c["pinned"] for c in thread)}
+        out.append(ProblemOut.model_validate(svc).model_copy(update={
+            "hostname": hostname,
+            "resolved": svc.state == State.OK,
+            "problem_state": latest.new_state if latest else svc.state,
+            "problem_since": started,
+            "resolved_at": resolved_at,
+            "duration": ((resolved_at or now) - started).total_seconds() if started else None,
+            "event": event,
+            "ai_status": jobs.get((svc.id, latest.time)) if latest else None,
+        }))
+    # open problems first (worst on top), recently resolved ones at the bottom
+    out.sort(key=lambda p: (p.resolved, -p.problem_state, -(p.last_change.timestamp() if p.last_change else 0)))
+    return out
 
 
 async def _service_for(session, user, service_id: int) -> Service:

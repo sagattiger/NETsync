@@ -18,7 +18,8 @@ function useLiveEvents() {
       const proto = location.protocol === "https:" ? "wss" : "ws";
       ws = new WebSocket(`${proto}://${location.host}/api/ws?token=${auth.token}`);
       ws.onmessage = () => {
-        for (const key of ["overview", "problems", "services", "devices", "device"]) qc.invalidateQueries({ queryKey: [key] });
+        // state changes and finished AI analyses: refresh lists, threads and stickers
+        for (const key of ["overview", "problems", "services", "devices", "device", "history", "pinned", "syslog"]) qc.invalidateQueries({ queryKey: [key] });
       };
       ws.onclose = () => { retry = window.setTimeout(connect, 5000); };
     };

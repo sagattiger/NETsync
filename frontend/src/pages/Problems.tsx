@@ -13,13 +13,14 @@ export default function Problems() {
     queryFn: () => api<Service[]>(`/problems?include_acked=${showAcked}`),
     refetchInterval: 30_000,
   });
-  const rows = data.filter((s) => s.state >= minState);
+  // resolved rows (state OK) are kept and filtered by what they were
+  const rows = data.filter((s) => (s.resolved ? s.problem_state ?? 0 : s.state) >= minState);
 
   return (
     <>
       <PageHeader
         title="Problems"
-        sub={`${rows.length} service problem${rows.length === 1 ? "" : "s"}`}
+        sub={`${rows.filter((r) => !r.resolved).length} open · ${rows.filter((r) => r.resolved).length} recently resolved`}
         actions={
           <>
             <Segmented value={minState} onChange={setMinState} options={[[1, "Warning +"], [2, "Critical"]]} />
@@ -28,7 +29,7 @@ export default function Problems() {
         }
       />
       <Page>
-        <Card><ServiceTable services={rows} showHost /></Card>
+        <Card><ServiceTable services={rows} showHost problems /></Card>
       </Page>
     </>
   );
