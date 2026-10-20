@@ -42,8 +42,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
 export const useTheme = () => useContext(ThemeCtx);
 
-/** Read a theme token (e.g. "accent") as a CSS color string. */
+/** Read a theme token (e.g. "accent") as a CSS color string.
+ *
+ * Uses the legacy comma syntax on purpose: ECharts parses colors itself to derive hover
+ * (emphasis) styles, and it does not understand "rgb(r g b / a)". With the space syntax a
+ * hovered line got an empty stroke and a transparent fill, so the whole chart vanished. */
 export function token(name: string, alpha = 1): string {
-  const v = getComputedStyle(document.documentElement).getPropertyValue(`--${name}`).trim();
-  return alpha === 1 ? `rgb(${v})` : `rgb(${v} / ${alpha})`;
+  const [r, g, b] = getComputedStyle(document.documentElement).getPropertyValue(`--${name}`).trim().split(/\s+/);
+  return alpha === 1 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
