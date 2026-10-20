@@ -29,6 +29,25 @@ def system_prompt(cfg: dict[str, Any]) -> str:
     )
 
 
+# Short platform facts. Small local models give far better, platform-correct advice with these.
+PLATFORM_HINTS = {
+    "lxc": ("This is an LXC container: CPU, memory, swap and disk limits are set on the Proxmox host, "
+            "e.g. `pct set <CTID> --memory 4096 --swap 1024`, `pct resize <CTID> rootfs +10G`, `pct config <CTID>`. "
+            "Inside the container use `top`/`ps aux --sort=-%mem`, `df -h`, `journalctl -p warning -n 100`, `systemctl --failed`."),
+    "proxmox": ("This is a Proxmox VE host: use `pvesh`, `qm list`, `pct list`, `pvesm status`, `zpool status`, "
+                "`journalctl -u pve*` and the web UI on port 8006."),
+    "routeros": ("This is MikroTik RouterOS: commands look like `/interface print stats`, `/system resource print`, "
+                 "`/log print where topics~\"error\"`, `/interface ethernet monitor <name>`, `/tool ping`."),
+    "debian": "Debian Linux: use `apt`, `systemctl`, `journalctl`, `ip -s link`, `ss -s`, `free -h`, `df -h`.",
+    "ubuntu": "Ubuntu Linux: use `apt`, `systemctl`, `journalctl`, `ip -s link`, `ss -s`, `free -h`, `df -h`.",
+}
+
+
+def platform_hint(d: Device) -> str | None:
+    hints = [PLATFORM_HINTS[k] for k in (d.virtualization, d.os) if k and k in PLATFORM_HINTS]
+    return " ".join(dict.fromkeys(hints)) or None
+
+
 def _device_block(d: Device) -> str:
     lines = [
         f"Hostname: {d.hostname}" + (f" (sysName {d.sys_name})" if d.sys_name and d.sys_name != d.hostname else ""),
@@ -39,6 +58,8 @@ def _device_block(d: Device) -> str:
     ]
     if d.sys_location:
         lines.append(f"Location: {d.sys_location}")
+    if hint := platform_hint(d):
+        lines.append(f"Platform notes: {hint}")
     return "\n".join(lines)
 
 
