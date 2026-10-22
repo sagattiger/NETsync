@@ -44,6 +44,8 @@ export interface Preferences {
   refresh_interval?: string;
   landing_page?: string;
   table_density?: "comfortable" | "compact";
+  sidebar?: "expanded" | "collapsed";
+  dismissed_notice?: string;
 }
 
 export interface Me {

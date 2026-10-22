@@ -8,7 +8,7 @@
 :root,
 [data-theme="light"] {
   color-scheme: light;
-  --bg: 244 243 239;          /* #F4F3EF page + card background */
+  --bg: 236 235 230;          /* #ECEBE6 outer background around the panels */
   --gap: 244 243 239;
   --sidebar: 236 235 230;     /* #ECEBE6 inner panel */
   --surface: 244 243 239;     /* cards: same as page, separated by border */

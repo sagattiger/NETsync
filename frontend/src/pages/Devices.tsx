@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, Device, fmtAgo, fmtUptime, Group, Me } from "../api";
@@ -24,6 +24,15 @@ export default function Devices() {
   const [params, setParams] = useSearchParams();
   const q = params.get("q") ?? "";
   const [adding, setAdding] = useState(false);
+  // ?add=1 (header button, sidebar, Ctrl K) opens the dialog
+  useEffect(() => {
+    if (params.get("add") === "1") {
+      setAdding(true);
+      const next = new URLSearchParams(params);
+      next.delete("add");
+      setParams(next, { replace: true });
+    }
+  }, [params, setParams]);
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/auth/me") });
   const { data = [], isLoading } = useQuery({
     queryKey: ["devices", q],

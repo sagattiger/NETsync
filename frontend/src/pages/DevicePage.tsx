@@ -100,7 +100,7 @@ export default function DevicePage() {
       </div>
 
       {/* tabs */}
-      <div className="sticky top-14 z-20 bg-bg/95 backdrop-blur border-b border-line px-4 sm:px-6 flex items-center gap-4">
+      <div className="sticky top-14 z-20 bg-gap/95 backdrop-blur border-b border-line px-4 sm:px-6 flex items-center gap-4">
         <div className="flex gap-1 overflow-x-auto -mb-px flex-1 min-w-0">
           {tabs.map(([key, label, count]) => (
             <button key={key} onClick={() => nav(`/devices/${id}/${key === "overview" ? "" : key}`)}

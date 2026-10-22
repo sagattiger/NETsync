@@ -28,6 +28,8 @@ PREFERENCE_KEYS: dict[str, set | None] = {
     "refresh_interval": {"10", "30", "60", "300"},
     "landing_page": {"/", "/problems", "/devices"},
     "table_density": {"comfortable", "compact"},
+    "sidebar": {"expanded", "collapsed"},
+    "dismissed_notice": None,  # id of the last dismissed announcement
 }
 
 

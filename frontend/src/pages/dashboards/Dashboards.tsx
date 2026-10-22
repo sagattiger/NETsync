@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api, Dashboard, fmtAgo } from "../../api";
 import { Icon } from "../../components/Icon";
@@ -43,7 +43,11 @@ export function DashboardForm({ initial, onClose, onSaved }: {
 
 export default function Dashboards() {
   const nav = useNavigate();
+  const [params, setParams] = useSearchParams();
   const [creating, setCreating] = useState(false);
+  useEffect(() => {
+    if (params.get("new") === "1") { setCreating(true); setParams({}, { replace: true }); }
+  }, [params, setParams]);
   const { data = [], isLoading } = useQuery({ queryKey: ["dashboards"], queryFn: () => api<Dashboard[]>("/dashboards") });
 
   return (

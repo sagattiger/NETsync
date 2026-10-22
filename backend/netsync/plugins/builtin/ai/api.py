@@ -1,5 +1,6 @@
 """REST endpoints of the AI assistant, mounted at /api/plugins/ai."""
 
+import re
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
@@ -7,8 +8,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import and_, func, select
 
-from netsync.api.deps import CurrentUser, Session, get_device_for, require
-from netsync.models import AIJob, Role, Service, StateChange, SyslogMessage
+from netsync.api.deps import CurrentUser, Session, device_scope, get_device_for, require
+from netsync.models import AIJob, Device, Role, Service, StateChange, SyslogMessage
 from netsync.plugins import settings as plugin_settings
 from netsync.plugins.builtin.ai import ollama
 from netsync.plugins.builtin.ai.service import create_job, plugin
@@ -155,3 +156,38 @@ async def recent_jobs(user: CurrentUser, session: Session, limit: int = 50):
         raise HTTPException(403)
     rows = await session.scalars(select(AIJob).order_by(AIJob.created_at.desc()).limit(min(limit, 200)))
     return [job_out(j) for j in rows]
+
+
+def _excerpt(markdown: str, limit: int = 220) -> str:
+    """The "What happened" paragraph as plain text, for cards."""
+    text = markdown or ""
+    m = re.search(r"what happened\**:?\**\s*(.+?)(?:\n\s*\n|\n\s*\**likely causes|$)", text, re.I | re.S)
+    text = m.group(1) if m else text
+    text = re.sub(r"[*_`#>]+", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[: limit - 1] + "…" if len(text) > limit else text
+
+
+@router.get("/insights")
+async def insights(user: CurrentUser, session: Session, limit: int = 12):
+    """Latest AI explanations of events the user can see (Home carousel)."""
+    q = (
+        select(AIJob, Device.hostname, Service.name, StateChange.new_state)
+        .join(Device, Device.id == AIJob.device_id)
+        .join(Service, Service.id == AIJob.service_id)
+        .join(StateChange, and_(StateChange.service_id == AIJob.service_id, StateChange.time == AIJob.event_time))
+        .where(AIJob.kind == "event", AIJob.status == "done")
+        .order_by(AIJob.finished_at.desc())
+        .limit(min(limit, 50) * 3)
+    )
+    seen, out = set(), []
+    for job, hostname, service, state in await session.execute(device_scope(q, user)):
+        if job.service_id in seen:
+            continue  # one card per service (latest analysis)
+        seen.add(job.service_id)
+        out.append({"job_id": job.id, "device_id": job.device_id, "hostname": hostname, "service": service,
+                    "state": state, "event_time": job.event_time, "finished_at": job.finished_at,
+                    "auto": job.auto, "excerpt": _excerpt(job.result or "")})
+        if len(out) >= limit:
+            break
+    return out
