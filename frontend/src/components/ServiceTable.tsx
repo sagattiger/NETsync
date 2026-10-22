@@ -113,7 +113,7 @@ export default function ServiceTable({ services, showHost, canAck = true, proble
                       </div>
                     )}
                   </td>
-                  <td className={`text-fg2 ${hideMd}`}>{s.output}</td>
+                  <td className={`text-fg2 min-w-[16rem] ${hideMd}`}>{s.output}</td>
                   {problems ? (
                     <>
                       <td className={`text-xs whitespace-nowrap ${hideLg}`}>

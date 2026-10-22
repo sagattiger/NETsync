@@ -84,7 +84,7 @@ function Sidebar({ me, collapsed, onToggle, onNavigate, mobile }: {
   const ai = useAI();
   const qc = useQueryClient();
   const { data: ov } = useQuery({ queryKey: ["overview"], queryFn: () => api<Overview>("/overview"), refetchInterval: 30_000 });
-  const problems = ov ? (ov.services.WARN ?? 0) + (ov.services.CRIT ?? 0) : 0;
+  const problems = ov?.unhandled ?? 0; // open, not acknowledged (same as the Home list)
   const isAdmin = me?.role === "admin";
 
   const main: NavItem[] = [

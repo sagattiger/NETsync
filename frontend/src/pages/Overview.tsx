@@ -182,12 +182,14 @@ function Carousel({ insights, problems, devices }: { insights: Insight[]; proble
     ...(ai?.enabled ? [["ai", "AI insights"] as [string, string]] : []),
     ["problems", "Open problems"], ["devices", "Devices"],
   ];
-  const [tab, setTab] = useState(tabs[0][0]);
+  const [picked, setPicked] = useState<string | null>(null);
+  // default to the first tab (AI insights once the AI status has loaded) until the user picks one
+  const tab = picked && tabs.some(([t]) => t === picked) ? picked : tabs[0][0];
+  const setTab = setPicked;
   const [page, setPage] = useState(0);
   const track = useRef<HTMLDivElement>(null);
   const byId = (id: number) => devices.find((d) => d.id === id);
 
-  useEffect(() => { if (!tabs.some(([t]) => t === tab)) setTab(tabs[0][0]); }, [tabs, tab]);
   useEffect(() => { track.current?.scrollTo({ left: 0 }); setPage(0); }, [tab]);
 
   const slides: ReactNode[] =
@@ -294,7 +296,7 @@ export default function Overview() {
           className="mt-7 w-full max-w-3xl h-14 px-5 rounded-2xl bg-surface border border-edge hover:border-faint flex items-center gap-3 text-left transition-colors">
           <Icon name="search" className="w-5 h-5 text-muted" />
           <span className="flex-1 text-base text-muted">Search devices or jump to a page…</span>
-          <kbd className="text-xs text-muted">Ctrl K</kbd>
+          <kbd className="hidden sm:inline text-xs text-muted">Ctrl K</kbd>
         </button>
 
         <div className="mt-10 flex flex-wrap justify-center gap-x-4 gap-y-6">
