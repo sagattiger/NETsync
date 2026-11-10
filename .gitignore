@@ -9,3 +9,4 @@ node_modules/
 frontend/dist/
 mibs/compiled/
 .DS_Store
+*.tsbuildinfo
