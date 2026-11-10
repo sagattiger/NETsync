@@ -9,6 +9,8 @@ from datetime import UTC, datetime, timedelta
 
 from redis.exceptions import TimeoutError as RedisTimeoutError
 from sqlalchemy import func, or_, select, update
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm.exc import StaleDataError
 
 from netsync.alerting import publish, redis
 from netsync.db import SessionLocal
@@ -124,7 +126,13 @@ async def run_job(job_id: int) -> None:
             job.status, job.error = "error", f"Unexpected error: {e}"
         job.duration = time.monotonic() - started
         job.finished_at = datetime.now(UTC)
-        await s.commit()
+        try:
+            await s.commit()
+        except (StaleDataError, IntegrityError):
+            # the device (and its jobs) was deleted while the model was answering
+            await s.rollback()
+            log.info("AI job %s dropped: its device was deleted meanwhile", job_id)
+            return
         await publish("ai_job", {"job_id": job.id, "status": job.status, "device_id": job.device_id})
 
 
