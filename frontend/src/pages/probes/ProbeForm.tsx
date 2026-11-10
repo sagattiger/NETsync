@@ -200,9 +200,76 @@ export function HttpSection({ cfg, setCfg, secrets, setSecret, saved, f }: Secti
   );
 }
 
+const RECORD_TYPES = ["A", "AAAA", "CNAME", "MX", "TXT", "NS", "SOA", "PTR", "CAA", "SRV"];
+
+function DnsSection({ cfg, setCfg }: SectionProps) {
+  const [expected, setExpected] = useState<string>((cfg.expected ?? []).join("\n"));
+  return (
+    <div className="space-y-4">
+      <div className="grid sm:grid-cols-3 gap-4">
+        <Field label="Record type">
+          <select className="input w-full" value={cfg.record_type ?? "A"} onChange={(e) => setCfg({ record_type: e.target.value })}>
+            {RECORD_TYPES.map((t) => <option key={t}>{t}</option>)}
+          </select></Field>
+        <Field label="Resolver (optional)" hint="Empty: the system resolver">
+          <input className="input w-full font-mono" placeholder="1.1.1.1" value={cfg.resolver ?? ""} onChange={(e) => setCfg({ resolver: e.target.value || null })} /></Field>
+        <Field label="Resolver port">
+          <input className="input w-full" type="number" min={1} max={65535} value={cfg.resolver_port ?? 53} onChange={(e) => setCfg({ resolver_port: +e.target.value || 53 })} /></Field>
+      </div>
+      <div className="grid sm:grid-cols-[1fr_auto] gap-4 items-start">
+        <Field label="Expected values (optional, one per line)" hint="e.g. 93.184.216.34, or mail.example.com for MX. PTR: enter the IP address as the name.">
+          <textarea className="input w-full font-mono text-xs" rows={3} value={expected}
+            onChange={(e) => { setExpected(e.target.value); setCfg({ expected: e.target.value.split("\n").map((x) => x.trim()).filter(Boolean) }); }} /></Field>
+        <Field label="Match">
+          <select className="input w-full" value={cfg.match ?? "any"} onChange={(e) => setCfg({ match: e.target.value })}>
+            <option value="any">any value</option><option value="all">all values</option>
+          </select></Field>
+      </div>
+    </div>
+  );
+}
+
+function UdpSection({ cfg, setCfg }: SectionProps) {
+  return (
+    <div className="space-y-4">
+      <div className="grid sm:grid-cols-[1fr_auto] gap-4 items-end">
+        <Field label="Payload to send (optional)"><input className="input w-full font-mono" maxLength={2048} value={cfg.payload ?? ""} onChange={(e) => setCfg({ payload: e.target.value || null })} /></Field>
+        <div className="pb-2"><Check label="Hex" checked={!!cfg.payload_hex} onChange={(v) => setCfg({ payload_hex: v })} /></div>
+      </div>
+      <div className="grid sm:grid-cols-[1fr_auto] gap-4">
+        <Field label="Expected reply (optional)"><input className="input w-full font-mono" maxLength={512} value={cfg.expect ?? ""} onChange={(e) => setCfg({ expect: e.target.value || null })} /></Field>
+        <Field label="Match as">
+          <select className="input w-full" value={cfg.expect_mode ?? "substring"} onChange={(e) => setCfg({ expect_mode: e.target.value })}>
+            <option value="substring">text</option><option value="regex">regex</option><option value="hex">hex bytes</option>
+          </select></Field>
+      </div>
+      {!cfg.expect && <div className="rounded-lg border border-line bg-inset text-xs text-fg2 p-2.5">
+        Without an expected reply, UP only means no ICMP "port unreachable" or socket error came back. UDP has no handshake: a firewall that silently drops packets looks the same as a working service.</div>}
+    </div>
+  );
+}
+
+function TlsSection({ cfg, setCfg }: SectionProps) {
+  return (
+    <div className="space-y-4">
+      <div className="grid sm:grid-cols-2 gap-4">
+        <Field label="SNI / hostname to check (optional)" hint="Default: the host above">
+          <input className="input w-full font-mono" value={cfg.sni ?? ""} onChange={(e) => setCfg({ sni: e.target.value || null })} /></Field>
+        <Field label="STARTTLS" hint="For mail and FTP servers on their plain ports (25/587, 143, 110, 21)">
+          <select className="input w-full" value={cfg.starttls ?? ""} onChange={(e) => setCfg({ starttls: e.target.value || null })}>
+            <option value="">None (TLS from the start)</option><option value="smtp">SMTP</option><option value="imap">IMAP</option>
+            <option value="pop3">POP3</option><option value="ftp">FTP</option>
+          </select></Field>
+      </div>
+      <CertDays cfg={cfg} setCfg={setCfg} />
+      <div className="text-xs text-muted">DOWN when the certificate is expired, untrusted or doesn't match the hostname. The Certificate expiry check turns WARN / CRIT at the thresholds and notifies once at each.</div>
+    </div>
+  );
+}
+
 /** Kind -> its own fields. Later kinds register here too. */
 export const SECTIONS: Partial<Record<ProbeKind, (p: SectionProps) => ReactNode>> = {
-  icmp: IcmpSection, tcp: TcpSection, http: HttpSection,
+  icmp: IcmpSection, tcp: TcpSection, http: HttpSection, dns: DnsSection, udp: UdpSection, tls: TlsSection,
 };
 
 // --------------------------------------------------------------------------- test result

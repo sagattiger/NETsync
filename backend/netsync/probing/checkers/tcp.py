@@ -2,14 +2,14 @@
 
 import asyncio
 import re
-import ssl
 import time
 
 from pydantic import Field, model_validator
 
 from netsync.models import State
 from netsync.probing.base import Checker, KindConfig, ProbeSpec, Result, error_message, ms_since, register
-from netsync.probing.certs import cert_checks, cert_info
+from netsync.probing.certs import cert_checks
+from netsync.probing.checkers.tls import peer_cert, tls_handshake
 
 READ_LIMIT = 4096
 
@@ -44,32 +44,6 @@ def matches(data: bytes, expect: str, regex: bool) -> bool:
     return bool(re.search(expect, text)) if regex else expect in text
 
 
-async def open_tls(host: str, port: int, timeout: float, server_hostname: str | None, verify: bool):
-    """Connect with verification; on a verification error reconnect without it so the certificate can still be
-    inspected. Returns (reader, writer, chain_valid, connect_ms)."""
-    ctx = ssl.create_default_context()
-    t0 = time.perf_counter()
-    try:
-        r, w = await asyncio.wait_for(asyncio.open_connection(host, port, ssl=ctx, server_hostname=server_hostname),
-                                      timeout)
-        return r, w, True, ms_since(t0, time.perf_counter())
-    except ssl.SSLCertVerificationError:
-        if verify:
-            raise
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-    t0 = time.perf_counter()
-    r, w = await asyncio.wait_for(asyncio.open_connection(host, port, ssl=ctx, server_hostname=server_hostname), timeout)
-    return r, w, False, ms_since(t0, time.perf_counter())
-
-
-def peer_cert(writer, hostname: str, chain_valid: bool | None) -> dict | None:
-    sslobj = writer.get_extra_info("ssl_object")
-    der = sslobj.getpeercert(binary_form=True) if sslobj else None
-    return cert_info(der, hostname, chain_valid, sslobj.version()) if der else None
-
-
 @register
 class TcpChecker(Checker):
     kind = "tcp"
@@ -84,11 +58,10 @@ class TcpChecker(Checker):
         try:
             t0 = time.perf_counter()
             if cfg.tls:
-                try:
-                    reader, writer, chain_ok, connect_ms = await open_tls(
-                        spec.target, spec.port, spec.timeout_s, spec.target, verify=not cfg.ignore_tls)
-                except ssl.SSLCertVerificationError:
-                    return Result(False, None, State.CRIT, "TLS certificate invalid")
+                reader, writer, connect_ms, chain_ok = await tls_handshake(spec.target, spec.port, spec.target,
+                                                                           spec.timeout_s)
+                if not chain_ok and not cfg.ignore_tls:
+                    return Result(False, connect_ms, State.CRIT, "TLS certificate invalid")
             else:
                 reader, writer = await asyncio.wait_for(asyncio.open_connection(spec.target, spec.port), spec.timeout_s)
                 connect_ms = ms_since(t0, time.perf_counter())

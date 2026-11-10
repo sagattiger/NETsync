@@ -12,6 +12,7 @@ interface Rule {
 const CHECKS: [string, string][] = [
   ["cpu_util", "CPU utilization (%)"], ["mem_used", "Memory used (%)"], ["storage_used", "Filesystem used (%)"],
   ["if", "Interface utilization (%)"], ["ping_rtt", "Ping RTT (ms)"], ["ping_loss", "Ping packet loss (%)"],
+  ["probe_response", "Probe response time (ms)"], ["tls_days_left", "Certificate days left (below)"],
 ];
 
 export default function Rules() {

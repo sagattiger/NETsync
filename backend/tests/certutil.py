@@ -38,3 +38,44 @@ def write_pair(tmp_path, cert, key):
 
 def der(cert) -> bytes:
     return cert.public_bytes(serialization.Encoding.DER)
+
+
+def make_ca(cn: str = "NETsync Test CA"):
+    key = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, cn)])
+    now = datetime.now(UTC)
+    cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now - timedelta(days=1)).not_valid_after(now + timedelta(days=3650))
+            .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+            .add_extension(x509.KeyUsage(digital_signature=True, content_commitment=False, key_encipherment=False,
+                                         data_encipherment=False, key_agreement=False, key_cert_sign=True,
+                                         crl_sign=True, encipher_only=False, decipher_only=False), critical=True)
+            .add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False)
+            .sign(key, hashes.SHA256()))
+    return cert, key
+
+
+def make_leaf(ca, ca_key, sans: tuple[str, ...] = ("localhost",), days: float = 90, not_before_days: float = 1):
+    key = ec.generate_private_key(ec.SECP256R1())
+    alt = []
+    for s in sans:
+        try:
+            alt.append(x509.IPAddress(ipaddress.ip_address(s)))
+        except ValueError:
+            alt.append(x509.DNSName(s))
+    now = datetime.now(UTC)
+    cert = (x509.CertificateBuilder()
+            .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, sans[0])]))
+            .issuer_name(ca.subject).public_key(key.public_key()).serial_number(x509.random_serial_number())
+            .not_valid_before(now - timedelta(days=not_before_days)).not_valid_after(now + timedelta(days=days))
+            .add_extension(x509.SubjectAlternativeName(alt), critical=False)
+            .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+            .add_extension(x509.ExtendedKeyUsage([x509.oid.ExtendedKeyUsageOID.SERVER_AUTH]), critical=False)
+            .add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()), critical=False)
+            .sign(ca_key, hashes.SHA256()))
+    return cert, key
+
+
+def pem(cert) -> bytes:
+    return cert.public_bytes(serialization.Encoding.PEM)

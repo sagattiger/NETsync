@@ -26,8 +26,8 @@ async def uptimes(session, probe_ids: list[int]) -> dict[int, dict]:
         return out
     for row in (await session.execute(QUERY, {"ids": probe_ids})).mappings():
         o = out[row["probe_id"]]
-        for k in WINDOWS:
-            o["uptime"][k] = uptime_pct(row[f"t_{k}"], row[f"u_{k}"])
-            n = row[f"n_{k}"]
-            o["avg_ms"][k] = round(row[f"s_{k}"] / n, 2) if n else None
+        for k in WINDOWS:  # sum() comes back as Decimal
+            total, up, ms, n = (float(row[f"{c}_{k}"] or 0) for c in "tusn")
+            o["uptime"][k] = uptime_pct(int(total), int(up))
+            o["avg_ms"][k] = round(ms / n, 2) if n else None
     return out
