@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 from sqlalchemy import select, text
 
 from netsync.alerting import active_downtime_device_ids
@@ -17,6 +17,7 @@ from netsync.probes import COUNT_RANGE, INTERVAL_RANGE, METRICS, PROBE_DEVICE_TY
 from netsync.config import get_settings
 from netsync.probing.base import REGISTRY, ProbeSpec, get_checker
 from netsync.probing.checkers.push import hash_push_token, new_push_token
+from netsync.probing.kuma import map_backup, validation_error
 from netsync.probing.runner import run_check
 from netsync.probing.secrets import decrypt, describe, encrypt, merge
 from netsync.probing.uptime import uptimes
@@ -204,8 +205,7 @@ async def kinds(user: CurrentUser):
              "default_port": c.default_port, "secret_fields": list(c.secret_fields)} for k, c in REGISTRY.items()]
 
 
-@router.post("")
-async def create_probe(body: ProbeIn, session: Session, user=require(Role.OPERATOR)):
+async def _create(session, user: User, body: ProbeIn) -> tuple[Probe, Device, dict]:
     await _name_free(session, body.name)
     device = Device(hostname=device_hostname(body.name), device_type=PROBE_DEVICE_TYPE, sys_name=body.name,
                     disabled=not body.enabled, status=State.UNKNOWN, snmp_community=None)
@@ -216,8 +216,72 @@ async def create_probe(body: ProbeIn, session: Session, user=require(Role.OPERAT
     _apply(probe, body)
     extra = _new_push_token(probe) if body.kind == "push" else {}
     session.add(probe)
+    await session.flush()
+    return probe, device, extra
+
+
+@router.post("")
+async def create_probe(body: ProbeIn, session: Session, user=require(Role.OPERATOR)):
+    probe, device, extra = await _create(session, user, body)
     await session.commit()
     return {**probe_out(probe, device), **extra}
+
+
+# --------------------------------------------------------------------------- Uptime Kuma import
+
+class KumaImportIn(BaseModel):
+    backup: dict
+    names: list[str] | None = None  # None = everything that can be imported
+
+
+async def _kuma_plan(session, backup: dict) -> tuple[list[dict], list[dict], list[dict]]:
+    try:
+        mapped = map_backup(backup)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+    existing = set(await session.scalars(select(Probe.name)))
+    create, skipped, seen = [], list(mapped["skipped"]), set()
+    for item in mapped["create"]:
+        payload = item["payload"]
+        try:
+            body = ProbeIn(**payload)
+        except ValidationError as e:
+            skipped.append({"name": payload["name"], "type": item["kuma_type"], "reason": validation_error(e)})
+            continue
+        if body.name in existing or body.name in seen:
+            skipped.append({"name": body.name, "type": item["kuma_type"], "reason": "a probe with this name already exists"})
+            continue
+        seen.add(body.name)
+        create.append({"name": body.name, "kind": body.kind, "kuma_type": item["kuma_type"], "target": body.target,
+                       "port": body.port, "interval_s": body.interval_s, "retries": body.retries,
+                       "enabled": body.enabled, "tags": body.tags, "warnings": item["warnings"],
+                       "has_secrets": bool(payload.get("secrets")), "_body": body})
+    return create, skipped, mapped["notifications"]
+
+
+def _public_plan(items: list[dict]) -> list[dict]:
+    return [{k: v for k, v in i.items() if k != "_body"} for i in items]
+
+
+@router.post("/import/kuma/preview")
+async def kuma_preview(backup: dict, session: Session, user=require(Role.OPERATOR)):
+    """What an Uptime Kuma backup would create and what is skipped (and why). Nothing is saved."""
+    create, skipped, notifications = await _kuma_plan(session, backup)
+    return {"create": _public_plan(create), "skipped": skipped, "notifications": notifications}
+
+
+@router.post("/import/kuma")
+async def kuma_import(body: KumaImportIn, session: Session, user=require(Role.OPERATOR)):
+    create, skipped, notifications = await _kuma_plan(session, body.backup)
+    wanted = set(body.names) if body.names is not None else None
+    created = []
+    for item in create:
+        if wanted is not None and item["name"] not in wanted:
+            continue
+        probe, device, extra = await _create(session, user, item["_body"])
+        created.append({"id": probe.id, "name": probe.name, "kind": probe.kind, **extra})
+    await session.commit()
+    return {"created": created, "skipped": skipped, "notifications": notifications}
 
 
 @router.post("/test")

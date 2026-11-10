@@ -160,6 +160,32 @@ section in `frontend/src/pages/probes/ProbeForm.tsx`.
   *maintenance*; they are left out of uptime % entirely, and the list shows "maintenance".
 - **Notifications** use the normal notification rules and channels.
 
+## Import from Uptime Kuma
+
+**Probes → Import from Uptime Kuma** takes the JSON backup from Uptime Kuma (*Settings → Backup → Export*).
+A preview lists what will be created, what is skipped and why, before anything is saved; you can untick
+monitors. API: `POST /api/probes/import/kuma/preview` (body: the backup) and `POST /api/probes/import/kuma`
+(`{"backup": ..., "names": [...]}`, operators and admins).
+
+| Kuma monitor | NETsync probe |
+|---|---|
+| HTTP(s) | `http` |
+| HTTP(s) - Keyword | `http` with keyword (inverted keyword = *must be absent*) |
+| HTTP(s) - Json Query | `json`; a simple path (`data.status`) becomes an assertion, JSONata expressions are flagged so you add the assertion by hand |
+| TCP Port | `tcp` |
+| Ping | `icmp` |
+| DNS | `dns` (record type, first resolver) |
+| Push | `push` with a **new** push URL (shown once after the import; update the job) |
+| anything else (group, docker, database, MQTT, …) | skipped, with the reason |
+
+Mapped fields: name, interval (clamped to 20 s – 1 h, with a warning), retries (Kuma counts retries *after*
+the first failure, so `maxretries + 1`), retry interval, timeout, upside down, active/paused, description, tags,
+URL, method, headers, body, accepted status codes, redirects, ignore TLS, keyword, basic auth. Headers and basic
+auth passwords are stored encrypted. Names that already exist in NETsync are skipped.
+
+**Notifications are never imported**: their bot tokens and passwords stay in Uptime Kuma. The preview lists
+them under *Needs setup* (name and type only) so you can recreate them under Setup → Notifications.
+
 ## Security
 
 - Probes run from the NETsync worker, so they can reach **internal addresses on purpose** (that's the point

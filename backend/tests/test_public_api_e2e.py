@@ -184,3 +184,36 @@ def test_probe_secrets_never_returned(admin):
         assert admin.put(f"/probes/{p['id']}", json=body).json()["secrets"]["has_password"] is True
     finally:
         admin.delete(f"/probes/{p['id']}")
+
+
+# --------------------------------------------------------------------------- Uptime Kuma import
+
+def test_kuma_import_preview_and_import(admin):
+    import json
+    from pathlib import Path
+
+    backup = json.loads((Path(__file__).parent / "fixtures" / "kuma_backup.json").read_text())
+    for m in backup["monitorList"]:
+        m["name"] = f"e2e kuma {m['name']}"
+        m["active"] = False  # don't actually poll example.com from the test
+    preview = admin.post("/probes/import/kuma/preview", json=backup)
+    assert preview.status_code == 200, preview.text
+    plan = preview.json()
+    assert "SECRET" not in preview.text  # neither notification secrets nor monitor credentials are echoed
+    assert {s["name"] for s in plan["skipped"]} >= {"e2e kuma Containers", "e2e kuma Broken URL"}
+    names = [c["name"] for c in plan["create"]]
+    assert "e2e kuma API health" in names and "e2e kuma Nightly backup" in names
+    created = admin.post("/probes/import/kuma", json={"backup": backup, "names": ["e2e kuma API health",
+                                                                                 "e2e kuma Nightly backup"]})
+    assert created.status_code == 200, created.text
+    try:
+        got = {c["name"]: c for c in created.json()["created"]}
+        assert set(got) == {"e2e kuma API health", "e2e kuma Nightly backup"}
+        assert got["e2e kuma Nightly backup"]["push_url"].startswith("http")
+        api_probe = admin.get(f"/probes/{got['e2e kuma API health']['id']}").json()
+        assert api_probe["kind"] == "json" and api_probe["config"]["assertions"][0]["path"] == "data.status"
+        again = admin.post("/probes/import/kuma/preview", json=backup).json()
+        assert "e2e kuma API health" not in [c["name"] for c in again["create"]]  # now a duplicate
+    finally:
+        for c in created.json()["created"]:
+            admin.delete(f"/probes/{c['id']}")

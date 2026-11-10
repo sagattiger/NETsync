@@ -5,6 +5,7 @@ import { api, fmtAgo, prefs, Probe } from "../api";
 import { Icon } from "../components/Icon";
 import { Page, PageHeader } from "../components/Layout";
 import { Card, Empty, hideLg, hideMd, hideSm } from "../components/ui";
+import { KumaImport } from "./probes/KumaImport";
 import { ProbeForm } from "./probes/ProbeForm";
 import { daysTone, fmtMs, fmtPct, KindIcon, kindMeta, Sparkline, StatusPill, uptimeTone, useMe } from "./probes/shared";
 
@@ -26,6 +27,7 @@ export default function Probes() {
   const kind = params.get("kind") ?? "", tag = params.get("tag") ?? "", state = params.get("state") ?? "";
   const [q, setQ] = useState("");
   const [form, setForm] = useState<{ probe?: Probe } | null>(null);
+  const [importing, setImporting] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const { data: all = [], isLoading } = useQuery({ queryKey: ["probes"], queryFn: () => api<Probe[]>("/probes"), refetchInterval: prefs.refreshMs(30_000) });
 
@@ -60,7 +62,10 @@ export default function Probes() {
     <>
       <PageHeader title="Probes"
         sub={<>{counts.up} up · <span className={counts.down ? "text-crit" : ""}>{counts.down} down</span> · {counts.paused} paused</>}
-        actions={canEdit && <button className="btn btn-primary" onClick={() => setForm({})}><Icon name="plus" className="w-3.5 h-3.5" /> New probe</button>} />
+        actions={canEdit && <>
+          <button className="btn" onClick={() => setImporting(true)}>Import from Uptime Kuma</button>
+          <button className="btn btn-primary" onClick={() => setForm({})}><Icon name="plus" className="w-3.5 h-3.5" /> New probe</button>
+        </>} />
       <Page>
         <div className="flex flex-wrap items-center gap-2">
           <input className="input py-1.5 text-xs w-full sm:w-56" placeholder="Filter name / target / tag…" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -128,6 +133,7 @@ export default function Probes() {
         </Card>
       </Page>
       {form && <ProbeForm initial={form.probe} onClose={() => setForm(null)} />}
+      {importing && <KumaImport onClose={() => setImporting(false)} />}
     </>
   );
 }
