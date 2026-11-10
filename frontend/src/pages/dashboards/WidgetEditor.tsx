@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Widget, WidgetType } from "../../api";
 import { Modal, Segmented } from "../../components/ui";
-import { PRESET_GROUPS, PRESETS, presetById } from "../../presets";
+import { usePresets } from "../../presets";
 import { autoTitle, useComponents, useDevices } from "./WidgetView";
 
 const TYPES: [WidgetType, string, string][] = [
@@ -13,11 +13,14 @@ const TYPES: [WidgetType, string, string][] = [
 
 export const newWidgetId = () => Math.random().toString(36).slice(2, 10);
 
-export default function WidgetEditor({ initial, onSave, onClose }: { initial?: Widget; onSave: (w: Widget) => void; onClose: () => void }) {
+export default function WidgetEditor({ initial, isPublic, onSave, onClose }: {
+  initial?: Widget; isPublic?: boolean; onSave: (w: Widget) => void; onClose: () => void;
+}) {
   const devices = useDevices();
   const [w, setW] = useState<Widget>(initial ?? {
     id: newWidgetId(), type: "graph", title: "", size: "m", device_id: null, component_id: null, preset: "port_traffic",
   });
+  const { presets, byId: presetById, groups } = usePresets();
   const preset = presetById(w.preset);
   const components = useComponents(w.device_id, w.type === "graph" ? preset?.kind : undefined);
   const set = (patch: Partial<Widget>) => setW((p) => ({ ...p, ...patch }));
@@ -51,9 +54,9 @@ export default function WidgetEditor({ initial, onSave, onClose }: { initial?: W
           <div>
             <label className="label">Graph</label>
             <select className="input w-full" value={w.preset ?? ""} onChange={(e) => set({ preset: e.target.value, component_id: null })}>
-              {PRESET_GROUPS.map((g) => (
+              {groups.map((g) => (
                 <optgroup key={g} label={g}>
-                  {PRESETS.filter((p) => p.group === g).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                  {presets.filter((p) => p.group === g).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                 </optgroup>
               ))}
             </select>
@@ -71,11 +74,20 @@ export default function WidgetEditor({ initial, onSave, onClose }: { initial?: W
           </div>
         )}
 
+        {isPublic && (
+          <div>
+            <label className="label">Public title (shown on the website)</label>
+            <input className="input w-full" maxLength={128} value={w.public_title ?? ""}
+              onChange={(e) => set({ public_title: e.target.value || null })} placeholder="e.g. Core router · Uplink 1" />
+            <div className="text-xs text-muted mt-1">Leave empty to show a generic title (graph name, without the hostname).</div>
+          </div>
+        )}
+
         <div className="grid sm:grid-cols-[1fr_auto] gap-4">
           <div>
             <label className="label">Title (optional)</label>
             <input className="input w-full" value={w.title} onChange={(e) => set({ title: e.target.value })}
-              placeholder={autoTitle(w, devices, components)} />
+              placeholder={autoTitle(w, devices, components, presetById)} />
           </div>
           <div>
             <label className="label">Width</label>

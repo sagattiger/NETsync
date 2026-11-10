@@ -8,6 +8,7 @@ import { Empty, Segmented } from "../../components/ui";
 import { DashboardForm } from "./Dashboards";
 import WidgetEditor from "./WidgetEditor";
 import { autoTitle, useComponents, useDevices, WidgetBody } from "./WidgetView";
+import { usePresets } from "../../presets";
 
 const SPAN = { s: "md:col-span-3 xl:col-span-4", m: "md:col-span-6 xl:col-span-6", l: "md:col-span-6 xl:col-span-12" };
 const RANGES: [string, string][] = [["1h", "1h"], ["6h", "6h"], ["24h", "24h"], ["7d", "7d"], ["30d", "30d"], ["1y", "1y"]];
@@ -18,11 +19,12 @@ function WidgetCard({ w, range, editing, onEdit, onRemove, onMove, onResize, fir
 }) {
   const devices = useDevices();
   const components = useComponents(w.device_id);
+  const { byId: presetById } = usePresets();
   const ctl = "p-1.5 rounded-md text-muted hover:text-strong hover:bg-inset disabled:opacity-30";
   return (
     <section className={`card overflow-hidden col-span-1 ${SPAN[w.size]} ${editing ? "ring-1 ring-accent/30" : ""}`}>
       <header className="px-4 py-2.5 border-b border-line flex items-center gap-2 min-h-[2.75rem]">
-        <h3 className="text-sm font-medium text-strong truncate flex-1">{w.title || autoTitle(w, devices, components)}</h3>
+        <h3 className="text-sm font-medium text-strong truncate flex-1">{w.title || autoTitle(w, devices, components, presetById)}</h3>
         {editing && (
           <div className="flex items-center gap-0.5 shrink-0">
             <button className={ctl} disabled={first} onClick={() => onMove(-1)} title="Move left / up"><Icon name="chevron" className="w-3.5 h-3.5 rotate-180" /></button>
@@ -70,6 +72,7 @@ export default function DashboardView() {
     try {
       const saved = await api<Dashboard>(`/dashboards/${id}`, { method: "PUT", body: {
         name: draft.name, description: draft.description, shared: draft.shared, widgets: draft.widgets,
+        public: draft.public, public_name: draft.public_name,
       } });
       qc.setQueryData(["dashboard", id], saved);
       qc.invalidateQueries({ queryKey: ["dashboards"] });
@@ -94,7 +97,8 @@ export default function DashboardView() {
     <>
       <PageHeader
         title={view.name}
-        sub={<>{view.description ?? (view.shared ? "Shared dashboard" : "Private dashboard")} · by {view.owner}</>}
+        sub={<>{view.description ?? (view.shared ? "Shared dashboard" : "Private dashboard")} · by {view.owner}
+          {view.public && <span className="ml-2 px-2 py-0.5 rounded-full bg-ok/15 text-ok text-xxs font-medium">public{view.public_name ? ` as “${view.public_name}”` : ""}</span>}</>}
         actions={editing ? (
           <>
             <button className="btn" onClick={() => setSettings(true)}>Settings</button>
@@ -131,14 +135,14 @@ export default function DashboardView() {
         )}
       </Page>
       {editor && (
-        <WidgetEditor initial={editor.widget} onClose={() => setEditor(null)} onSave={(w) => {
+        <WidgetEditor initial={editor.widget} isPublic={view.public} onClose={() => setEditor(null)} onSave={(w) => {
           update(editor.widget ? widgets.map((x) => (x.id === w.id ? w : x)) : [...widgets, w]);
           setEditor(null);
         }} />
       )}
       {settings && draft && (
         <DashboardForm initial={draft} onClose={() => setSettings(false)}
-          onSaved={(d) => { setDraft({ ...draft, name: d.name, description: d.description, shared: d.shared }); setSettings(false); }} />
+          onSaved={(d) => { setDraft({ ...draft, name: d.name, description: d.description, shared: d.shared, public: d.public, public_name: d.public_name }); setSettings(false); }} />
       )}
     </>
   );

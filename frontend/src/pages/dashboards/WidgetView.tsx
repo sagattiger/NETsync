@@ -5,7 +5,7 @@ import { MetricChart } from "../../components/MetricChart";
 import ServiceTable from "../../components/ServiceTable";
 import { VendorLogo } from "../../components/VendorLogo";
 import { Empty, StateBadge, stateText } from "../../components/ui";
-import { presetById } from "../../presets";
+import { Preset, usePresets } from "../../presets";
 
 export function useDevices() {
   return useQuery({ queryKey: ["devices"], queryFn: () => api<Device[]>("/devices"), refetchInterval: prefs.refreshMs(30_000) }).data ?? [];
@@ -20,7 +20,8 @@ export function useComponents(deviceId: number | null, kind?: string | null) {
 }
 
 /** Title shown when the widget has no custom title. */
-export function autoTitle(w: Widget, devices: Device[], components: Component[]): string {
+export function autoTitle(w: Widget, devices: Device[], components: Component[],
+  presetById: (id: string | null | undefined) => Preset | undefined): string {
   const host = devices.find((d) => d.id === w.device_id)?.hostname;
   if (w.type === "graph") {
     const preset = presetById(w.preset);
@@ -67,6 +68,7 @@ function ServicesWidget({ deviceId, problemsOnly }: { deviceId: number | null; p
 }
 
 export function WidgetBody({ w, range }: { w: Widget; range: string }) {
+  const { byId: presetById } = usePresets();
   const devices = useDevices();
   const device = devices.find((d) => d.id === w.device_id);
 

@@ -99,6 +99,7 @@ function Sidebar({ me, collapsed, onToggle, onNavigate, mobile }: {
     { to: "/setup/notifications", label: "Notifications", icon: "bell", admin: true },
     { to: "/setup/users", label: "Users & groups", icon: "users", admin: true },
     { to: "/setup/plugins?configure=ai", label: "AI assistant", icon: "sparkles", admin: true },
+    { to: "/setup/tokens", label: "API tokens", icon: "lock", admin: true },
     { to: "/setup/plugins", label: "Plugins & nodes", icon: "puzzle" },
   ];
 

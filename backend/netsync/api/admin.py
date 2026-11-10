@@ -153,3 +153,11 @@ async def nodes(user: CurrentUser, session: Session):
         {"id": n.id, "name": n.name, "is_local": n.is_local, "last_seen": n.last_seen, "version": n.version}
         for n in await session.scalars(select(Node).order_by(Node.name))
     ]
+
+
+@router.get("/presets")
+async def presets(user: CurrentUser):
+    """Graph presets (single source of truth, see netsync/presets.py)."""
+    from netsync.presets import PRESETS
+
+    return [p.as_dict() for p in PRESETS]

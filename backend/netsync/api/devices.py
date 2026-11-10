@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import case, func, select, text
 
+from netsync.metrics_query import bucketed_series
 from netsync.api.collab import author_avatars, comment_out, comments_for
 from netsync.api.deps import CurrentUser, Session, device_scope, get_device_for, require
 from netsync.api.schemas import (
@@ -18,15 +19,6 @@ from netsync.poller.worker import enqueue_job
 
 router = APIRouter(prefix="/devices", tags=["devices"])
 
-# range -> (span, time_bucket width). asyncpg needs timedelta objects for interval parameters.
-RANGES = {
-    "1h": (timedelta(hours=1), timedelta(minutes=1)),
-    "6h": (timedelta(hours=6), timedelta(minutes=2)),
-    "24h": (timedelta(hours=24), timedelta(minutes=5)),
-    "7d": (timedelta(days=7), timedelta(minutes=30)),
-    "30d": (timedelta(days=30), timedelta(hours=2)),
-    "1y": (timedelta(days=365), timedelta(days=1)),
-}
 
 
 @router.get("", response_model=list[DeviceSummary])
@@ -144,20 +136,7 @@ async def metrics(
 ):
     """Time-bucketed series: {name: [[iso_time, avg, min, max], ...]}"""
     await get_device_for(session, user, device_id)
-    span, bucket = RANGES.get(range, RANGES["24h"])
-    since = datetime.now(UTC) - span
-    rows = await session.execute(
-        text(
-            "SELECT name, time_bucket(CAST(:bucket AS interval), time) AS t, avg(value), min(value), max(value) "
-            "FROM metrics WHERE device_id = :d AND component_id = :c AND name = ANY(:names) AND time >= :since "
-            "GROUP BY name, t ORDER BY t"
-        ),
-        {"bucket": bucket, "d": device_id, "c": component_id, "names": name, "since": since},
-    )
-    out: dict[str, list] = {n: [] for n in name}
-    for n, t, avg, mn, mx in rows:
-        out[n].append([t.isoformat(), avg, mn, mx])
-    return out
+    return await bucketed_series(session, device_id, component_id, name, range)
 
 
 @router.get("/{device_id}/history")

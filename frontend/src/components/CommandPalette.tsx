@@ -53,7 +53,7 @@ function Palette({ initial, onClose }: { initial: string; onClose: () => void })
       ["Devices", "/devices", "server"], ["Syslog", "/syslog", "list"], ["Threshold rules", "/setup/rules", "sliders"],
       ["Plugins & nodes", "/setup/plugins", "puzzle"], ["Profile & settings", "/profile", "user"], ["About", "/about", "info"],
       ...(me?.role === "admin" ? [["Notifications", "/setup/notifications", "bell"], ["Users & groups", "/setup/users", "users"],
-        ["AI assistant settings", "/setup/plugins?configure=ai", "sparkles"]] : []),
+        ["AI assistant settings", "/setup/plugins?configure=ai", "sparkles"], ["API tokens", "/setup/tokens", "lock"]] : []),
     ].map(([label, path, icon]) => ({ id: `p:${path}`, group: "Go to", label, icon, run: go(path) }));
     const actions: Item[] = [
       ...(me?.role !== "viewer" ? [{ id: "a:add", group: "Actions", label: "Add device", icon: "plus", run: go("/devices?add=1") }] : []),

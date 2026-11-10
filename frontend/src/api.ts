@@ -72,10 +72,12 @@ export type WidgetType = "graph" | "device" | "problems" | "services";
 export interface Widget {
   id: string; type: WidgetType; title: string; size: "s" | "m" | "l";
   device_id: number | null; component_id: number | null; preset: string | null;
+  public_title?: string | null;
 }
 export interface Dashboard {
   id: number; name: string; description: string | null; owner: string; owner_id: number | null;
-  shared: boolean; widgets: Widget[]; created_at: string; updated_at: string; can_edit: boolean;
+  shared: boolean; public: boolean; public_name: string | null;
+  widgets: Widget[]; created_at: string; updated_at: string; can_edit: boolean;
 }
 
 export function fmtDuration(sec: number | null | undefined): string {

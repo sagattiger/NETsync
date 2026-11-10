@@ -18,6 +18,7 @@ import Users from "./pages/Users";
 import Plugins from "./pages/Plugins";
 import Profile from "./pages/Profile";
 import About from "./pages/About";
+import Tokens from "./pages/Tokens";
 import Dashboards from "./pages/dashboards/Dashboards";
 import DashboardView from "./pages/dashboards/DashboardView";
 
@@ -48,6 +49,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="/dashboards" element={<Dashboards />} />
             <Route path="/dashboards/:id" element={<DashboardView />} />
             <Route path="/about" element={<About />} />
+            <Route path="/setup/tokens" element={<Tokens />} />
           </Route>
         </Routes>
       </BrowserRouter>

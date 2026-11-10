@@ -1,25 +1,31 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { api, Dashboard, fmtAgo } from "../../api";
+import { api, Dashboard, fmtAgo, Me } from "../../api";
 import { Icon } from "../../components/Icon";
 import { Page, PageHeader } from "../../components/Layout";
 import { Empty, Modal } from "../../components/ui";
 
 export function DashboardForm({ initial, onClose, onSaved }: {
-  initial?: Pick<Dashboard, "name" | "description" | "shared">; onClose: () => void; onSaved: (d: Dashboard) => void;
+  initial?: Pick<Dashboard, "name" | "description" | "shared" | "public" | "public_name">;
+  onClose: () => void; onSaved: (d: Dashboard) => void;
 }) {
+  const { data: me } = useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/auth/me") });
+  const isAdmin = me?.role === "admin";
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [shared, setShared] = useState(initial?.shared ?? false);
+  const [isPublic, setPublic] = useState(initial?.public ?? false);
+  const [publicName, setPublicName] = useState(initial?.public_name ?? "");
   const [error, setError] = useState("");
+  const pub = isAdmin ? { public: isPublic, public_name: publicName.trim() || null } : {};
   return (
     <Modal title={initial ? "Dashboard settings" : "New dashboard"} onClose={onClose}>
       <form className="space-y-4" onSubmit={async (e) => {
         e.preventDefault();
         try {
-          if (initial) onSaved({ ...(initial as Dashboard), name, description, shared });
-          else onSaved(await api<Dashboard>("/dashboards", { body: { name, description: description || null, shared, widgets: [] } }));
+          if (initial) onSaved({ ...(initial as Dashboard), name, description, shared, ...pub });
+          else onSaved(await api<Dashboard>("/dashboards", { body: { name, description: description || null, shared, ...pub, widgets: [] } }));
         } catch (err: any) { setError(err.message); }
       }}>
         <div><label className="label">Name</label>
@@ -31,6 +37,22 @@ export function DashboardForm({ initial, onClose, onSaved }: {
           Share with all users
           <span className="text-xs text-muted">(they still only see devices they have access to)</span>
         </label>
+        {isAdmin && (
+          <div className="rounded-xl border border-line p-3 space-y-3">
+            <label className="flex items-start gap-2.5 text-sm text-fg cursor-pointer select-none">
+              <input type="checkbox" className="accent-accent mt-0.5" checked={isPublic} onChange={(e) => setPublic(e.target.checked)} />
+              <span>
+                <span className="text-strong font-medium">Public (shown on the website)</span>
+                <span className="block text-xs text-muted">Readable with an API token through /api/public. Hostnames, IPs and check output are never sent.</span>
+              </span>
+            </label>
+            {isPublic && (
+              <div><label className="label">Public name (optional)</label>
+                <input className="input w-full" value={publicName} maxLength={128} onChange={(e) => setPublicName(e.target.value)}
+                  placeholder={name || "Network status"} /></div>
+            )}
+          </div>
+        )}
         {error && <div className="text-xs text-crit">{error}</div>}
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" className="btn" onClick={onClose}>Cancel</button>
@@ -72,6 +94,7 @@ export default function Dashboards() {
                 </div>
                 <div className="flex flex-wrap items-center gap-2 mt-4 text-xxs text-muted">
                   <span className="px-2 py-0.5 rounded-full bg-chip text-fg2">{d.widgets.length} widget{d.widgets.length === 1 ? "" : "s"}</span>
+                  {d.public && <span className="px-2 py-0.5 rounded-full bg-ok/15 text-ok inline-flex items-center gap-1"><Icon name="globe" className="w-3 h-3" />public</span>}
                   {d.shared && <span className="px-2 py-0.5 rounded-full bg-accent/15 text-accent">shared</span>}
                   <span>by {d.owner} · updated {fmtAgo(d.updated_at)}</span>
                 </div>

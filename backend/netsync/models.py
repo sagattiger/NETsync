@@ -310,6 +310,24 @@ class AIJob(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class ApiToken(Base):
+    """Long-lived, read-only token for the public dashboards API (never accepted by the normal API).
+
+    Only a SHA-256 hash is stored; the full token is shown once when it is created."""
+
+    __tablename__ = "api_tokens"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(128))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    prefix: Mapped[str] = mapped_column(String(8))
+    created_by: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = utcnow_col()
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
 class Dashboard(Base):
     """A user-built page of widgets (graphs, device status, problem lists).
 
@@ -324,6 +342,9 @@ class Dashboard(Base):
     owner_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     owner: Mapped[str] = mapped_column(String(64))
     shared: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Public: readable through /api/public with an API token (e.g. a status page). Admins only.
+    public: Mapped[bool] = mapped_column(Boolean, default=False)
+    public_name: Mapped[str | None] = mapped_column(String(128))
     widgets: Mapped[list] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = utcnow_col()
     updated_at: Mapped[datetime] = utcnow_col()
