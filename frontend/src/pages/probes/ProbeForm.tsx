@@ -267,9 +267,50 @@ function TlsSection({ cfg, setCfg }: SectionProps) {
   );
 }
 
+const OPS = ["==", "!=", "<", "<=", ">", ">=", "contains", "not contains", "regex", "exists", "not exists"];
+
+function JsonSection(props: SectionProps) {
+  const { cfg, setCfg } = props;
+  const rows: { path: string; op: string; value: string | null }[] = cfg.assertions ?? [];
+  const update = (rs: typeof rows) => setCfg({ assertions: rs });
+  return (
+    <div className="space-y-4">
+      <Field label="Assertions on the JSON response (all must pass)" hint={<>Paths like <code className="font-mono">data.items[0].status</code> or <code className="font-mono">meta["x.y"]</code>. Values are compared as JSON when possible (42, true, null).</>}>
+        <div className="space-y-2">
+          {rows.map((r, i) => (
+            <div key={i} className="flex gap-2">
+              <input className="input flex-1 min-w-0 font-mono text-xs" placeholder="data.status" maxLength={256} value={r.path}
+                onChange={(e) => update(rows.map((x, j) => (j === i ? { ...x, path: e.target.value } : x)))} />
+              <select className="input w-32 text-xs" value={r.op} onChange={(e) => update(rows.map((x, j) => (j === i ? { ...x, op: e.target.value, value: e.target.value.includes("exists") ? null : x.value ?? "" } : x)))}>
+                {OPS.map((o) => <option key={o}>{o}</option>)}
+              </select>
+              {!r.op.includes("exists") && <input className="input flex-1 min-w-0 font-mono text-xs" placeholder="ok" maxLength={1024} value={r.value ?? ""}
+                onChange={(e) => update(rows.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))} />}
+              <button type="button" className="btn btn-ghost px-2" onClick={() => update(rows.filter((_, j) => j !== i))}><Icon name="x" className="w-3.5 h-3.5" /></button>
+            </div>
+          ))}
+          {rows.length < 20 && <button type="button" className="btn btn-ghost px-2 py-1 text-xs" onClick={() => update([...rows, { path: "", op: "==", value: "" }])}><Icon name="plus" className="w-3 h-3" /> Add assertion</button>}
+        </div>
+      </Field>
+      <HttpSection {...props} />
+    </div>
+  );
+}
+
+function PushSection({ cfg, setCfg, f }: SectionProps) {
+  return (
+    <div className="space-y-3">
+      <Field label="Grace period (s)" hint={`DOWN when no push arrives within ${f.interval_s}s + grace.`}>
+        <input className="input w-32" type="number" min={0} max={3600} value={cfg.grace_s ?? 30} onChange={(e) => setCfg({ grace_s: Math.max(0, Math.min(3600, +e.target.value || 0)) })} /></Field>
+      <div className="text-xs text-muted">After saving you get a secret URL. Call it from your job (cron, backup script…):
+        <code className="font-mono"> ?status=up|down&msg=…&ping=…</code>. No login is needed; the URL is the secret and is shown once.</div>
+    </div>
+  );
+}
+
 /** Kind -> its own fields. Later kinds register here too. */
 export const SECTIONS: Partial<Record<ProbeKind, (p: SectionProps) => ReactNode>> = {
-  icmp: IcmpSection, tcp: TcpSection, http: HttpSection, dns: DnsSection, udp: UdpSection, tls: TlsSection,
+  icmp: IcmpSection, tcp: TcpSection, http: HttpSection, dns: DnsSection, udp: UdpSection, tls: TlsSection, json: JsonSection, push: PushSection,
 };
 
 // --------------------------------------------------------------------------- test result
@@ -287,10 +328,34 @@ export function TestResult({ r }: { r: ProbeTestResult }) {
           {Object.entries(r.metrics).map(([k, v]) => <span key={k}><span className="font-mono">{k}</span> {Number.isInteger(v) ? v : v.toFixed(2)}</span>)}
         </div>
       )}
+      {(r.details?.assertions ?? []).map((a: any, i: number) => (
+        <div key={i} className={`text-xs font-mono ${a.ok ? "text-ok" : "text-crit"}`}>{a.ok ? "✓" : "✗"} {a.path} {a.op} {a.value ?? ""}{!a.ok && <span className="text-muted"> (got {a.actual ?? "nothing"})</span>}</div>
+      ))}
       {r.checks.map((c) => <div key={c.name} className="text-xs"><span className="text-strong">{c.name}</span>: {c.output}{c.state && c.state !== "OK" ? ` (${c.state})` : ""}</div>)}
       {r.cert && <div className="text-xs text-fg2">Certificate: {r.cert.subject_cn} · issuer {r.cert.issuer} · {r.cert.days_left.toFixed(0)} days left
         {r.cert.hostname_match === false && <span className="text-crit"> · hostname mismatch</span>}{r.cert.chain_valid === false && <span className="text-crit"> · untrusted</span>}</div>}
     </div>
+  );
+}
+
+export function PushUrlModal({ url, onClose }: { url: string; onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Modal title="Push URL" onClose={onClose}>
+      <div className="space-y-4">
+        <div className="rounded-lg border border-warn/40 bg-warn/10 text-warn text-sm p-3">Copy it now: it is shown only once. Only a hash is stored.</div>
+        <div className="flex gap-2">
+          <code className="flex-1 min-w-0 break-all font-mono text-xs px-3 py-2.5 rounded-lg bg-inset border border-line text-strong select-all">{url}</code>
+          <button className="btn btn-primary shrink-0" onClick={async () => { try { await navigator.clipboard.writeText(url); setCopied(true); } catch { /* clipboard blocked */ } }}>
+            <Icon name={copied ? "check" : "note"} className="w-3.5 h-3.5" /> {copied ? "Copied" : "Copy"}</button>
+        </div>
+        <div className="text-xs text-muted space-y-1">
+          <div>Example (cron, after the job succeeded):</div>
+          <code className="block font-mono bg-inset rounded p-2 break-all">curl -fsS "{url}?status=up&msg=OK&ping=" &gt;/dev/null</code>
+        </div>
+        <div className="flex justify-end"><button className="btn" onClick={onClose}>Done</button></div>
+      </div>
+    </Modal>
   );
 }
 
@@ -319,6 +384,7 @@ export function ProbeForm({ initial, onClose, onSaved }: { initial?: Probe; onCl
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<ProbeTestResult | null>(null);
   const [more, setMore] = useState(false);
+  const [pushUrl, setPushUrl] = useState<string | null>(null);
   const set = (patch: Partial<FormState>) => { setF((p) => ({ ...p, ...patch })); setResult(null); };
   const setCfg = (patch: Cfg) => set({ config: { ...f.config, ...patch } });
   const setSecret = (k: string, v: any) => setSecrets((s) => { const n = { ...s }; if (v === undefined) delete n[k]; else n[k] = v; return n; });
@@ -350,14 +416,16 @@ export function ProbeForm({ initial, onClose, onSaved }: { initial?: Probe; onCl
   async function save() {
     setError(""); setSaving(true);
     try {
-      const p = initial ? await api<Probe>(`/probes/${initial.id}`, { method: "PUT", body: body() }) : await api<Probe>("/probes", { body: body() });
+      const p = initial ? await api<Probe & { push_url?: string }>(`/probes/${initial.id}`, { method: "PUT", body: body() })
+        : await api<Probe & { push_url?: string }>("/probes", { body: body() });
       qc.invalidateQueries({ queryKey: ["probes"] });
       qc.invalidateQueries({ queryKey: ["probe", p.id] });
       onSaved?.(p);
-      onClose();
+      if (p.push_url) setPushUrl(p.push_url); else onClose();
     } catch (e: any) { setError(e.message); } finally { setSaving(false); }
   }
 
+  if (pushUrl) return <PushUrlModal url={pushUrl} onClose={onClose} />;
   const available = kinds.length ? kinds.map((k) => k.kind) : (["icmp", "tcp", "http"] as ProbeKind[]);
   const ready = f.name.trim() && (f.kind === "push" || f.target.trim()) && (!kindInfo?.needs_port || f.port);
 

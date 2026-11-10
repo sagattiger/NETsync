@@ -10,7 +10,7 @@ import { Card, Empty, Segmented, StateBadge } from "../components/ui";
 import { FORMATS } from "../presets";
 import EventsTab from "./device/EventsTab";
 import { toggleProbe } from "./Probes";
-import { ProbeForm } from "./probes/ProbeForm";
+import { ProbeForm, PushUrlModal } from "./probes/ProbeForm";
 import { daysTone, fmtLoss, fmtMs, fmtPct, HeartbeatBar, KindIcon, kindMeta, StatusPill, uptimeTone, useMe } from "./probes/shared";
 
 const RANGES: [string, string][] = [["1h", "1h"], ["6h", "6h"], ["24h", "24h"], ["7d", "7d"], ["30d", "30d"], ["1y", "1y"]];
@@ -46,6 +46,7 @@ export default function ProbePage() {
   const canEdit = me?.role !== "viewer";
   const [range, setRange] = useState(() => prefs.get().default_range ?? "24h");
   const [editing, setEditing] = useState(false);
+  const [pushUrl, setPushUrl] = useState<string | null>(null);
   const { data: p, error } = useQuery({ queryKey: ["probe", id], queryFn: () => api<Probe>(`/probes/${id}`), refetchInterval: prefs.refreshMs(30_000) });
   const { data: beats = [] } = useQuery({ queryKey: ["probe-beats", id], queryFn: () => api<Heartbeat[]>(`/probes/${id}/heartbeats?limit=100`), refetchInterval: prefs.refreshMs(30_000) });
 
@@ -64,6 +65,10 @@ export default function ProbePage() {
     nav("/probes");
   }
   const icmp = p.kind === "icmp";
+  async function regenerate() {
+    if (!confirm("Create a new push URL? The current one stops working immediately.")) return;
+    setPushUrl((await api<{ push_url: string }>(`/probes/${id}/push-token`, { method: "POST" })).push_url);
+  }
 
   return (
     <>
@@ -106,6 +111,12 @@ export default function ProbePage() {
           ))}
         </div>
 
+        {p.kind === "push" && (
+          <Card title="Push URL" flush={false} actions={canEdit && <button className="btn btn-ghost px-2 py-1" onClick={regenerate}><Icon name="refresh" className="w-3.5 h-3.5" /> New URL</button>}>
+            <div className="text-sm text-fg2">Your job calls a secret URL (shown once when it was created) with <code className="font-mono text-xs">?status=up|down&amp;msg=…&amp;ping=…</code>.
+              DOWN when nothing arrives within {p.interval_s}s + {p.config.grace_s ?? 30}s grace. Lost the URL? Create a new one.</div>
+          </Card>
+        )}
         <Card title="Response time" actions={icmp ? <AddToDashboard probeId={p.id} preset="probe_latency" /> : undefined}>
           <div className="p-3">
             {icmp
@@ -144,6 +155,7 @@ export default function ProbePage() {
         <Card title="Recent events"><div className="p-0"><EventsTab deviceId={p.device_id} /></div></Card>
       </Page>
       {editing && <ProbeForm initial={p} onClose={() => setEditing(false)} />}
+      {pushUrl && <PushUrlModal url={pushUrl} onClose={() => setPushUrl(null)} />}
     </>
   );
 }

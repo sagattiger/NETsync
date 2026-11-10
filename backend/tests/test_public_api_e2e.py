@@ -135,3 +135,52 @@ def test_public_probe_widget_and_single_widget_endpoint(admin, setup, probe):
         assert w["logo"]["src"].startswith("https://cdn.jsdelivr.net/") and "127.0.0.1" not in r.text
         assert c.get(f"/public/dashboards/{pub['id']}/widgets/nope").status_code == 404
         assert c.get(f"/public/dashboards/{priv['id']}/widgets/g").status_code == 404
+
+
+# --------------------------------------------------------------------------- push monitors (no login)
+
+def test_push_endpoint(admin):
+    created = admin.post("/probes", json={"name": "e2e push", "kind": "push", "interval_s": 60})
+    assert created.status_code == 200, created.text
+    p = created.json()
+    try:
+        token, url = p["push_token"], p["push_url"]
+        assert token.startswith("nsp_") and url.endswith(f"/api/push/{token}")
+        assert "push_token" not in admin.get(f"/probes/{p['id']}").json()  # shown once
+        with httpx.Client(base_url=URL, timeout=30) as anon:  # no Authorization header at all
+            assert anon.get(f"/push/{token}?status=up&msg=backup%20ok&ping=12.5").json() == {"ok": True}
+            assert anon.post(f"/push/{token}?status=down&msg=disk%20full").status_code == 200
+            assert anon.get("/push/nsp_invalidtoken").status_code == 404
+            assert anon.get("/push/not-a-token").status_code == 404
+            assert anon.get("/push/").status_code in (404, 405)
+            beats = admin.get(f"/probes/{p['id']}/heartbeats").json()
+            assert [b["message"] for b in beats[-2:]] == ["backup ok", "disk full"]
+            assert beats[-2]["response_ms"] == 12.5 and beats[-1]["state"] == 2
+            # regenerate: the old URL stops working
+            new = admin.post(f"/probes/{p['id']}/push-token").json()
+            assert anon.get(f"/push/{token}").status_code == 404
+            assert anon.get(f"/push/{new['push_token']}").status_code == 200
+            admin.post(f"/probes/{p['id']}/pause")
+            assert anon.get(f"/push/{new['push_token']}").status_code == 404  # paused
+    finally:
+        admin.delete(f"/probes/{p['id']}")
+
+
+def test_probe_secrets_never_returned(admin):
+    body = {"name": "e2e secret", "kind": "http", "target": "https://example.invalid/", "enabled": False,
+            "config": {"auth": "basic", "auth_user": "bob"},
+            "secrets": {"password": "s3cr3t-pw", "headers": {"X-Api-Key": "key-123"}}}
+    p = admin.post("/probes", json=body)
+    assert p.status_code == 200, p.text
+    p = p.json()
+    try:
+        for r in (p, admin.get(f"/probes/{p['id']}").json(), admin.get("/probes").json()):
+            text = str(r)
+            assert "s3cr3t-pw" not in text and "key-123" not in text
+        got = admin.get(f"/probes/{p['id']}").json()
+        assert got["secrets"] == {"has_password": True, "has_headers": True, "header_names": ["X-Api-Key"]}
+        # PUT without secrets keeps them
+        body.pop("secrets")
+        assert admin.put(f"/probes/{p['id']}", json=body).json()["secrets"]["has_password"] is True
+    finally:
+        admin.delete(f"/probes/{p['id']}")

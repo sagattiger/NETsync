@@ -26,11 +26,12 @@ class Result:
     metrics: dict[str, float] = field(default_factory=dict)
     checks: list[CheckResult] = field(default_factory=list)  # extra services, e.g. Certificate expiry
     cert: dict | None = None  # certificate details (https/tls)
+    details: dict = field(default_factory=dict)  # kind specific, e.g. JSON assertion results (UI only)
 
     def as_dict(self) -> dict:
         return {
             "up": self.up, "response_ms": self.response_ms, "state": State(self.state).name, "message": self.message,
-            "metrics": self.metrics, "cert": self.cert,
+            "metrics": self.metrics, "cert": self.cert, "details": self.details,
             "checks": [{"name": c.name, "state": State(c.state).name if c.state is not None else None,
                         "value": c.value, "output": c.output} for c in self.checks],
         }
@@ -49,6 +50,7 @@ class ProbeSpec:
     config: dict = field(default_factory=dict)
     secrets: dict = field(default_factory=dict)
     last_push_at: datetime | None = None  # push kind
+    created_at: datetime | None = None
     probe_id: int | None = None
 
 

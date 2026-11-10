@@ -14,7 +14,9 @@ from netsync.api.deps import CurrentUser, Session, device_scope, require
 from netsync.metrics_query import RANGES, bucketed_series
 from netsync.models import Device, DeviceGroup, Probe, ProbeBeat, Role, Service, State, User
 from netsync.probes import COUNT_RANGE, INTERVAL_RANGE, METRICS, PROBE_DEVICE_TYPE, device_hostname
+from netsync.config import get_settings
 from netsync.probing.base import REGISTRY, ProbeSpec, get_checker
+from netsync.probing.checkers.push import hash_push_token, new_push_token
 from netsync.probing.runner import run_check
 from netsync.probing.secrets import decrypt, describe, encrypt, merge
 from netsync.probing.uptime import uptimes
@@ -146,6 +148,13 @@ async def _name_free(session, name: str, probe_id: int | None = None) -> None:
         raise HTTPException(409, "A probe with this name already exists")
 
 
+def _new_push_token(p: Probe) -> dict:
+    """Store only the hash; the token itself is returned once."""
+    token = new_push_token()
+    p.push_token_hash = hash_push_token(token)
+    return {"push_token": token, "push_url": f"{get_settings().public_url.rstrip('/')}/api/push/{token}"}
+
+
 def _apply(p: Probe, body: ProbeIn) -> None:
     p.name, p.kind, p.target, p.port = body.name, body.kind, body.target, body.port
     p.interval_s, p.timeout_s, p.retries, p.retry_interval_s = body.interval_s, body.timeout_s, body.retries, body.retry_interval_s
@@ -205,9 +214,10 @@ async def create_probe(body: ProbeIn, session: Session, user=require(Role.OPERAT
     await session.flush()
     probe = Probe(device_id=device.id, fail_count=0)
     _apply(probe, body)
+    extra = _new_push_token(probe) if body.kind == "push" else {}
     session.add(probe)
     await session.commit()
-    return probe_out(probe, device)
+    return {**probe_out(probe, device), **extra}
 
 
 @router.post("/test")
@@ -270,12 +280,26 @@ async def update_probe(probe_id: int, body: ProbeIn, session: Session, user=requ
     if (body.kind, body.target, body.port) != (p.kind, p.target, p.port) or body.config != (p.config or {}):
         p.next_run, p.fail_count = None, 0  # check the new settings right away
     _apply(p, body)
+    extra = _new_push_token(p) if body.kind == "push" and not p.push_token_hash else {}
+    if body.kind != "push":
+        p.push_token_hash = None
     d.hostname, d.sys_name, d.disabled = device_hostname(body.name), body.name, not body.enabled
     if not body.enabled:
         d.status = State.UNKNOWN
     d.groups = await _groups(session, user, body.group_ids)
     await session.commit()
-    return await get_probe(probe_id, user, session)
+    return {**await get_probe(probe_id, user, session), **extra}
+
+
+@router.post("/{probe_id}/push-token")
+async def regenerate_push_token(probe_id: int, session: Session, user=require(Role.OPERATOR)):
+    """New push URL; the old one stops working immediately. Shown once."""
+    p, _ = await _get(session, user, probe_id)
+    if p.kind != "push":
+        raise HTTPException(400, "Only push probes have a push URL")
+    extra = _new_push_token(p)
+    await session.commit()
+    return extra
 
 
 @router.post("/{probe_id}/pause")

@@ -26,7 +26,7 @@ def spec_for(p: Probe, secrets: dict | None = None) -> ProbeSpec:
     return ProbeSpec(kind=p.kind, target=p.target, port=p.port, timeout_s=p.timeout_s or 10, count=p.count or 5,
                      interval_s=p.interval_s, config=dict(p.config or {}),
                      secrets=secrets if secrets is not None else decrypt(p.secrets_enc),
-                     last_push_at=p.last_push_at, probe_id=p.id)
+                     last_push_at=p.last_push_at, created_at=p.created_at, probe_id=p.id)
 
 
 def decide(result: Result, upside_down: bool, retries: int, fail_count: int) -> tuple[int, int, str, bool]:

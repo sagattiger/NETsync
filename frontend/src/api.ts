@@ -119,7 +119,7 @@ export interface Probe {
 export interface Heartbeat { time: string; state: number; response_ms: number | null; message: string | null; maintenance: boolean }
 export interface ProbeTestResult {
   up: boolean; effective_up: boolean; response_ms: number | null; state: string; message: string;
-  metrics: Record<string, number>; cert: CertInfo | null;
+  metrics: Record<string, number>; cert: CertInfo | null; details?: Record<string, any>;
   checks: { name: string; state: string | null; value: number | null; output: string }[];
 }
 export interface Dashboard {
