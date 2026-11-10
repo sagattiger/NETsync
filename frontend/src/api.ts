@@ -68,7 +68,7 @@ export interface DeviceEvent {
 
 export interface PinnedEvent extends DeviceEvent { device_id: number; hostname: string; pinned_at: string }
 
-export type WidgetType = "graph" | "device" | "problems" | "services";
+export type WidgetType = "graph" | "device" | "problems" | "services" | "uptime";
 export interface Widget {
   id: string; type: WidgetType; title: string; size: "s" | "m" | "l";
   device_id: number | null; component_id: number | null; preset: string | null;

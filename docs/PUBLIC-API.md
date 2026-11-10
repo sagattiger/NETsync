@@ -133,14 +133,37 @@ Field notes:
     URL); `alt` is the icon name, or empty.
   - `colors` (graph widgets): hex colours (`#RGB` or `#RRGGBB`), one per series in order. Fewer colours than
     series means "use your default for the rest".
-- **Probe widgets** are graph widgets with `"source": "probe"`. A probe pings an IP address or hostname that
-  is not an SNMP device (for example Google DNS). `unit` is `ms` (latency, one series `avg`; each point is
-  `[time, avg, min, max]` where min/max are the lowest and highest round-trip times seen in that bucket) or
-  `pct` (packet loss, series `loss`). `loss_pct` is the latest packet loss. `state` comes from the probe's
-  Ping RTT / Ping loss checks. The series `name` defaults to the probe's name. The probe's **target** is never
-  included; if a probe is named after its own address (e.g. "8.8.8.8"), the generic title "Ping latency" and
-  series name `avg` are used instead.
-- `summary` also counts the Ping services of probes used by the dashboard; `devices` counts real devices only.
+- **Probe widgets** are graph widgets with `"source": "probe"`. A probe actively checks something that is not
+  an SNMP device: a ping target, a TCP/UDP port, a DNS record, a website or JSON API, a TLS certificate or a
+  push heartbeat (see [PROBES.md](PROBES.md)). Fields:
+  - `kind`: `icmp`, `tcp`, `udp`, `dns`, `http`, `json`, `tls` or `push`.
+  - `unit` and series depend on the graph: Ping latency (`ms`, series `avg`; each point is `[time, avg, min, max]`
+    with the lowest and highest round-trip time of the bucket), Ping packet loss (`pct`), Response time (`ms`),
+    Uptime (`pct`, one point per day for 7d and longer), Certificate days left (`count`), DNS query time (`ms`),
+    HTTP status code (`count`).
+  - `state` comes from the probe's checks (Status, Response time, Ping, Certificate expiry...).
+  - `uptime`: `{"24h": 99.98, "7d": 99.9, "30d": 99.95}` (percent, `null` without data; maintenance excluded),
+    only when there is data. `cert_days_left`: whole days, for https/tls probes. `loss_pct`: ping probes.
+  - `message`: a generic category of the last check, e.g. `"HTTP 503"`, `"timeout"`, `"connection refused"`,
+    `"certificate expires in 5 days"`, `"no push received"`. Anything else (custom push messages, assertion
+    details, text that contains the target) is reduced to `"up"`, `"down"` or `"pending"`.
+  - The series `name` defaults to the probe's name. A probe's **target, URL, headers, body and raw error text are
+    never included**; if a probe's name contains its target (e.g. "8.8.8.8" or "example.com"), the generic title
+    (graph name) and series key are used instead.
+- **Uptime widgets** (`"type": "uptime"`) are one status-page row: the heartbeat bars and uptime % of a probe.
+
+  ```json
+  { "id": "u1", "type": "uptime", "size": "l", "cols": 12, "compact": true,
+    "logo": { "src": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/nginx.svg", "alt": "Nginx" },
+    "title": "Website", "state": "OK", "kind": "http", "message": "HTTP 200",
+    "uptime": { "24h": 99.98, "7d": 99.9, "30d": 99.95 },
+    "cert_days_left": 42,
+    "beats": [["2026-11-10T13:55:00Z", "OK", 182.4], ["2026-11-10T13:56:00Z", "CRIT", null]] }
+  ```
+
+  `beats` holds up to the last 100 checks, oldest first: `[ISO time, state, response ms or null]`. `OK`/`WARN` =
+  up, `CRIT` = down, `UNKNOWN` = pending (failing, retries not used up yet). `range` doesn't apply to this widget.
+- `summary` also counts the services of probes used by the dashboard; `devices` counts real devices only.
 - `services` items: every service of the widget's device, worst first. The check output text is not included.
 - `problems` items: non-OK services of the widget's device, or of **every device used by this dashboard**
   when the widget has no device. Never the whole installation.
@@ -170,15 +193,9 @@ every 30–60 s stays far below the rate limit.
 
 ## 5. Probes (NETsync side)
 
-**Probes** (sidebar) ping any IPv4/IPv6 address or hostname: name, target, interval (30–300 s) and pings per
-round. Each round stores `ping_min`, `ping_avg`, `ping_max`, `ping_jitter` and `ping_loss`, and updates the
-**Ping RTT** / **Ping loss** checks (threshold rules `ping_rtt` / `ping_loss` apply), so problems and alerts
-work like for devices. On a probe's page, **Add to dashboard** adds its latency or loss graph; in the widget
-editor pick the graphs "Ping latency" / "Ping packet loss" under *Probes*.
-
-API (app login, not the public token): `GET/POST /api/probes`, `GET/PUT/DELETE /api/probes/{id}` (operators
-and admins change, viewers read, scoped by device groups) and `GET /api/probes/{id}/metrics?range=24h`
-(same shape as `/api/devices/{id}/metrics`).
+**Probes** (sidebar) are NETsync's active monitoring (ping, TCP, UDP, DNS, HTTP(S), JSON APIs, TLS certificates
+and push heartbeats). Everything about them is in [PROBES.md](PROBES.md). On a probe's page, **Add to dashboard**
+adds its graph or an uptime row; in the widget editor pick a graph under *Probes* or the **Uptime** widget type.
 
 ## 6. Tests
 
@@ -191,6 +208,8 @@ and admins change, viewers read, scoped by device groups) and `GET /api/probes/{
   `/api/devices`, `/api/syslog` and the rest; that revoked and expired tokens get `401`; that non-public ids
   give `404`; and that a JWT is rejected by `/api/public`. It also creates a probe of 127.0.0.1, waits for its
   metrics, and checks the single-widget endpoint (labels, logo, cols, no target in the response, 404s).
+- `backend/tests/test_probe_phase4.py`: the new presets, uptime widgets (beats, windows, single widget), probe
+  fields in graph widgets, the public message allow-list, and that no target, URL or host ever appears.
 - `backend/tests/test_probes_widgets.py`: probe target validation, probe check results, widget colour /
   label / logo / cols validation, the Dashboard Icons index, probe and appearance fields in the public payload
   (and never the probe target), the single-widget build, and that old widgets serialize unchanged.

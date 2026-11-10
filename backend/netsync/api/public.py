@@ -6,8 +6,10 @@ never hostnames, IPs, probe targets, SNMP data, sysDescr, syslog, users, comment
 output text. The only free text is what admins typed: public names/titles, series labels, logos.
 """
 
+import re
 from datetime import UTC, datetime
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Response
 from sqlalchemy import select
@@ -16,8 +18,9 @@ from netsync.api.deps import Session
 from netsync.api.icons import logo_alt, logo_src
 from netsync.api.tokens import PublicToken
 from netsync.metrics_query import bucketed_series
-from netsync.models import Component, Dashboard, Device, Probe, Service, State
+from netsync.models import Component, Dashboard, Device, Probe, ProbeBeat, Service, State
 from netsync.presets import BY_ID, Preset
+from netsync.probing.uptime import uptimes
 
 router = APIRouter(prefix="/public", tags=["public"])
 
@@ -52,7 +55,50 @@ def dashboard_devices(widgets: list[dict]) -> set[int]:
 
 
 def probe_ids(widgets: list[dict]) -> set[int]:
-    return {w["probe_id"] for w in widgets if w.get("type") == "graph" and w.get("probe_id")}
+    return {w["probe_id"] for w in widgets if w.get("type") in ("graph", "uptime") and w.get("probe_id")}
+
+
+UPTIME_WINDOWS = ("24h", "7d", "30d")
+BEATS_MAX = 100
+# Generic message categories that may be shown publicly; anything else becomes up / down / pending.
+_PUBLIC_MESSAGES = re.compile(
+    r"^(?:HTTP \d{3}(?:, (?:keyword (?:found|absent)|\d+ assertions? passed))?"
+    r"|timeout|connection (?:refused|reset|failed)|name resolution failed|(?:host|network|port) unreachable"
+    r"|TLS (?:certificate invalid|handshake failed)|keyword (?:not )?found|too many redirects"
+    r"|invalid (?:JSON|HTTP) response|NXDOMAIN|SERVFAIL|no [A-Z]+ records|answer mismatch|\d+ [A-Z]+ records?"
+    r"|no reply|unexpected (?:reply|response)|reply (?:matched|received)|connected|response matched"
+    r"|sent, no error \(no reply expected\)|certificate (?:expires in -?\d+ days|expired|untrusted|hostname mismatch)"
+    r"|no certificate presented|no push received|push received|push reported down|no reply|check failed"
+    r"|\d+(?:\.\d+)? ms(?:, \d+% loss)?)$"
+)
+_SUFFIX = re.compile(r" \((?:retry \d+/\d+|expected down|should be down)\)$")
+
+
+def public_message(msg: str | None, state: int | None, secrets_: tuple[str, ...] = ()) -> str:
+    """Only generic categories ("timeout", "HTTP 503", "certificate expires in 5 days") leave NETsync."""
+    text = (msg or "").strip()
+    while _SUFFIX.search(text):
+        text = _SUFFIX.sub("", text)
+    if text.startswith("assertion failed"):
+        text = "assertion failed"
+    elif not _PUBLIC_MESSAGES.match(text) or any(x and x.lower() in text.lower() for x in secrets_):
+        text = ""
+    if not text:
+        text = {State.CRIT: "down", State.UNKNOWN: "pending"}.get(state, "up")
+    return text
+
+
+def probe_secrets(p) -> tuple[str, ...]:
+    """Strings that must never appear publicly for this probe: target, URL host, port-less host."""
+    target = (p.target or "").strip()
+    out = {target}
+    try:
+        host = urlsplit(target).hostname
+        if host:
+            out.add(host)
+    except ValueError:
+        pass
+    return tuple(x for x in out if x)
 
 
 def is_probe_widget(w: dict) -> bool:
@@ -61,9 +107,9 @@ def is_probe_widget(w: dict) -> bool:
 
 
 def probe_public_name(p) -> str | None:
-    """The probe's name, unless it would reveal the target (e.g. a probe named '8.8.8.8')."""
-    name, target = (p.name or "").strip(), (p.target or "").strip().lower()
-    return None if not name or (target and target in name.lower()) else name
+    """The probe's name, unless it would reveal the target (e.g. a probe named '8.8.8.8' or 'example.com')."""
+    name = (p.name or "").strip()
+    return None if not name or any(x.lower() in name.lower() for x in probe_secrets(p)) else name
 
 
 def graph_title(w: dict, preset: Preset | None, component: Component | None) -> str:
@@ -112,13 +158,26 @@ def graph_series(w: dict, preset: Preset | None, data: dict[str, list], default_
     return series
 
 
+def probe_extras(probe, ups: dict) -> dict[str, Any]:
+    out: dict[str, Any] = {"kind": probe.kind}
+    up = (ups.get(probe.id) or {}).get("uptime") or {}
+    if any(up.get(k) is not None for k in UPTIME_WINDOWS):
+        out["uptime"] = {k: up.get(k) for k in UPTIME_WINDOWS}
+    cert = getattr(probe, "cert", None)
+    if cert and cert.get("days_left") is not None:
+        out["cert_days_left"] = int(cert["days_left"] // 1)
+    return out
+
+
 def build_payload(d: Dashboard, range_: str, devices: dict[int, Device], services: list[Service],
                   components: dict[int, Component], series: dict[str, dict[str, list]],
-                  probes: dict[int, Probe] | None = None, only: str | None = None) -> dict[str, Any]:
+                  probes: dict[int, Probe] | None = None, only: str | None = None,
+                  ups: dict[int, dict] | None = None, beats: dict[int, list] | None = None) -> dict[str, Any]:
     """Pure: everything public about a dashboard. ``series`` maps widget id -> {metric: points}.
-    ``probes`` maps probe id -> Probe (their Ping services are in ``services``).
+    ``probes`` maps probe id -> Probe (their services are in ``services``), ``ups`` probe id -> uptimes(),
+    ``beats`` probe id -> [(time, state, response_ms)] oldest first.
     ``only``: build just that widget (the summary is still computed over the whole dashboard)."""
-    probes = probes or {}
+    probes, ups, beats = probes or {}, ups or {}, beats or {}
     all_widgets = d.widgets or []
     used = dashboard_devices(all_widgets)
     probe_devs = {p.device_id for pid, p in probes.items() if pid in probe_ids(all_widgets)}
@@ -143,14 +202,35 @@ def build_payload(d: Dashboard, range_: str, devices: dict[int, Device], service
             pname = probe_public_name(probe) if probe else None
             out_series = graph_series(w, preset, series.get(w.get("id"), {}), default_name=pname, band=True)
             loss = next((s for s in own if s.name == "Ping loss"), None)
-            title = w.get("public_title") or (f"Ping · {pname}" if pname else preset.label)
+            ping = preset.id in ("probe_latency", "probe_loss")
+            default_title = (f"Ping · {pname}" if ping else f"{preset.label} · {pname}") if pname else preset.label
             widgets.append({
-                **base, "source": "probe", "title": title,
+                **base, "source": "probe", "title": w.get("public_title") or default_title,
                 "state": state_name(worst(s.state for s in own)) if own else "UNKNOWN",
                 "unit": preset.unit, "area": preset.area, "series": out_series,
                 "last": {s["name"]: (s["points"][-1][1] if s["points"] else None) for s in out_series},
                 "loss_pct": (getattr(loss, "perf", None) or {}).get("value") if loss else None,
                 **({"colors": w["colors"]} if w.get("colors") else {}),
+                **(probe_extras(probe, ups) if probe else {}),
+                **({"message": public_message(probe.last_message, probe.last_state, probe_secrets(probe))}
+                   if probe and getattr(probe, "last_run", None) else {}),
+            })
+        elif kind == "uptime":
+            probe = probes.get(w.get("probe_id"))
+            own = by_device.get(probe.device_id, []) if probe else []
+            pname = probe_public_name(probe) if probe else None
+            up = (ups.get(probe.id) or {}).get("uptime") or {} if probe else {}
+            widgets.append({
+                **base, "title": w.get("public_title") or pname or "Uptime",
+                "state": state_name(worst(s.state for s in own)) if own else "UNKNOWN",
+                "kind": probe.kind if probe else None,
+                "uptime": {k: up.get(k) for k in UPTIME_WINDOWS},
+                "beats": [[t, state_name(st), ms] for t, st, ms in (beats.get(probe.id, []) if probe else [])][-BEATS_MAX:],
+                **({"colors": w["colors"]} if w.get("colors") else {}),
+                **({"message": public_message(probe.last_message, probe.last_state, probe_secrets(probe))}
+                   if probe and getattr(probe, "last_run", None) else {}),
+                **({"cert_days_left": probe_extras(probe, ups)["cert_days_left"]}
+                   if probe and "cert_days_left" in probe_extras(probe, ups) else {}),
             })
         elif kind == "graph":
             preset = BY_ID.get(w.get("preset") or "")
@@ -234,7 +314,8 @@ async def _build(session, d: Dashboard, range_: str, only: str | None = None) ->
             if not probe:
                 continue
             names = list(PROBE_BAND) if not preset or preset.id == "probe_latency" else [m.name for m in preset.metrics]
-            series[w["id"]] = await bucketed_series(session, probe.device_id, 0, names, range_)
+            series[w["id"]] = await bucketed_series(session, probe.device_id, 0, names, range_,
+                                                    preset.bucket(range_) if preset else None)
             continue
         if not preset or w.get("device_id") not in devices:
             continue
@@ -245,7 +326,14 @@ async def _build(session, d: Dashboard, range_: str, only: str | None = None) ->
                 continue  # misconfigured widget: no data rather than an error
             comp_id = comp.id
         series[w["id"]] = await bucketed_series(session, w["device_id"], comp_id, [m.name for m in preset.metrics], range_)
-    return build_payload(d, range_, devices, services, components, series, probes, only)
+    wanted = [w for w in widgets if only is None or w.get("id") == only]
+    ups = await uptimes(session, list(probes)) if probes else {}
+    beats: dict[int, list] = {}
+    for pid in {w.get("probe_id") for w in wanted if w.get("type") == "uptime" and w.get("probe_id") in probes}:
+        rows = await session.execute(select(ProbeBeat.time, ProbeBeat.state, ProbeBeat.response_ms)
+                                     .where(ProbeBeat.probe_id == pid).order_by(ProbeBeat.time.desc()).limit(BEATS_MAX))
+        beats[pid] = [(t, st, ms) for t, st, ms in rows][::-1]
+    return build_payload(d, range_, devices, services, components, series, probes, only, ups, beats)
 
 
 @router.get("/dashboards")

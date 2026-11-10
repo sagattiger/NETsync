@@ -23,6 +23,13 @@ class Preset:
     metrics: tuple[SeriesDef, ...] = field(default_factory=tuple)
     area: bool = True
     source: str = "device"  # "device" (device_id/component_id) or "probe" (probe_id)
+    daily: bool = False  # long ranges (7d+) use one point per day, e.g. uptime %
+
+    def bucket(self, range_: str):
+        """time_bucket override for this preset and range (None = the range's default)."""
+        from datetime import timedelta
+
+        return timedelta(days=1) if self.daily and range_ in ("7d", "30d", "1y") else None
 
     def as_dict(self) -> dict:
         d = asdict(self)
@@ -75,6 +82,15 @@ PRESETS: tuple[Preset, ...] = (
     # Probes (ping any IP/FQDN): widgets point at probe_id instead of device_id/component_id.
     Preset("probe_latency", "Ping latency", "Probes", None, "ms", _s(("ping_avg", "avg")), area=False, source="probe"),
     Preset("probe_loss", "Ping packet loss", "Probes", None, "pct", _s(("ping_loss", "loss")), source="probe"),
+    Preset("probe_response", "Response time", "Probes", None, "ms", _s(("response_ms", "response")), area=False,
+           source="probe"),
+    Preset("probe_uptime", "Uptime", "Probes", None, "pct", _s(("up_pct", "uptime")), source="probe", daily=True),
+    Preset("tls_days_left", "Certificate days left", "Probes", None, "count", _s(("tls_days_left", "days left")),
+           area=False, source="probe"),
+    Preset("dns_query", "DNS query time", "Probes", None, "ms", _s(("dns_query_ms", "query")), area=False,
+           source="probe"),
+    Preset("http_status", "HTTP status code", "Probes", None, "count", _s(("status_code", "status")), area=False,
+           source="probe"),
 )
 
 BY_ID: dict[str, Preset] = {p.id: p for p in PRESETS}

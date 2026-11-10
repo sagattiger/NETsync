@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { api, Component, Device, fmtUptime, logoSrc, prefs, Probe, Service, Widget } from "../../api";
+import { api, Component, Device, fmtUptime, Heartbeat, logoSrc, prefs, Probe, Service, Widget } from "../../api";
+import { fmtMs, fmtPct, HeartbeatBar, StatusPill, uptimeTone } from "../probes/shared";
 import { lastValue, MetricChart, MetricDef, seriesQuery } from "../../components/MetricChart";
 import ServiceTable from "../../components/ServiceTable";
 import { VendorLogo } from "../../components/VendorLogo";
@@ -27,6 +28,7 @@ export function useProbes() {
 export function autoTitle(w: Widget, devices: Device[], components: Component[],
   presetById: (id: string | null | undefined) => Preset | undefined, probes: Probe[] = []): string {
   const host = devices.find((d) => d.id === w.device_id)?.hostname;
+  if (w.type === "uptime") return probes.find((p) => p.id === w.probe_id)?.name ?? "Uptime";
   if (w.type === "graph") {
     const preset = presetById(w.preset);
     if (preset?.source === "probe") {
@@ -123,12 +125,40 @@ function CompactValues({ w, preset, metrics, range }: { w: Widget; preset: Prese
   );
 }
 
+function UptimeWidget({ w, probe }: { w: Widget; probe?: Probe }) {
+  const { data: beats = [] } = useQuery({
+    queryKey: ["probe-beats", w.probe_id],
+    queryFn: () => api<Heartbeat[]>(`/probes/${w.probe_id}/heartbeats?limit=100`),
+    refetchInterval: prefs.refreshMs(30_000),
+    enabled: !!w.probe_id,
+  });
+  if (!probe) return <Empty>Probe not found</Empty>;
+  const tall = w.height === "tall" ? "h-12" : w.height === "compact" || w.compact ? "h-4" : "h-7";
+  const windows: ["24h" | "7d" | "30d", string][] = [["24h", "24 h"], ["7d", "7 d"], ["30d", "30 d"]];
+  return (
+    <div className={w.compact ? "px-4 py-3 space-y-2" : "p-4 space-y-3"}>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <StatusPill enabled={probe.enabled} maintenance={probe.maintenance} state={probe.state} />
+        {!w.compact && <span className="text-xs text-muted truncate max-w-[16rem]">{probe.last_message}</span>}
+        <span className="ml-auto flex items-baseline gap-3 text-xs">
+          {(w.compact ? windows.slice(0, 1) : windows).map(([k, label]) => (
+            <span key={k}><span className={`font-semibold tabular-nums ${uptimeTone(probe.uptime[k])}`}>{fmtPct(probe.uptime[k])}</span> <span className="text-muted">{label}</span></span>
+          ))}
+          {!w.compact && <span className="text-muted tabular-nums">{fmtMs(probe.rtt_ms ?? probe.last_response_ms)}</span>}
+        </span>
+      </div>
+      <HeartbeatBar beats={beats} max={w.compact ? 60 : 100} height={tall} />
+    </div>
+  );
+}
+
 export function WidgetBody({ w, range }: { w: Widget; range: string }) {
   const { byId: presetById } = usePresets();
   const devices = useDevices();
   const probes = useProbes();
   const device = devices.find((d) => d.id === w.device_id);
 
+  if (w.type === "uptime") return w.probe_id ? <UptimeWidget w={w} probe={probes.find((p) => p.id === w.probe_id)} /> : <Empty>Pick a probe</Empty>;
   if (w.type === "graph") {
     const preset = presetById(w.preset);
     const isProbe = preset?.source === "probe";

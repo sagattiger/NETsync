@@ -11,6 +11,7 @@ const TYPES: [WidgetType, string, string][] = [
   ["device", "Device", "Status card with service counts"],
   ["services", "Services", "All services of a device"],
   ["problems", "Problems", "Open problems, one device or all"],
+  ["uptime", "Uptime", "Heartbeat bar + uptime % of a probe"],
 ];
 
 const COLS: [string, string][] = [["3", "¼"], ["4", "⅓"], ["6", "½"], ["8", "⅔"], ["12", "Full"]];
@@ -79,7 +80,7 @@ export default function WidgetEditor({ initial, isPublic, onSave, onClose }: {
   const [showLook, setShowLook] = useState(!!(initial && (initial.logo || initial.colors || initial.labels || initial.compact || initial.cols || initial.height)));
   const { presets, byId: presetById, groups } = usePresets();
   const preset = presetById(w.preset);
-  const isProbe = w.type === "graph" && preset?.source === "probe";
+  const isProbe = (w.type === "graph" && preset?.source === "probe") || w.type === "uptime";
   const components = useComponents(isProbe ? null : w.device_id, w.type === "graph" ? preset?.kind : undefined);
   const set = (patch: Partial<Widget>) => setW((p) => ({ ...p, ...patch }));
 
@@ -104,7 +105,9 @@ export default function WidgetEditor({ initial, isPublic, onSave, onClose }: {
   function save() {
     const out: Widget = { ...w };
     if (isProbe) { out.device_id = null; out.component_id = null; } else out.probe_id = null;
-    if (w.type !== "graph") { out.colors = null; out.labels = null; out.compact = null; }
+    if (w.type !== "graph") { out.labels = null; }
+    if (w.type !== "graph" && w.type !== "uptime") { out.colors = null; out.compact = null; }
+    if (w.type === "uptime") out.preset = null;
     if (out.labels) out.labels = Object.fromEntries(Object.entries(out.labels).filter(([k, v]) => series.includes(k) && v.trim()));
     if (out.colors) out.colors = out.colors.slice(0, Math.max(series.length, 1));
     onSave(out);

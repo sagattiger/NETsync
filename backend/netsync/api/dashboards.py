@@ -38,7 +38,7 @@ def validate_logo(v: str) -> str:
 
 class Widget(BaseModel):
     id: str = Field(max_length=64)
-    type: Literal["graph", "device", "problems", "services"]
+    type: Literal["graph", "device", "problems", "services", "uptime"]
     title: str = Field("", max_length=128)
     size: Literal["s", "m", "l"] = "m"
     device_id: int | None = None

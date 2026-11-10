@@ -23,9 +23,11 @@ QUERY = text(
 
 
 async def bucketed_series(session: AsyncSession, device_id: int, component_id: int, names: list[str],
-                          range_: str) -> dict[str, list]:
-    """{name: [[iso_time, avg, min, max], ...]} - every requested name is present, possibly empty."""
-    span, bucket = RANGES.get(range_, RANGES["24h"])
+                          range_: str, bucket: timedelta | None = None) -> dict[str, list]:
+    """{name: [[iso_time, avg, min, max], ...]} - every requested name is present, possibly empty.
+    ``bucket`` overrides the range's default bucket width (e.g. one point per day for uptime)."""
+    span, default_bucket = RANGES.get(range_, RANGES["24h"])
+    bucket = bucket or default_bucket
     since = datetime.now(UTC) - span
     rows = await session.execute(QUERY, {"bucket": bucket, "d": device_id, "c": component_id,
                                          "names": names, "since": since})

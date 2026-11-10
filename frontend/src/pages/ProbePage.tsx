@@ -88,7 +88,7 @@ export default function ProbePage() {
       <Page>
         <Card flush={false}>
           <div className="flex items-center justify-between gap-3 mb-2 text-xs text-muted">
-            <span>Last {beats.length} checks</span>
+            <span className="flex items-center gap-2">Last {beats.length} checks <AddToDashboard probeId={p.id} preset={null} type="uptime" label="Add uptime to dashboard" /></span>
             <span className={p.state === 2 ? "text-crit" : "text-fg2"}>{p.last_message ?? ""}</span>
           </div>
           <HeartbeatBar beats={beats} />
@@ -117,7 +117,7 @@ export default function ProbePage() {
               DOWN when nothing arrives within {p.interval_s}s + {p.config.grace_s ?? 30}s grace. Lost the URL? Create a new one.</div>
           </Card>
         )}
-        <Card title="Response time" actions={icmp ? <AddToDashboard probeId={p.id} preset="probe_latency" /> : undefined}>
+        <Card title="Response time" actions={<AddToDashboard probeId={p.id} preset={icmp ? "probe_latency" : "probe_response"} />}>
           <div className="p-3">
             {icmp
               ? <MetricChart probeId={p.id} range={range} metrics={[{ name: "ping_avg", label: "avg" }]} format={FORMATS.ms} area={false}
