@@ -1,37 +1,75 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, Dashboard, prefs, Widget } from "../../api";
+import { api, Dashboard, prefs, Widget, WidgetCols, widgetCols } from "../../api";
 import { Icon } from "../../components/Icon";
 import { Page, PageHeader } from "../../components/Layout";
 import { Empty, Segmented } from "../../components/ui";
 import { DashboardForm } from "./Dashboards";
 import WidgetEditor from "./WidgetEditor";
-import { autoTitle, useComponents, useDevices, WidgetBody } from "./WidgetView";
+import { autoTitle, useComponents, useDevices, useProbes, WidgetBody, WidgetLogo } from "./WidgetView";
 import { usePresets } from "../../presets";
 
-const SPAN = { s: "md:col-span-3 xl:col-span-4", m: "md:col-span-6 xl:col-span-6", l: "md:col-span-6 xl:col-span-12" };
+// 12-column grid on wide screens, 6 on tablets, 1 on phones. Literal class names so Tailwind keeps them.
+const SPAN: Record<WidgetCols, string> = {
+  3: "md:col-span-3 xl:col-span-3", 4: "md:col-span-3 xl:col-span-4", 6: "md:col-span-6 xl:col-span-6",
+  8: "md:col-span-6 xl:col-span-8", 12: "md:col-span-6 xl:col-span-12",
+};
+export const COL_OPTIONS: [WidgetCols, string][] = [[3, "¼ width"], [4, "⅓ width"], [6, "½ width"], [8, "⅔ width"], [12, "Full width"]];
+/** Keep the legacy size in step with cols for clients that only know s/m/l. */
+export const sizeFor = (cols: WidgetCols): Widget["size"] => (cols <= 4 ? "s" : cols >= 12 ? "l" : "m");
 const RANGES: [string, string][] = [["1h", "1h"], ["6h", "6h"], ["24h", "24h"], ["7d", "7d"], ["30d", "30d"], ["1y", "1y"]];
+
+const COL_STEPS: WidgetCols[] = [3, 4, 6, 8, 12];
+
+/** Drag the right edge of a widget to resize it; snaps to ¼, ⅓, ½, ⅔ and full width. */
+function ResizeHandle({ cols, onResize }: { cols: WidgetCols; onResize: (c: WidgetCols) => void }) {
+  function start(e: React.PointerEvent<HTMLDivElement>) {
+    const grid = e.currentTarget.closest("section")?.parentElement;
+    if (!grid) return;
+    e.preventDefault();
+    const unit = grid.clientWidth / 12; // pixels per twelfth of the dashboard width
+    const x0 = e.clientX;
+    let current = cols;
+    const move = (ev: PointerEvent) => {
+      const want = cols + (ev.clientX - x0) / unit;
+      const snapped = COL_STEPS.reduce((a, b) => (Math.abs(b - want) < Math.abs(a - want) ? b : a));
+      if (snapped !== current) { current = snapped; onResize(snapped); }
+    };
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); document.body.style.cursor = ""; };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    document.body.style.cursor = "ew-resize";
+  }
+  return (
+    <div onPointerDown={start} title="Drag to resize"
+      className="hidden md:flex absolute top-0 right-0 h-full w-2.5 cursor-ew-resize items-center justify-center group/rs hover:bg-accent/10">
+      <span className="w-0.5 h-8 rounded-full bg-edge group-hover/rs:bg-accent" />
+    </div>
+  );
+}
 
 function WidgetCard({ w, range, editing, onEdit, onRemove, onMove, onResize, first, last }: {
   w: Widget; range: string; editing: boolean; first: boolean; last: boolean;
-  onEdit: () => void; onRemove: () => void; onMove: (dir: -1 | 1) => void; onResize: (s: Widget["size"]) => void;
+  onEdit: () => void; onRemove: () => void; onMove: (dir: -1 | 1) => void; onResize: (cols: WidgetCols) => void;
 }) {
   const devices = useDevices();
   const components = useComponents(w.device_id);
   const { byId: presetById } = usePresets();
+  const probes = useProbes();
   const ctl = "p-1.5 rounded-md text-muted hover:text-strong hover:bg-inset disabled:opacity-30";
   return (
-    <section className={`card overflow-hidden col-span-1 ${SPAN[w.size]} ${editing ? "ring-1 ring-accent/30" : ""}`}>
+    <section className={`card overflow-hidden relative col-span-1 ${SPAN[widgetCols(w)]} ${editing ? "ring-1 ring-accent/30" : ""}`}>
       <header className="px-4 py-2.5 border-b border-line flex items-center gap-2 min-h-[2.75rem]">
-        <h3 className="text-sm font-medium text-strong truncate flex-1">{w.title || autoTitle(w, devices, components, presetById)}</h3>
+        <WidgetLogo logo={w.logo} />
+        <h3 className="text-sm font-medium text-strong truncate flex-1">{w.title || autoTitle(w, devices, components, presetById, probes)}</h3>
         {editing && (
           <div className="flex items-center gap-0.5 shrink-0">
             <button className={ctl} disabled={first} onClick={() => onMove(-1)} title="Move left / up"><Icon name="chevron" className="w-3.5 h-3.5 rotate-180" /></button>
             <button className={ctl} disabled={last} onClick={() => onMove(1)} title="Move right / down"><Icon name="chevron" className="w-3.5 h-3.5" /></button>
-            <select className="bg-transparent text-xs text-muted hover:text-strong px-1 py-1 rounded-md outline-none" value={w.size}
-              onChange={(e) => onResize(e.target.value as Widget["size"])} title="Width">
-              <option value="s">Small</option><option value="m">Half</option><option value="l">Full</option>
+            <select className="bg-surface text-xs text-muted hover:text-strong px-1 py-1 rounded-md outline-none" value={widgetCols(w)}
+              onChange={(e) => onResize(+e.target.value as WidgetCols)} title="Width">
+              {COL_OPTIONS.map(([c, label]) => <option key={c} value={c}>{label}</option>)}
             </select>
             <button className={ctl} onClick={onEdit} title="Edit"><Icon name="edit" className="w-3.5 h-3.5" /></button>
             <button className={`${ctl} hover:text-crit`} onClick={onRemove} title="Remove"><Icon name="trash" className="w-3.5 h-3.5" /></button>
@@ -39,6 +77,7 @@ function WidgetCard({ w, range, editing, onEdit, onRemove, onMove, onResize, fir
         )}
       </header>
       <WidgetBody w={w} range={range} />
+      {editing && <ResizeHandle cols={widgetCols(w)} onResize={onResize} />}
     </section>
   );
 }
@@ -129,7 +168,7 @@ export default function DashboardView() {
                 onEdit={() => setEditor({ widget: w })}
                 onRemove={() => update(widgets.filter((x) => x.id !== w.id))}
                 onMove={(dir) => move(i, dir)}
-                onResize={(size) => update(widgets.map((x) => (x.id === w.id ? { ...x, size } : x)))} />
+                onResize={(cols) => update(widgets.map((x) => (x.id === w.id ? { ...x, cols, size: sizeFor(cols) } : x)))} />
             ))}
           </div>
         )}

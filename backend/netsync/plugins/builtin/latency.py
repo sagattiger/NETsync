@@ -33,7 +33,9 @@ class LatencyService(BackgroundService):
             events = []
             try:
                 async with SessionLocal() as s:
-                    devices = (await s.scalars(select(Device).where(Device.disabled.is_(False)))).all()
+                    devices = (await s.scalars(select(Device).where(
+                        Device.disabled.is_(False), Device.device_type.is_distinct_from("probe")  # probes ping themselves
+                    ))).all()
                     if devices:
                         hosts = await async_multiping(
                             [d.ip or d.hostname for d in devices],

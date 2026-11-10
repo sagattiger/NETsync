@@ -19,6 +19,8 @@ import Plugins from "./pages/Plugins";
 import Profile from "./pages/Profile";
 import About from "./pages/About";
 import Tokens from "./pages/Tokens";
+import Probes from "./pages/Probes";
+import ProbePage from "./pages/ProbePage";
 import Dashboards from "./pages/dashboards/Dashboards";
 import DashboardView from "./pages/dashboards/DashboardView";
 
@@ -40,6 +42,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="/problems" element={<Problems />} />
             <Route path="/devices" element={<Devices />} />
             <Route path="/devices/:id/*" element={<DevicePage />} />
+            <Route path="/probes" element={<Probes />} />
+            <Route path="/probes/:id" element={<ProbePage />} />
             <Route path="/syslog" element={<Syslog />} />
             <Route path="/setup/rules" element={<Rules />} />
             <Route path="/setup/notifications" element={<Notifications />} />

@@ -51,7 +51,7 @@ class Worker:
         try:
             async with self.sem, SessionLocal() as s:
                 device = await s.get(Device, device_id)
-                if device is None:
+                if device is None or device.device_type == "probe":
                     return
                 try:
                     if discover:
@@ -80,6 +80,7 @@ class Worker:
                     rows = (await s.execute(
                         select(Device.id, Device.last_polled, Device.last_discovered).where(
                             Device.disabled.is_(False),
+                            Device.device_type.is_distinct_from("probe"),  # probes run in ProbeService
                             or_(Device.node_id.is_(None), Device.node_id == self.node_id),
                         )
                     )).all()

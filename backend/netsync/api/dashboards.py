@@ -1,8 +1,10 @@
+import re
 from datetime import UTC, datetime
 from typing import Literal
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import or_, select
 
 from netsync.api.deps import CurrentUser, Session
@@ -11,6 +13,27 @@ from netsync.models import Dashboard, Role, User
 router = APIRouter(prefix="/dashboards", tags=["dashboards"])
 
 MAX_WIDGETS = 60
+
+
+HEX = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
+LABEL_KEY = re.compile(r"^[A-Za-z0-9_. -]{1,32}$")
+DI_LOGO = re.compile(r"^di:[a-z0-9]+(?:-[a-z0-9]+)*(?:\.(?:svg|png|webp))?$")
+# Optional appearance fields: left out of the stored widget when unset, so old widgets serialize as before.
+OPTIONAL = ("probe_id", "colors", "labels", "logo", "cols", "height", "compact")
+SIZE_COLS = {"s": 4, "m": 6, "l": 12}
+
+
+def validate_logo(v: str) -> str:
+    """'di:<slug>' (Dashboard Icons, optionally .png/.webp) or an https:// image URL. Nothing else."""
+    v = v.strip()
+    if DI_LOGO.match(v) and len(v) <= 80:
+        return v
+    if len(v) > 512 or any(c.isspace() or c in "\"'<>\\`" for c in v):
+        raise ValueError("logo must be di:<slug> or an https:// URL")
+    u = urlparse(v)
+    if u.scheme != "https" or not u.netloc or u.username or u.password:
+        raise ValueError("logo must be di:<slug> or an https:// URL")
+    return v
 
 
 class Widget(BaseModel):
@@ -22,6 +45,56 @@ class Widget(BaseModel):
     component_id: int | None = None
     preset: str | None = Field(None, max_length=64)
     public_title: str | None = Field(None, max_length=128)  # shown on public pages instead of the internal title
+    # --- optional, all default to today's look
+    probe_id: int | None = None  # graph widgets of a probe preset point here instead of device_id/component_id
+    colors: list[str] | None = Field(None, max_length=6)  # one per series, in order
+    labels: dict[str, str] | None = None  # series key -> short label, e.g. {"in": "Rx"}
+    logo: str | None = None  # "di:google" or https://...
+    cols: Literal[3, 4, 6, 8, 12] | None = None  # width on a 12-column grid; missing -> from size
+    height: Literal["compact", "normal", "tall"] | None = None
+    compact: bool | None = None  # logo + title + current value + small chart only
+
+    @field_validator("colors")
+    @classmethod
+    def _colors(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return None
+        for c in v:
+            if not isinstance(c, str) or not HEX.match(c):
+                raise ValueError(f"invalid colour {c!r}: use #RGB or #RRGGBB")
+        return [c.upper() for c in v] or None
+
+    @field_validator("labels")
+    @classmethod
+    def _labels(cls, v: dict[str, str] | None) -> dict[str, str] | None:
+        if v is None:
+            return None
+        if len(v) > 12:
+            raise ValueError("at most 12 labels")
+        out = {}
+        for k, label in v.items():
+            if not LABEL_KEY.match(k):
+                raise ValueError(f"invalid series key {k!r}")
+            label = " ".join(str(label).split())
+            if len(label) > 16:
+                raise ValueError(f"label for {k!r} is longer than 16 characters")
+            if label:
+                out[k] = label
+        return out or None
+
+    @field_validator("logo")
+    @classmethod
+    def _logo(cls, v: str | None) -> str | None:
+        return validate_logo(v) if v and v.strip() else None
+
+
+def dump_widget(w: Widget) -> dict:
+    """Stored form: the original keys always, the optional ones only when set."""
+    d = w.model_dump()
+    for k in OPTIONAL:
+        if d.get(k) in (None, False, [], {}):
+            d.pop(k, None)
+    return d
 
 
 class DashboardIn(BaseModel):
@@ -77,7 +150,7 @@ async def list_dashboards(user: CurrentUser, session: Session):
 @router.post("")
 async def create_dashboard(body: DashboardIn, user: CurrentUser, session: Session):
     d = Dashboard(name=body.name.strip(), description=body.description, shared=body.shared, public=False,
-                  widgets=[w.model_dump() for w in body.widgets], owner_id=user.id, owner=user.username)
+                  widgets=[dump_widget(w) for w in body.widgets], owner_id=user.id, owner=user.username)
     _apply_public(d, body, user)
     session.add(d)
     await session.commit()
@@ -93,7 +166,7 @@ async def get_dashboard(dashboard_id: int, user: CurrentUser, session: Session):
 async def update_dashboard(dashboard_id: int, body: DashboardIn, user: CurrentUser, session: Session):
     d = await _get(session, user, dashboard_id, edit=True)
     d.name, d.description, d.shared = body.name.strip(), body.description, body.shared
-    d.widgets = [w.model_dump() for w in body.widgets]
+    d.widgets = [dump_widget(w) for w in body.widgets]
     _apply_public(d, body, user)
     d.updated_at = datetime.now(UTC)
     await session.commit()

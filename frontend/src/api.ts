@@ -73,6 +73,33 @@ export interface Widget {
   id: string; type: WidgetType; title: string; size: "s" | "m" | "l";
   device_id: number | null; component_id: number | null; preset: string | null;
   public_title?: string | null;
+  // optional appearance (omitted = today's look)
+  probe_id?: number | null;
+  colors?: string[] | null;
+  labels?: Record<string, string> | null;
+  logo?: string | null; // "di:<slug>" (Dashboard Icons) or https://
+  cols?: WidgetCols | null;
+  height?: "compact" | "normal" | "tall" | null;
+  compact?: boolean | null;
+}
+export type WidgetCols = 3 | 4 | 6 | 8 | 12;
+export const SIZE_COLS: Record<Widget["size"], WidgetCols> = { s: 4, m: 6, l: 12 };
+export const widgetCols = (w: Widget): WidgetCols => w.cols ?? SIZE_COLS[w.size] ?? 6;
+const DI_CDN = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons";
+export function logoSrc(logo: string | null | undefined): string | null {
+  if (!logo) return null;
+  if (logo.startsWith("di:")) {
+    const [slug, fmt = "svg"] = logo.slice(3).split(".");
+    return `${DI_CDN}/${fmt}/${slug}.${fmt}`;
+  }
+  return logo.startsWith("https://") ? logo : null;
+}
+
+export interface ProbeService { id: number; name: string; state: number; output: string | null; last_change: string | null; acknowledged: boolean }
+export interface Probe {
+  id: number; name: string; target: string; kind: "icmp"; interval_s: number; count: number; enabled: boolean;
+  created_at: string; last_run: string | null; last_error: string | null; device_id: number; group_ids: number[];
+  state: number; rtt_ms: number | null; loss_pct: number | null; services: ProbeService[]; spark: [string, number][];
 }
 export interface Dashboard {
   id: number; name: string; description: string | null; owner: string; owner_id: number | null;

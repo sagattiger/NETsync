@@ -7,8 +7,8 @@ import { Icon } from "./Icon";
 import { Modal, Segmented } from "./ui";
 
 /** Small button that adds a graph widget for (device, preset, component) to a dashboard. */
-export function AddToDashboard({ deviceId, preset, componentId = null, label = "Add to dashboard" }: {
-  deviceId: number; preset: string; componentId?: number | null; label?: string;
+export function AddToDashboard({ deviceId = null, probeId = null, preset, componentId = null, label = "Add to dashboard" }: {
+  deviceId?: number | null; probeId?: number | null; preset: string; componentId?: number | null; label?: string;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -16,12 +16,14 @@ export function AddToDashboard({ deviceId, preset, componentId = null, label = "
       <button className="btn btn-ghost px-2 py-1 text-muted hover:text-strong" onClick={(e) => { e.stopPropagation(); setOpen(true); }}>
         <Icon name="grid" className="w-3.5 h-3.5" /> {label}
       </button>
-      {open && <Picker deviceId={deviceId} preset={preset} componentId={componentId} onClose={() => setOpen(false)} />}
+      {open && <Picker deviceId={deviceId} probeId={probeId} preset={preset} componentId={componentId} onClose={() => setOpen(false)} />}
     </>
   );
 }
 
-function Picker({ deviceId, preset, componentId, onClose }: { deviceId: number; preset: string; componentId: number | null; onClose: () => void }) {
+function Picker({ deviceId, probeId, preset, componentId, onClose }: {
+  deviceId: number | null; probeId: number | null; preset: string; componentId: number | null; onClose: () => void;
+}) {
   const qc = useQueryClient();
   const { data = [] } = useQuery({ queryKey: ["dashboards"], queryFn: () => api<Dashboard[]>("/dashboards") });
   const editable = data.filter((d) => d.can_edit);
@@ -35,7 +37,10 @@ function Picker({ deviceId, preset, componentId, onClose }: { deviceId: number; 
 
   async function add() {
     setError("");
-    const widget: Widget = { id: newWidgetId(), type: "graph", title: "", size, device_id: deviceId, component_id: componentId, preset };
+    const widget: Widget = {
+      id: newWidgetId(), type: "graph", title: "", size, device_id: probeId ? null : deviceId, component_id: probeId ? null : componentId, preset,
+      ...(probeId ? { probe_id: probeId } : {}),
+    };
     try {
       let saved: Dashboard;
       if (chosen === "new") {

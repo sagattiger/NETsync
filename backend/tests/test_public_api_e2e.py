@@ -84,3 +84,54 @@ def test_full_token_is_only_returned_on_creation(admin, setup):
     token, _, _ = setup
     listed = next(t for t in admin.get("/tokens").json() if t["id"] == token["id"])
     assert "token" not in listed and listed["prefix"] == token["token"][:8]
+
+
+# --------------------------------------------------------------------------- probes and single widgets
+
+@pytest.fixture
+def probe(admin):
+    p = admin.post("/probes", json={"name": "e2e loopback", "target": "127.0.0.1", "interval_s": 30, "count": 2})
+    assert p.status_code == 200, p.text
+    p = p.json()
+    yield p
+    admin.delete(f"/probes/{p['id']}")
+
+
+def test_probe_validation_rejects_bad_targets(admin):
+    for bad in ("http://x", "a b", ";rm"):
+        assert admin.post("/probes", json={"name": "bad", "target": bad}).status_code == 422, bad
+
+
+def test_probe_metrics_stored_and_returned(admin, probe):
+    deadline = time.time() + 45
+    data = {}
+    while time.time() < deadline:
+        data = admin.get(f"/probes/{probe['id']}/metrics?range=1h").json()
+        if data.get("ping_avg"):
+            break
+        time.sleep(3)
+    assert data["ping_avg"] and data["ping_loss"], data
+    t, avg, mn, mx = data["ping_avg"][-1]
+    assert avg is not None and mn <= avg <= mx
+    got = admin.get(f"/probes/{probe['id']}").json()
+    assert got["rtt_ms"] is not None and {s["name"] for s in got["services"]} == {"Ping RTT", "Ping loss"}
+    # probes are not listed as SNMP devices
+    assert probe["device_id"] not in [d["id"] for d in admin.get("/devices").json()]
+
+
+def test_public_probe_widget_and_single_widget_endpoint(admin, setup, probe):
+    token, pub, priv = setup
+    widgets = [{"id": "g", "type": "graph", "size": "s", "preset": "probe_latency", "probe_id": probe["id"],
+                "title": "", "public_title": "Ping to loopback", "labels": {"avg": "Loop"}, "logo": "di:google",
+                "cols": 4, "compact": True}]
+    r = admin.put(f"/dashboards/{pub['id']}", json={"name": "e2e public", "widgets": widgets})
+    assert r.status_code == 200, r.text
+    with public(token["token"]) as c:
+        r = c.get(f"/public/dashboards/{pub['id']}/widgets/g?range=1h")
+        assert r.status_code == 200 and r.headers["cache-control"] == "public, max-age=30"
+        w = r.json()
+        assert w["source"] == "probe" and w["title"] == "Ping to loopback" and w["cols"] == 4 and w["compact"] is True
+        assert w["series"][0]["key"] == "avg" and w["series"][0]["name"] == "Loop" and "Loop" in w["last"]
+        assert w["logo"]["src"].startswith("https://cdn.jsdelivr.net/") and "127.0.0.1" not in r.text
+        assert c.get(f"/public/dashboards/{pub['id']}/widgets/nope").status_code == 404
+        assert c.get(f"/public/dashboards/{priv['id']}/widgets/g").status_code == 404

@@ -22,8 +22,11 @@ router = APIRouter(prefix="/devices", tags=["devices"])
 
 
 @router.get("", response_model=list[DeviceSummary])
-async def list_devices(user: CurrentUser, session: Session, q: str | None = None, group_id: int | None = None):
+async def list_devices(user: CurrentUser, session: Session, q: str | None = None, group_id: int | None = None,
+                       probes: bool = False):
     query = device_scope(select(Device).order_by(Device.hostname), user)
+    if not probes:  # probe virtual devices live on the Probes page
+        query = query.where(Device.device_type.is_distinct_from("probe"))
     if q:
         like = f"%{q}%"
         query = query.where(Device.hostname.ilike(like) | Device.ip.ilike(like) | Device.sys_name.ilike(like))

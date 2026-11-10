@@ -328,6 +328,28 @@ class ApiToken(Base):
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
+class Probe(Base):
+    """An active check of any IP/FQDN (not an SNMP device): ICMP today, tcp/http later.
+
+    Each probe owns a lightweight "virtual device" (device_type="probe", never SNMP polled) so its
+    metrics, Ping checks, thresholds, problems, alerts, group scoping and dashboards reuse the
+    regular device machinery unchanged. Deleting the probe deletes that device."""
+
+    __tablename__ = "probes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"), unique=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True)
+    target: Mapped[str] = mapped_column(String(255))
+    kind: Mapped[str] = mapped_column(String(8), default="icmp")  # icmp | tcp | http (later)
+    interval_s: Mapped[int] = mapped_column(Integer, default=60)
+    count: Mapped[int] = mapped_column(Integer, default=5)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = utcnow_col()
+    last_run: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+
+
 class Dashboard(Base):
     """A user-built page of widgets (graphs, device status, problem lists).
 

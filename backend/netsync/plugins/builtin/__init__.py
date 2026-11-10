@@ -1,3 +1,4 @@
+from netsync import probes
 from netsync.plugins.base import Plugin
 from netsync.plugins.builtin import ai, latency
 from netsync.plugins.builtin.host_resources import HostResourcesModule
@@ -30,5 +31,6 @@ BUILTIN_PLUGINS = [
         builtin=True,
     ),
     latency.plugin,
+    probes.plugin,
     ai.plugin,
 ]

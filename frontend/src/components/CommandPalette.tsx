@@ -50,7 +50,7 @@ function Palette({ initial, onClose }: { initial: string; onClose: () => void })
     const go = (path: string) => () => { nav(path); onClose(); };
     const pages: Item[] = [
       ["Overview", "/", "grid"], ["Dashboards", "/dashboards", "palette"], ["Problems", "/problems", "alert"],
-      ["Devices", "/devices", "server"], ["Syslog", "/syslog", "list"], ["Threshold rules", "/setup/rules", "sliders"],
+      ["Devices", "/devices", "server"], ["Probes", "/probes", "pulse"], ["Syslog", "/syslog", "list"], ["Threshold rules", "/setup/rules", "sliders"],
       ["Plugins & nodes", "/setup/plugins", "puzzle"], ["Profile & settings", "/profile", "user"], ["About", "/about", "info"],
       ...(me?.role === "admin" ? [["Notifications", "/setup/notifications", "bell"], ["Users & groups", "/setup/users", "users"],
         ["AI assistant settings", "/setup/plugins?configure=ai", "sparkles"], ["API tokens", "/setup/tokens", "lock"]] : []),

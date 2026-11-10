@@ -92,6 +92,7 @@ function Sidebar({ me, collapsed, onToggle, onNavigate, mobile }: {
     { to: "/dashboards", label: "Dashboards", icon: "palette" },
     { to: "/problems", label: "Problems", icon: "alert", badge: problems },
     { to: "/devices", label: "Devices", icon: "server" },
+    { to: "/probes", label: "Probes", icon: "pulse" },
     { to: "/syslog", label: "Syslog", icon: "list" },
   ];
   const setup: NavItem[] = [

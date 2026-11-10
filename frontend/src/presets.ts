@@ -14,6 +14,7 @@ export interface Preset {
   unit: Unit;
   metrics: MetricDef[];
   area: boolean;
+  source: "device" | "probe"; // probe presets point at widget.probe_id
   format: (v: number) => string;
 }
 

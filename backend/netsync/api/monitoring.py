@@ -32,7 +32,8 @@ router = APIRouter(tags=["monitoring"])
 @router.get("/overview")
 async def overview(user: CurrentUser, session: Session):
     devices = await session.execute(
-        device_scope(select(Device.status, func.count()).group_by(Device.status), user)
+        device_scope(select(Device.status, func.count())
+                     .where(Device.device_type.is_distinct_from("probe")).group_by(Device.status), user)
     )
     services = await session.execute(
         device_scope(select(Service.state, func.count()).group_by(Service.state), user, Service.device_id)

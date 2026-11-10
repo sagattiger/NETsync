@@ -22,6 +22,7 @@ class Preset:
     unit: str
     metrics: tuple[SeriesDef, ...] = field(default_factory=tuple)
     area: bool = True
+    source: str = "device"  # "device" (device_id/component_id) or "probe" (probe_id)
 
     def as_dict(self) -> dict:
         d = asdict(self)
@@ -70,6 +71,10 @@ PRESETS: tuple[Preset, ...] = (
     Preset("icmp", "ICMP", "Network stack", None, "rate",
            _s(("icmp_in_msgs", "in"), ("icmp_out_msgs", "out"), ("icmp_in_dest_unreachs", "unreachable in"),
               ("icmp_in_errors", "errors")), area=False),
+
+    # Probes (ping any IP/FQDN): widgets point at probe_id instead of device_id/component_id.
+    Preset("probe_latency", "Ping latency", "Probes", None, "ms", _s(("ping_avg", "avg")), area=False, source="probe"),
+    Preset("probe_loss", "Ping packet loss", "Probes", None, "pct", _s(("ping_loss", "loss")), source="probe"),
 )
 
 BY_ID: dict[str, Preset] = {p.id: p for p in PRESETS}
