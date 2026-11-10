@@ -96,10 +96,31 @@ export function logoSrc(logo: string | null | undefined): string | null {
 }
 
 export interface ProbeService { id: number; name: string; state: number; output: string | null; last_change: string | null; acknowledged: boolean }
+export type ProbeKind = "icmp" | "tcp" | "udp" | "dns" | "http" | "json" | "tls" | "push";
+export type Windows = { "24h": number | null; "7d": number | null; "30d": number | null; "1y": number | null };
+export interface CertInfo {
+  subject_cn: string | null; sans: string[]; issuer: string | null; issuer_org: string | null;
+  not_before: string; not_after: string; days_left: number; hostname_match: boolean | null;
+  chain_valid: boolean | null; tls_version: string | null; key_type: string; key_bits: number | null;
+  serial: string; self_signed: boolean;
+}
 export interface Probe {
-  id: number; name: string; target: string; kind: "icmp"; interval_s: number; count: number; enabled: boolean;
-  created_at: string; last_run: string | null; last_error: string | null; device_id: number; group_ids: number[];
-  state: number; rtt_ms: number | null; loss_pct: number | null; services: ProbeService[]; spark: [string, number][];
+  id: number; name: string; kind: ProbeKind; kind_label: string; target: string; port: number | null;
+  interval_s: number; timeout_s: number; retries: number; retry_interval_s: number | null; upside_down: boolean;
+  resend_every: number; count: number; enabled: boolean; tags: string[]; description: string | null;
+  config: Record<string, any>; secrets: Record<string, any>;
+  created_at: string; last_run: string | null; next_run: string | null; last_error: string | null;
+  last_state: number | null; last_message: string | null; last_response_ms: number | null; fail_count: number;
+  device_id: number; group_ids: number[]; state: number; rtt_ms: number | null; loss_pct: number | null;
+  cert: CertInfo | null; cert_days_left: number | null; uptime: Partial<Windows>; avg_ms: Partial<Windows>;
+  maintenance: boolean; has_push_token: boolean;
+  services: ProbeService[]; spark: [string, number][];
+}
+export interface Heartbeat { time: string; state: number; response_ms: number | null; message: string | null; maintenance: boolean }
+export interface ProbeTestResult {
+  up: boolean; effective_up: boolean; response_ms: number | null; state: string; message: string;
+  metrics: Record<string, number>; cert: CertInfo | null;
+  checks: { name: string; state: string | null; value: number | null; output: string }[];
 }
 export interface Dashboard {
   id: number; name: string; description: string | null; owner: string; owner_id: number | null;

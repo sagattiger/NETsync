@@ -340,14 +340,50 @@ class Probe(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     device_id: Mapped[int] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"), unique=True)
     name: Mapped[str] = mapped_column(String(64), unique=True)
-    target: Mapped[str] = mapped_column(String(255))
-    kind: Mapped[str] = mapped_column(String(8), default="icmp")  # icmp | tcp | http (later)
+    target: Mapped[str] = mapped_column(String(2048))  # host, IP, URL or DNS name depending on kind
+    kind: Mapped[str] = mapped_column(String(8), default="icmp")  # see netsync/probing/checkers
     interval_s: Mapped[int] = mapped_column(Integer, default=60)
-    count: Mapped[int] = mapped_column(Integer, default=5)
+    count: Mapped[int] = mapped_column(Integer, default=5)  # icmp: pings per round
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = utcnow_col()
     last_run: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
+
+    port: Mapped[int | None] = mapped_column(Integer)
+    config: Mapped[dict] = mapped_column(JSON, default=dict)  # kind specific, never secret
+    secrets_enc: Mapped[str | None] = mapped_column(Text)  # Fernet-encrypted JSON (netsync/probing/secrets.py)
+    timeout_s: Mapped[int] = mapped_column(Integer, default=10)
+    retries: Mapped[int] = mapped_column(Integer, default=1)  # consecutive failures before DOWN
+    retry_interval_s: Mapped[int | None] = mapped_column(Integer)  # while failing; None = interval_s
+    upside_down: Mapped[bool] = mapped_column(Boolean, default=False)
+    resend_every: Mapped[int] = mapped_column(Integer, default=0)  # re-notify every N checks while down
+    tags: Mapped[list] = mapped_column(JSON, default=list)
+    description: Mapped[str | None] = mapped_column(Text)
+    # runtime state
+    next_run: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    fail_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_state: Mapped[int | None] = mapped_column(SmallInteger)
+    last_message: Mapped[str | None] = mapped_column(String(200))
+    last_response_ms: Mapped[float | None] = mapped_column(Float)
+    cert: Mapped[dict | None] = mapped_column(JSON)  # latest certificate info (https/tls)
+    push_token_hash: Mapped[str | None] = mapped_column(String(64))
+    last_push_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ProbeBeat(Base):
+    """One row per probe run (hypertable): drives the heartbeat bar and uptime %.
+
+    state: OK/WARN = up, CRIT = down, UNKNOWN = pending (failing, retries not exhausted yet).
+    Runs during a downtime have maintenance=True and are left out of uptime."""
+
+    __tablename__ = "probe_beats"
+
+    time: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    probe_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    state: Mapped[int] = mapped_column(SmallInteger)
+    response_ms: Mapped[float | None] = mapped_column(Float)
+    message: Mapped[str | None] = mapped_column(String(200))
+    maintenance: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class Dashboard(Base):

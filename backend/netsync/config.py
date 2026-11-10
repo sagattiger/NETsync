@@ -36,6 +36,9 @@ class Settings(BaseSettings):
 
     public_url: str = "http://localhost:8080"
 
+    # Probe heartbeats (one row per probe run) are kept this long.
+    probe_beats_retention_days: int = 90
+
 
 @lru_cache
 def get_settings() -> Settings:

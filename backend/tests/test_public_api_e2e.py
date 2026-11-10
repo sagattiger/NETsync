@@ -114,7 +114,7 @@ def test_probe_metrics_stored_and_returned(admin, probe):
     t, avg, mn, mx = data["ping_avg"][-1]
     assert avg is not None and mn <= avg <= mx
     got = admin.get(f"/probes/{probe['id']}").json()
-    assert got["rtt_ms"] is not None and {s["name"] for s in got["services"]} == {"Ping RTT", "Ping loss"}
+    assert got["rtt_ms"] is not None and {"Ping RTT", "Ping loss", "Status"} <= {s["name"] for s in got["services"]}
     # probes are not listed as SNMP devices
     assert probe["device_id"] not in [d["id"] for d in admin.get("/devices").json()]
 

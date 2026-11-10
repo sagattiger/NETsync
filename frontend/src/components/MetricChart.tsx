@@ -41,7 +41,7 @@ export function MetricChart({
   band?: { min: string; max: string; label?: string };
 }) {
   const { theme } = useTheme();
-  const names = [...metrics.map((m) => m.name), ...(band ? [band.min, band.max] : [])];
+  const names = [...new Set([...metrics.map((m) => m.name), ...(band ? [band.min, band.max] : [])])];
   const { data, isLoading } = useQuery(seriesQuery({ deviceId, probeId, componentId, names, range }));
   const fmt = format ?? ((v: number) => `${Number.isInteger(v) ? v : v.toFixed(1)}${unit}`);
   const empty = !isLoading && metrics.every((m) => !(data?.[m.name]?.length));

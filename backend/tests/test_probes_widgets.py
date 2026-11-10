@@ -43,7 +43,7 @@ def test_probe_in_validates_target_interval_and_count():
     assert ProbeIn(name=" Google ", target="google.com").name == "Google"
     p = ProbeIn(name="g", target="8.8.8.8")
     assert (p.interval_s, p.count, p.kind, p.enabled) == (60, 5, "icmp", True)
-    for bad in ({"target": "http://x"}, {"interval_s": 10}, {"interval_s": 301}, {"count": 0}, {"kind": "smtp"}):
+    for bad in ({"target": "http://x"}, {"interval_s": 10}, {"interval_s": 3601}, {"count": 0}, {"kind": "smtp"}):
         with pytest.raises(ValidationError):
             ProbeIn(**{"name": "g", "target": "8.8.8.8", **bad})
 
