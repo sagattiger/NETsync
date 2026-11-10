@@ -78,7 +78,7 @@ export default function Dashboards() {
         actions={<button className="btn btn-primary" onClick={() => setCreating(true)}><Icon name="plus" className="w-3.5 h-3.5" /> New dashboard</button>} />
       <Page>
         {isLoading ? null : !data.length ? (
-          <div className="card"><Empty>No dashboards yet. Create one and add graphs of interfaces, CPU, latency or TCP/UDP.</Empty></div>
+          <div className="card"><Empty art="empty-dashboards">No dashboards yet. Create one and add graphs of interfaces, CPU, latency or TCP/UDP.</Empty></div>
         ) : (
           <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
             {data.map((d) => (

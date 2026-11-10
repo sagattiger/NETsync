@@ -57,7 +57,7 @@ export default function Devices() {
       />
       <Page>
         <Card>
-          {isLoading ? <Empty>Loading…</Empty> : !data.length ? <Empty>No devices yet. Add your first device.</Empty> : (
+          {isLoading ? <Empty>Loading…</Empty> : !data.length ? <Empty art="empty-devices">No devices yet. Add your first device.</Empty> : (
             <table className="tbl">
               <thead>
                 <tr>

@@ -323,7 +323,7 @@ export default function Overview() {
         <Card title={`Unhandled problems · ${open.length}`} actions={
           <Link to="/problems" className="text-xs font-medium text-fg2 hover:text-strong flex items-center gap-1">All problems <Icon name="chevron" className="w-3 h-3" /></Link>
         }>
-          {problems.length ? <ServiceTable services={problems} showHost problems /> : <Empty>Everything is OK.</Empty>}
+          {problems.length ? <ServiceTable services={problems} showHost problems /> : <Empty art="empty-problems">Everything is OK.</Empty>}
         </Card>
 
         <div className="pt-4">

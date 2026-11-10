@@ -7,6 +7,7 @@ import { useAI } from "./AskAI";
 import { Avatar } from "./Avatar";
 import { CommandPaletteProvider, useCommandPalette } from "./CommandPalette";
 import { Icon } from "./Icon";
+import { LogoIcon } from "./Brand";
 
 interface Overview { devices: Record<string, number>; services: Record<string, number>; unhandled: number }
 
@@ -117,7 +118,7 @@ function Sidebar({ me, collapsed, onToggle, onNavigate, mobile }: {
       <div className={`flex items-center h-16 shrink-0 ${collapsed ? "justify-center" : "px-4 justify-between"}`}>
         {collapsed ? (
           <button onClick={onToggle} title="Expand sidebar" className="group relative w-9 h-9">
-            <span className="absolute inset-0 rounded-xl bg-accent text-white font-bold flex items-center justify-center group-hover:opacity-0 transition-opacity">N</span>
+            <span className="absolute inset-0 flex items-center justify-center group-hover:opacity-0 transition-opacity"><LogoIcon className="w-9 h-9" /></span>
             <span className="absolute inset-0 rounded-xl bg-active text-strong flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
               <Icon name="sidebar" className="w-[18px] h-[18px]" />
             </span>
@@ -125,7 +126,7 @@ function Sidebar({ me, collapsed, onToggle, onNavigate, mobile }: {
         ) : (
           <>
             <Link to="/" onClick={onNavigate} className="flex items-center gap-2.5 min-w-0">
-              <span className="w-8 h-8 rounded-xl bg-accent text-white font-bold flex items-center justify-center shrink-0">N</span>
+              <LogoIcon className="w-8 h-8" />
               <span className="text-lg font-semibold text-strong tracking-tight">NETsync</span>
             </Link>
             {onToggle && (
@@ -267,7 +268,7 @@ function Shell() {
             <Icon name="menu" className="w-5 h-5" />
           </button>
           <Link to="/" className="lg:hidden flex items-center gap-2">
-            <span className="w-7 h-7 rounded-lg bg-accent text-white font-bold flex items-center justify-center text-sm">N</span>
+            <LogoIcon className="w-7 h-7" />
           </Link>
           <div className="flex-1 min-w-0 flex justify-center"><Notice me={me} /></div>
           <div className="flex items-center gap-1.5 sm:gap-2">

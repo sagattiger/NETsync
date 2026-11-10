@@ -50,7 +50,7 @@ export default function ServiceTable({ services, showHost, canAck = true, proble
     : services;
   const cols = 4 + (showHost ? 1 : 0) + (problems ? 2 : 2) + (canAck ? 1 : 0);
 
-  if (!rows.length) return <Empty>{problems ? "No problems" : "No services"}</Empty>;
+  if (!rows.length) return <Empty art={problems ? "empty-problems" : undefined}>{problems ? "No problems" : "No services"}</Empty>;
   return (
     <>
       <table className="tbl">

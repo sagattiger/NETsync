@@ -85,7 +85,7 @@ export default function Probes() {
           )}
         </div>
         <Card>
-          {isLoading ? <Empty>Loading…</Empty> : !all.length ? <Empty>No probes yet. Watch a website, an API, a port, a DNS record or a certificate.</Empty>
+          {isLoading ? <Empty>Loading…</Empty> : !all.length ? <Empty art="empty-probes">No probes yet. Watch a website, an API, a port, a DNS record or a certificate.</Empty>
             : !data.length ? <Empty>No probes match these filters.</Empty> : (
             <table className="tbl">
               <thead><tr>

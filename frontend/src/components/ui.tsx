@@ -1,6 +1,7 @@
 import { ReactNode, useEffect } from "react";
 import { STATES } from "../api";
 import { Icon } from "./Icon";
+import { Art, type ArtName } from "./Brand";
 
 const STATE_TONE = ["text-ok bg-ok/10", "text-warn bg-warn/15", "text-crit bg-crit/10", "text-unknown bg-unknown/15"];
 const STATE_TEXT = ["text-ok", "text-warn", "text-crit", "text-unknown"];
@@ -46,8 +47,13 @@ export function Tile({ label, value, tone, hint }: { label: string; value: React
   );
 }
 
-export function Empty({ children }: { children: ReactNode }) {
-  return <div className="px-4 py-10 text-center text-muted text-sm">{children}</div>;
+export function Empty({ children, art }: { children: ReactNode; art?: ArtName }) {
+  return (
+    <div className="px-4 py-10 text-center text-muted text-sm">
+      {art && <Art name={art} className="block mx-auto mb-3 w-full max-w-[16rem] h-auto" />}
+      {children}
+    </div>
+  );
 }
 
 export function Bar({ pct }: { pct: number | null | undefined }) {

@@ -4,6 +4,7 @@ import { api, fmtAgo, fmtBytes, fmtDateTime, fmtDuration } from "../api";
 import { Icon } from "../components/Icon";
 import { Page, PageHeader } from "../components/Layout";
 import { Card, Tile } from "../components/ui";
+import { LogoIcon } from "../components/Brand";
 
 interface About {
   product: string; version: string;
@@ -46,7 +47,7 @@ export default function AboutPage() {
       <Page>
         <div className="card p-6 flex flex-col md:flex-row md:items-center gap-6">
           <div className="flex items-center gap-4 flex-1">
-            <span className="w-14 h-14 rounded-2xl bg-accent text-white font-bold flex items-center justify-center text-2xl">N</span>
+            <LogoIcon className="w-14 h-14" />
             <div>
               <div className="text-2xl font-semibold text-strong tracking-tight">{a.product}</div>
               <div className="text-sm text-muted">Version {a.version} · SNMP network monitoring</div>

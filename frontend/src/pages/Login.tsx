@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api, auth, Me } from "../api";
 import { Icon } from "../components/Icon";
 import { useTheme } from "../theme";
+import { Art, LogoIcon } from "../components/Brand";
 
 export default function Login() {
   const nav = useNavigate();
@@ -29,13 +30,13 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-full flex items-center justify-center px-4 py-10 bg-bg">
+    <div className="min-h-full flex items-center justify-center gap-10 xl:gap-24 px-4 py-10 bg-bg">
       <button onClick={toggle} className="fixed top-4 right-4 p-2 rounded-lg text-fg2 hover:bg-inset" aria-label="Toggle theme">
         <Icon name={theme === "dark" ? "sun" : "moon"} className="w-5 h-5" />
       </button>
       <form onSubmit={submit} className="card w-full max-w-sm p-7 space-y-5">
         <div className="flex items-center gap-3">
-          <span className="w-10 h-10 rounded-xl bg-accent text-white font-bold flex items-center justify-center text-lg">N</span>
+          <LogoIcon className="w-10 h-10" />
           <div>
             <div className="text-lg font-semibold text-strong tracking-tight">NETsync</div>
             <div className="text-xs text-muted">Network monitoring</div>
@@ -52,6 +53,7 @@ export default function Login() {
         {error && <div className="text-crit text-xs">{error}</div>}
         <button className="btn btn-primary w-full py-2.5 text-sm" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
       </form>
+      <Art name="signin" className="hidden lg:block w-[min(36rem,42vw)] h-auto" />
     </div>
   );
 }
