@@ -3,14 +3,15 @@ import { STATES } from "../api";
 import { Icon } from "./Icon";
 import { Art, type ArtName } from "./Brand";
 
-const STATE_TONE = ["text-ok bg-ok/10", "text-warn bg-warn/15", "text-crit bg-crit/10", "text-unknown bg-unknown/15"];
+const STATE_PILL = ["pill-ok", "pill-warn", "pill-crit", "pill-unknown"];
 const STATE_TEXT = ["text-ok", "text-warn", "text-crit", "text-unknown"];
 const STATE_BG = ["bg-ok", "bg-warn", "bg-crit", "bg-unknown"];
 
+/** Rounded pill: 12 % tint, 40 % border, dot + label (the label keeps colour from being the only signal). */
 export function StateBadge({ state, small, label }: { state: number; small?: boolean; label?: string }) {
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full font-semibold tracking-wide whitespace-nowrap ${STATE_TONE[state] ?? "text-muted bg-inset"} ${small ? "text-xxs px-2 py-0.5" : "text-xs px-2.5 py-1"}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${STATE_BG[state] ?? "bg-muted"}`} />
+    <span className={`pill ${STATE_PILL[state] ?? "text-muted bg-inset border-line"} ${small ? "text-xxs px-2 py-0.5" : "text-xs px-2.5 py-1"}`}>
+      <StateDot state={state} className={small ? "!w-1.5 !h-1.5" : ""} />
       {label ?? STATES[state] ?? "PEND"}
     </span>
   );
@@ -18,9 +19,10 @@ export function StateBadge({ state, small, label }: { state: number; small?: boo
 
 export const stateText = (state: number) => STATE_TEXT[state] ?? "text-muted";
 export const stateBg = (state: number) => STATE_BG[state] ?? "bg-muted";
+export const statePill = (state: number) => STATE_PILL[state] ?? "text-muted bg-inset border-line";
 
 export function StateDot({ state, className = "" }: { state: number; className?: string }) {
-  return <span className={`inline-block w-2 h-2 rounded-full ${stateBg(state)} ${className}`} />;
+  return <span aria-hidden className={`dot glow ${stateBg(state)} ${stateText(state)} ${className}`} />;
 }
 
 export function Card({ title, actions, children, className = "", flush = true }: { title?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string; flush?: boolean }) {
@@ -40,7 +42,7 @@ export function Card({ title, actions, children, className = "", flush = true }:
 export function Tile({ label, value, tone, hint }: { label: string; value: ReactNode; tone?: number; hint?: ReactNode }) {
   return (
     <div className="card px-4 py-3.5">
-      <div className="text-xs text-muted">{label}</div>
+      <div className="text-xxs font-semibold uppercase tracking-[0.08em] text-muted">{label}</div>
       <div className={`text-2xl font-semibold mt-1 tabular-nums ${tone !== undefined ? stateText(tone) : "text-strong"}`}>{value}</div>
       {hint && <div className="text-xxs text-muted mt-0.5">{hint}</div>}
     </div>
@@ -58,7 +60,7 @@ export function Empty({ children, art }: { children: ReactNode; art?: ArtName })
 
 export function Bar({ pct }: { pct: number | null | undefined }) {
   const p = Math.max(0, Math.min(100, pct ?? 0));
-  const color = p >= 90 ? "bg-crit" : p >= 80 ? "bg-warn" : "bg-fg/70";
+  const color = p >= 90 ? "bg-crit" : p >= 80 ? "bg-warn" : "bg-gradient-to-r from-ns-orange to-ns-amber";
   return (
     <div className="flex items-center gap-2.5 min-w-[9rem]">
       <div className="h-1.5 flex-1 max-w-[8rem] bg-chip rounded-full overflow-hidden">

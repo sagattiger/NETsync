@@ -33,6 +33,9 @@ export default {
         warn: v("warn"),
         crit: v("crit"),
         unknown: v("unknown"),
+        // UI kit palette ("ns-orange", "ns-teal"…): charts, gauges and accents
+        ...Object.fromEntries(["bg", "card", "line", "track", "text", "muted", "pink", "orange", "purple", "amber", "teal", "red", "green", "grey"]
+          .map((n) => [`ns-${n}`, v(`ns-${n}`)])),
       },
       fontSize: { xxs: ["0.6875rem", "1rem"] },
       fontFamily: { sans: ["Inter", "Segoe UI", "Roboto", "system-ui", "sans-serif"] },

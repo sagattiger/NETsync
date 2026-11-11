@@ -28,32 +28,35 @@ export const fmtMs = (v: number | null | undefined) => (v == null ? "–" : v < 
 export const fmtLoss = (v: number | null | undefined) => (v == null ? "–" : `${v.toFixed(0)}%`);
 export const fmtPct = (v: number | null | undefined) => (v == null ? "–" : v >= 99.995 ? "100%" : `${v.toFixed(v >= 99 ? 2 : 1)}%`);
 export const uptimeTone = (v: number | null | undefined) => (v == null ? "text-muted" : v >= 99.9 ? "text-ok" : v >= 98 ? "text-warn" : "text-crit");
-export const daysTone = (d: number | null | undefined) => (d == null ? "text-muted" : d < 7 ? "text-crit" : d < 21 ? "text-warn" : "text-fg2");
+export const daysTone = (d: number | null | undefined) => (d == null ? "text-muted" : d < 7 ? "text-crit" : d < 14 ? "text-warn" : "text-fg2");
 
-const BEAT_BG = ["bg-ok", "bg-warn", "bg-crit", "bg-unknown"];
+const BEAT_BG = ["bg-ok/90", "bg-warn", "bg-crit", "bg-ns-grey/60"];
 const BEAT_LABEL = ["Up", "Up (warning)", "Down", "Pending"];
 
-/** Uptime-Kuma style row of the last beats, newest on the right. */
+/** Uptime-Kuma style row of the last beats, newest on the right: rounded pills (green / amber / red / grey). */
 export function HeartbeatBar({ beats, max = 100, height = "h-7" }: { beats: Heartbeat[]; max?: number; height?: string }) {
   const shown = beats.slice(-max);
   const pad = Math.max(0, max - shown.length);
   return (
-    <div className={`flex items-end gap-[2px] ${height}`}>
-      {Array.from({ length: pad }, (_, i) => <span key={`p${i}`} className="flex-1 min-w-[2px] h-full rounded-sm bg-chip" />)}
+    <div className={`flex items-end justify-between gap-[3px] ${height}`} role="img"
+      aria-label={`Last ${shown.length} checks: ${shown.filter((b) => b.state === 2).length} down, ${shown.filter((b) => b.state === 1).length} warning`}>
+      {Array.from({ length: pad }, (_, i) => <span key={`p${i}`} className="flex-1 min-w-[2px] max-w-[5px] h-full rounded-full bg-chip" />)}
       {shown.map((b) => (
-        <span key={b.time} className={`flex-1 min-w-[2px] h-full rounded-sm ${b.maintenance ? "bg-accent/50" : BEAT_BG[b.state] ?? "bg-chip"} hover:opacity-70`}
-          title={`${fmtDateTime(b.time)} · ${b.maintenance ? "Maintenance" : BEAT_LABEL[b.state] ?? "?"}${b.response_ms != null ? ` · ${fmtMs(b.response_ms)}` : ""}${b.message ? `\n${b.message}` : ""}`} />
+        <span key={b.time} className={`flex-1 min-w-[2px] max-w-[5px] h-full rounded-full ${b.maintenance ? "bg-accent/50" : BEAT_BG[b.state] ?? "bg-chip"} hover:opacity-70`}
+          title={`${fmtDateTime(b.time)} · ${b.maintenance ? "Maintenance" : BEAT_LABEL[b.state] ?? "?"}${b.response_ms != null ? ` · ${fmtMs(b.response_ms)}` : ""}${b.message ? `
+${b.message}` : ""}`} />
       ))}
     </div>
   );
 }
 
 export function StatusPill({ enabled, maintenance, state }: { enabled: boolean; maintenance?: boolean; state: number }) {
-  if (!enabled) return <span className="text-xxs font-semibold uppercase px-2 py-0.5 rounded-full bg-chip text-muted">paused</span>;
-  if (maintenance) return <span className="text-xxs font-semibold uppercase px-2 py-0.5 rounded-full bg-accent/15 text-accent">maintenance</span>;
-  const tone = ["text-ok bg-ok/10", "text-warn bg-warn/15", "text-crit bg-crit/10", "text-unknown bg-unknown/15"][state] ?? "bg-chip text-muted";
+  const cls = "pill text-xxs px-2 py-0.5";
+  if (!enabled) return <span className={`${cls} uppercase bg-chip text-muted border-line`}>paused</span>;
+  if (maintenance) return <span className={`${cls} uppercase bg-accent/[.12] border-accent/40 text-accent`}>maintenance</span>;
+  const tone = ["pill-ok", "pill-warn", "pill-crit", "pill-unknown"][state] ?? "bg-chip text-muted border-line";
   const label = ["UP", "WARN", "DOWN", "PENDING"][state] ?? "?";
-  return <span className={`text-xxs font-semibold px-2 py-0.5 rounded-full ${tone}`}>{label}</span>;
+  return <span className={`${cls} ${tone}`}><span aria-hidden className="dot glow !w-1.5 !h-1.5 bg-current" />{label}</span>;
 }
 
 export function Sparkline({ points, width = 120, height = 28 }: { points: [string, number][]; width?: number; height?: number }) {
@@ -62,8 +65,8 @@ export function Sparkline({ points, width = 120, height = 28 }: { points: [strin
   const min = Math.min(...vs), max = Math.max(...vs), span = max - min || 1;
   const d = points.map(([, v], i) => `${(i / (points.length - 1)) * width},${height - 2 - ((v - min) / span) * (height - 4)}`).join(" ");
   return (
-    <svg width={width} height={height} className="text-accent overflow-visible" aria-hidden>
-      <polyline points={d} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+    <svg width={width} height={height} className="text-accent overflow-visible glow-soft" aria-hidden>
+      <polyline points={d} fill="none" stroke="currentColor" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   );
 }
