@@ -2,7 +2,8 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import ReactECharts from "echarts-for-react";
 import { api, Series } from "../api";
-import { token, useTheme } from "../theme";
+import { useTheme } from "../theme";
+import { chartThemeName, ChartStyle, lineSeries, rangeSeries, seriesPalette, timeBase, withAlpha } from "../lib/chartTheme";
 
 export interface MetricDef { name: string; label?: string; scale?: number }
 
@@ -29,7 +30,7 @@ export function seriesQuery({ deviceId, probeId, componentId = 0, names, range }
 
 export function MetricChart({
   deviceId, probeId, componentId = 0, metrics, range, unit = "", height = 200, format, area = true,
-  colors, compact = false, band,
+  colors, compact = false, band, style,
 }: {
   deviceId?: number; probeId?: number; componentId?: number; metrics: MetricDef[]; range: string;
   unit?: string; height?: number; format?: (v: number) => string; area?: boolean;
@@ -39,6 +40,8 @@ export function MetricChart({
   compact?: boolean;
   /** draw a shaded band between two extra series (e.g. ping_min..ping_max) */
   band?: { min: string; max: string; label?: string };
+  /** area (glow fill) | line | spike (sharp, no fill) | range (min–max bars + average); default from `area` */
+  style?: ChartStyle | null;
 }) {
   const { theme } = useTheme();
   const names = [...new Set([...metrics.map((m) => m.name), ...(band ? [band.min, band.max] : [])])];
@@ -46,74 +49,59 @@ export function MetricChart({
   const fmt = format ?? ((v: number) => `${Number.isInteger(v) ? v : v.toFixed(1)}${unit}`);
   const empty = !isLoading && metrics.every((m) => !(data?.[m.name]?.length));
   const colorKey = (colors ?? []).join(",");
+  const look: ChartStyle = style ?? (area ? "area" : "line");
 
   const option = useMemo(() => {
-    // accent first, then neutral and two supporting hues; per-widget colours override in order
-    const palette = [token("accent"), token("fg2"), "#5b8def", "#f5a524", "#3dd68c", "#a78bfa"]
-      .map((c, i) => (colors?.[i] ? hexColor(colors[i]) : c));
-    const lines = metrics.map((m, i) => ({
-      name: m.label ?? m.name,
-      type: "line",
-      showSymbol: false,
-      symbolSize: 4,
-      connectNulls: false,
-      lineStyle: { width: compact ? 1.5 : 1.75, color: palette[i % palette.length] },
-      itemStyle: { color: palette[i % palette.length] },
-      areaStyle: area && i === 0 ? { opacity: theme === "dark" ? 0.14 : 0.1 } : undefined,
-      data: (data?.[m.name] ?? []).map(([t, avg]) => [t, avg * (m.scale ?? 1)]),
-      z: 3,
-    }));
-    const bandSeries = band && data ? (() => {
-      const mins = data[band.min] ?? [];
-      const maxByT = new Map((data[band.max] ?? []).map(([t, , , mx]) => [t, mx]));
-      const lower = mins.map(([t, , mn]) => [t, mn]);
-      const width = mins.map(([t, , mn]) => [t, maxByT.has(t) ? Math.max(0, (maxByT.get(t) as number) - mn) : null]);
-      const tint = palette[0];
-      return [
-        { name: "_bandlow", type: "line", stack: "band", data: lower, showSymbol: false, lineStyle: { opacity: 0 },
-          tooltip: { show: false }, silent: true, z: 1 },
-        { name: band.label ?? "min–max", type: "line", stack: "band", data: width, showSymbol: false, lineStyle: { opacity: 0 },
-          areaStyle: { color: tint, opacity: theme === "dark" ? 0.18 : 0.14 }, itemStyle: { color: tint }, silent: true, z: 1,
-          tooltip: { show: false } },
-      ];
-    })() : [];
-    return {
-      backgroundColor: "transparent",
-      color: palette,
-      animationDuration: 300,
-      grid: compact ? { left: 0, right: 0, top: 4, bottom: 0, containLabel: false } : { left: 8, right: 12, top: 30, bottom: 4, containLabel: true },
-      legend: compact ? { show: false } : {
-        top: 0, right: 0, icon: "roundRect", itemWidth: 10, itemHeight: 3, textStyle: { color: token("muted"), fontSize: 11 },
-        data: [...lines.map((l) => l.name), ...(band ? [band.label ?? "min–max"] : [])],
-      },
-      tooltip: {
-        trigger: "axis",
-        backgroundColor: token("surface"),
-        borderColor: token("edge"),
-        textStyle: { color: token("fg"), fontSize: 12 },
-        axisPointer: { lineStyle: { color: token("edge") } },
-        valueFormatter: (v: number) => (v == null ? "-" : fmt(v)),
-      },
-      xAxis: {
-        type: "time",
-        show: !compact,
-        axisLine: { lineStyle: { color: token("line") } },
-        axisTick: { show: false },
-        axisLabel: { color: token("muted"), fontSize: 10, hideOverlap: true },
-        splitLine: { show: false },
-      },
-      yAxis: {
-        type: "value",
-        show: !compact,
-        scale: compact,
-        splitLine: { lineStyle: { color: token("line", 0.6) } },
-        axisLabel: { color: token("muted"), fontSize: 10, formatter: (v: number) => fmt(v) },
-      },
-      series: [...bandSeries, ...lines],
-    };
-    // theme is a dependency so token() is re-read after switching
+    const palette = seriesPalette(colors?.map((c) => (c ? hexColor(c) : c)));
+    const legend: string[] = [];
+    let series: Record<string, unknown>[];
+    if (look === "range") {
+      // one metric as min–max bars (from its own bucket min/max, or the band series) plus the average line
+      const m = metrics[0];
+      const scale = m.scale ?? 1;
+      const pts = data?.[m.name] ?? [];
+      const mins = band ? new Map((data?.[band.min] ?? []).map(([t, , mn]) => [t, mn])) : null;
+      const maxs = band ? new Map((data?.[band.max] ?? []).map(([t, , , mx]) => [t, mx])) : null;
+      const rows = pts.map(([t, avg, mn, mx]) => {
+        const lo = mins?.get(t) ?? mn, hi = maxs?.get(t) ?? mx;
+        return [t, avg == null ? null : avg * scale, lo == null ? null : lo * scale, hi == null ? null : hi * scale] as [string, number | null, number | null, number | null];
+      });
+      const name = m.label ?? m.name;
+      legend.push(name);
+      series = rangeSeries({ name, data: rows, colors: colors?.length ? palette.slice(0, 3) : undefined });
+    } else {
+      const lines = metrics.map((m, i) => lineSeries({
+        name: m.label ?? m.name,
+        color: palette[i % palette.length],
+        data: (data?.[m.name] ?? []).map(([t, avg]) => [t, avg == null ? null : avg * (m.scale ?? 1)]),
+        style: look,
+        compact,
+        // stacked fills turn to mud past three series: only the first three get the gradient
+        fill: i < 3,
+      }));
+      legend.push(...lines.map((l) => l.name as string));
+      const bandSeries = band && data && look !== "spike" ? (() => {
+        const mins = data[band.min] ?? [];
+        const maxByT = new Map((data[band.max] ?? []).map(([t, , , mx]) => [t, mx]));
+        const lower = mins.map(([t, , mn]) => [t, mn]);
+        const width = mins.map(([t, , mn]) => [t, maxByT.has(t) ? Math.max(0, (maxByT.get(t) as number) - mn) : null]);
+        const tint = palette[0];
+        const label = band.label ?? "min–max";
+        legend.push(label);
+        return [
+          { name: "_bandlow", type: "line", stack: "band", data: lower, showSymbol: false, lineStyle: { opacity: 0 },
+            tooltip: { show: false }, silent: true, z: 1 },
+          { name: label, type: "line", stack: "band", data: width, showSymbol: false, lineStyle: { opacity: 0 },
+            areaStyle: { color: withAlpha(tint, 0.14) }, itemStyle: { color: tint }, silent: true, z: 1,
+            tooltip: { show: false } },
+        ];
+      })() : [];
+      series = [...bandSeries, ...lines];
+    }
+    return { ...timeBase({ compact, fmt, legend }), color: palette, series };
+    // theme is a dependency so the tokens are re-read after switching
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, theme, area, unit, colorKey, compact, metrics.map((m) => m.label).join("|")]);
+  }, [data, theme, look, unit, colorKey, compact, metrics.map((m) => m.label).join("|")]);
 
   return (
     <div style={{ height }} className="relative">
@@ -122,7 +110,7 @@ export function MetricChart({
           {isLoading ? "Loading…" : "No data for this range yet"}
         </div>
       )}
-      <ReactECharts key={theme} option={option} style={{ height }} notMerge opts={{ renderer: "svg" }} />
+      <ReactECharts key={theme} option={option} theme={chartThemeName(theme)} style={{ height }} notMerge opts={{ renderer: "svg" }} />
     </div>
   );
 }
