@@ -163,6 +163,59 @@ Field notes:
 
   `beats` holds up to the last 100 checks, oldest first: `[ISO time, state, response ms or null]`. `OK`/`WARN` =
   up, `CRIT` = down, `UNKNOWN` = pending (failing, retries not used up yet). `range` doesn't apply to this widget.
+- `graph.style` (optional, omitted when not set): how the admin wants the graph drawn. `area` (smooth line
+  with a soft fill; the default), `line`, `spike` (sharp joins, no fill: error counts, latency spikes) or
+  `range` (one thin bar per bucket from `min` to `max` with the average as a line; uses the `[t, avg, min, max]`
+  points you already get). Unknown values: draw your default.
+- **UI kit widgets** (since the "Glow" restyle; see `docs/design/netsync-ui-kit.svg`). Clients that don't
+  know a `type` should skip the widget. They carry the usual `id`, `type`, `size` and the optional `cols`,
+  `height`, `logo` fields. `unit` is formatted as for graphs (`bps`, `pct`, `ms`, `s`, `rate`, `count`).
+  - `kpi`: one big number. `value` is the newest average over `range` (or the probe's uptime % over the
+    admin's window, then `unit` is `pct`), `caption` a short text for under it, `spark` up to 24 averages
+    oldest first (no timestamps; may be empty), `state` as for graphs.
+
+    ```json
+    { "id": "k1", "type": "kpi", "size": "s", "cols": 3, "title": "Uptime · Website",
+      "value": 99.98, "unit": "pct", "caption": "last 30 days", "state": "OK",
+      "spark": [100.0, 99.95, 100.0, 100.0] }
+    ```
+  - `gauge`: a value on a `min`..`max` scale (default 0..100) with optional `warn` / `crit` thresholds
+    (`null` when unset). When `warn` > `crit`, lower is worse (e.g. uptime). `value` is **not** clamped (a
+    270 ms latency on a 0..100 gauge stays 270: draw the arc full). `state` is `OK`, `WARN`, `CRIT` from the
+    thresholds, or `UNKNOWN` without data.
+
+    ```json
+    { "id": "g2", "type": "gauge", "size": "s", "title": "CPU utilization",
+      "value": 87.0, "unit": "pct", "min": 0.0, "max": 100.0, "warn": 80, "crit": 90, "state": "WARN" }
+    ```
+  - `rings`: 1–4 percentages side by side (e.g. the CPU of each node). `value` is clamped to 0..100 and
+    `null` without data. `color` (hex) only when the admin picked one. `label` is the admin's label, else the
+    component name (e.g. `Physical memory`), the probe's public name, or the metric name.
+
+    ```json
+    { "id": "r1", "type": "rings", "size": "m", "title": "Health",
+      "items": [{ "label": "pve001", "value": 74.0 }, { "label": "pve002", "value": 48.0, "color": "#FF7A3D" }] }
+    ```
+  - `donut`: services by state. `items` lists the states with a count above 0, in the order OK, WARN, CRIT,
+    UNKNOWN; `state` is
+    `OK`, `WARN`, `CRIT` or `UNKNOWN` (use it for the colour), `label` is `ok`, `warning`, `critical` or
+    `unknown`. `center` is the total and `caption` the word for under it (`services`, or `open` for open
+    problems). Counts the widget's device, or every device and probe used by this dashboard.
+
+    ```json
+    { "id": "d1", "type": "donut", "size": "s", "title": "Problems", "state": "CRIT",
+      "items": [{ "label": "warning", "value": 7, "state": "WARN" }, { "label": "critical", "value": 5, "state": "CRIT" }],
+      "center": 12, "caption": "open" }
+    ```
+  - `bars`: the top N (1–10, default 5) items by their newest value, highest first. Items are a device's
+    interfaces (or filesystems, memory pools) by name, or probes by their public name (`Probe 2` when the
+    name would reveal the target). `value` is never negative; `null` without a recent sample (sorted last).
+
+    ```json
+    { "id": "b1", "type": "bars", "size": "s", "title": "Interface traffic", "unit": "bps",
+      "items": [{ "label": "ether1", "value": 84000000.0 }, { "label": "sfp1", "value": 63000000.0 }] }
+    ```
+  - None of these contain hostnames, IPs, probe targets or URLs, device/component/probe ids, or check output.
 - `summary` also counts the services of probes used by the dashboard; `devices` counts real devices only.
 - `services` items: every service of the widget's device, worst first. The check output text is not included.
 - `problems` items: non-OK services of the widget's device, or of **every device used by this dashboard**
@@ -210,6 +263,9 @@ adds its graph or an uptime row; in the widget editor pick a graph under *Probes
   metrics, and checks the single-widget endpoint (labels, logo, cols, no target in the response, 404s).
 - `backend/tests/test_probe_phase4.py`: the new presets, uptime widgets (beats, windows, single widget), probe
   fields in graph widgets, the public message allow-list, and that no target, URL or host ever appears.
+- `backend/tests/test_ui_kit_widgets.py`: the kpi, gauge, rings, donut and bars widgets and the graph `style`:
+  validation (types, limits, gauge min < max), thresholds, ring clamping, bar sorting and limits, labels, and
+  that no hostname, IP, target or id appears in their payloads.
 - `backend/tests/test_probes_widgets.py`: probe target validation, probe check results, widget colour /
   label / logo / cols validation, the Dashboard Icons index, probe and appearance fields in the public payload
   (and never the probe target), the single-widget build, and that old widgets serialize unchanged.
