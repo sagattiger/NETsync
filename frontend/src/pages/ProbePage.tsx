@@ -72,7 +72,7 @@ export default function ProbePage() {
 
   return (
     <>
-      <PageHeader
+      <PageHeader back={{ to: "/probes", label: "Probes" }}
         title={<span className="flex items-center gap-3"><KindIcon kind={p.kind} className="w-5 h-5" />{p.name} <StatusPill enabled={p.enabled} maintenance={p.maintenance} state={p.state} /></span>}
         sub={<>{kindMeta(p.kind).label}{p.kind !== "push" && <> · <span className="font-mono">{p.target}{p.port ? `:${p.port}` : ""}</span></>} · every {p.interval_s}s
           {p.retries > 1 && ` · ${p.retries} retries`}{p.upside_down && " · upside down"} · {p.last_run ? `checked ${fmtAgo(p.last_run)}` : "not run yet"}</>}

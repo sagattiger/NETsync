@@ -134,7 +134,7 @@ export default function DashboardView() {
 
   return (
     <>
-      <PageHeader
+      <PageHeader back={{ to: "/dashboards", label: "Dashboards" }}
         title={view.name}
         sub={<>{view.description ?? (view.shared ? "Shared dashboard" : "Private dashboard")} · by {view.owner}
           {view.public && <span className="ml-2 px-2 py-0.5 rounded-full bg-ok/15 text-ok text-xxs font-medium">public{view.public_name ? ` as “${view.public_name}”` : ""}</span>}</>}

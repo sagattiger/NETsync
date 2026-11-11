@@ -118,3 +118,7 @@ body { @apply bg-bg text-fg text-sm antialiased font-sans; }
 
 /* thin scrollbars that follow the theme */
 * { scrollbar-width: thin; scrollbar-color: rgb(var(--edge)) transparent; }
+
+/* tab strip: scrolls sideways without a visible scrollbar */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }

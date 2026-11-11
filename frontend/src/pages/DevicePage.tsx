@@ -1,3 +1,4 @@
+import { BackLink } from "../components/Tabs";
 import { Fragment, ReactNode, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -73,6 +74,7 @@ export default function DevicePage() {
           <div className="flex items-start gap-4 flex-1 min-w-0">
             <VendorLogo device={device} size={56} />
             <div className="min-w-0 flex-1">
+              <BackLink to="/devices" label="Devices" />
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <h1 className="text-xl font-semibold text-strong tracking-tight truncate">{device.hostname}</h1>
                 <StateBadge state={device.status} />

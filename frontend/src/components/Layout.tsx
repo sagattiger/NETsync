@@ -1,5 +1,5 @@
 import { ReactNode, useCallback, useEffect, useState } from "react";
-import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, auth, Me, prefs } from "../api";
 import { useTheme } from "../theme";
@@ -8,6 +8,8 @@ import { Avatar } from "./Avatar";
 import { CommandPaletteProvider, useCommandPalette } from "./CommandPalette";
 import { Icon } from "./Icon";
 import { LogoIcon } from "./Brand";
+import { BackLink, DocumentTitle, TabBar, TabsProvider, TabViews, useTabs } from "./Tabs";
+import { pageRoutes } from "../routes";
 
 interface Overview { devices: Record<string, number>; services: Record<string, number>; unhandled: number }
 
@@ -241,7 +243,8 @@ function Shell() {
     if (me.preferences.theme) setChoice(me.preferences.theme);
   }, [me, setChoice]);
 
-  const logout = () => { auth.set(null); nav("/login"); };
+  const tabs = useTabs();
+  const logout = () => { tabs?.reset(); auth.set(null); nav("/login"); };
   const headerBtn = "h-8 w-8 rounded-lg flex items-center justify-center text-fg2 hover:bg-inset hover:text-strong border border-line";
 
   return (
@@ -270,7 +273,9 @@ function Shell() {
           <Link to="/" className="lg:hidden flex items-center gap-2">
             <LogoIcon className="w-7 h-7" />
           </Link>
-          <div className="flex-1 min-w-0 flex justify-center"><Notice me={me} /></div>
+          <TabBar />
+          <div className="md:hidden flex-1 min-w-0 flex justify-center"><Notice me={me} /></div>
+          <div className="hidden 2xl:flex shrink min-w-0 max-w-md"><Notice me={me} /></div>
           <div className="flex items-center gap-1.5 sm:gap-2">
             <StatusPills />
             {isAdmin && (
@@ -286,7 +291,8 @@ function Shell() {
             </Link>
           </div>
         </header>
-        <Outlet />
+        <DocumentTitle />
+        <TabViews>{pageRoutes}</TabViews>
       </main>
     </div>
   );
@@ -294,16 +300,21 @@ function Shell() {
 
 export default function Layout() {
   return (
-    <CommandPaletteProvider>
-      <Shell />
-    </CommandPaletteProvider>
+    <TabsProvider>
+      <CommandPaletteProvider>
+        <Shell />
+      </CommandPaletteProvider>
+    </TabsProvider>
   );
 }
 
-export function PageHeader({ title, sub, actions }: { title: ReactNode; sub?: ReactNode; actions?: ReactNode }) {
+export function PageHeader({ title, sub, actions, back }: {
+  title: ReactNode; sub?: ReactNode; actions?: ReactNode; back?: { to: string; label: string };
+}) {
   return (
     <div className="px-4 sm:px-8 pt-3 pb-5 flex flex-col sm:flex-row sm:items-end justify-between gap-3">
       <div className="min-w-0">
+        {back && <BackLink to={back.to} label={back.label} />}
         <h1 className="text-2xl font-semibold text-strong tracking-tight">{title}</h1>
         {sub && <div className="text-sm text-muted mt-1">{sub}</div>}
       </div>

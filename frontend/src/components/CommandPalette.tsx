@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api, Device, Me } from "../api";
 import { useTheme } from "../theme";
+import { useTabs } from "./Tabs";
 import { Icon } from "./Icon";
 import { osLabel, VendorLogo } from "./VendorLogo";
 import { StateDot } from "./ui";
@@ -11,7 +12,7 @@ interface Ctx { open: (query?: string) => void }
 const PaletteCtx = createContext<Ctx>({ open: () => {} });
 export const useCommandPalette = () => useContext(PaletteCtx);
 
-interface Item { id: string; group: string; label: string; hint?: string; icon?: string; device?: Device; run: () => void }
+interface Item { id: string; group: string; label: string; hint?: string; icon?: string; device?: Device; path?: string; run: () => void }
 
 /** "Ask NETsync or navigate" - Ctrl/Cmd+K anywhere: devices, pages and actions. */
 export function CommandPaletteProvider({ children }: { children: ReactNode }) {
@@ -45,6 +46,7 @@ function Palette({ initial, onClose }: { initial: string; onClose: () => void })
   const listRef = useRef<HTMLDivElement>(null);
   const { data: devices = [] } = useQuery({ queryKey: ["devices"], queryFn: () => api<Device[]>("/devices") });
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/auth/me") });
+  const tabs = useTabs();
 
   const items = useMemo<Item[]>(() => {
     const go = (path: string) => () => { nav(path); onClose(); };
@@ -54,22 +56,28 @@ function Palette({ initial, onClose }: { initial: string; onClose: () => void })
       ["Plugins & nodes", "/setup/plugins", "puzzle"], ["Profile & settings", "/profile", "user"], ["About", "/about", "info"],
       ...(me?.role === "admin" ? [["Notifications", "/setup/notifications", "bell"], ["Users & groups", "/setup/users", "users"],
         ["AI assistant settings", "/setup/plugins?configure=ai", "sparkles"], ["API tokens", "/setup/tokens", "lock"]] : []),
-    ].map(([label, path, icon]) => ({ id: `p:${path}`, group: "Go to", label, icon, run: go(path) }));
+    ].map(([label, path, icon]) => ({ id: `p:${path}`, group: "Go to", label, icon, path, run: go(path) }));
     const actions: Item[] = [
       ...(me?.role !== "viewer" ? [{ id: "a:add", group: "Actions", label: "Add device", icon: "plus", run: go("/devices?add=1") }] : []),
       { id: "a:dash", group: "Actions", label: "New dashboard", icon: "plus", run: go("/dashboards?new=1") },
+      ...(tabs ? [
+        { id: "a:newtab", group: "Actions", label: "New tab", hint: "Alt+T", icon: "plus", run: () => { tabs.openTab("/"); onClose(); } },
+        { id: "a:closetab", group: "Actions", label: "Close tab", hint: "Alt+W", icon: "x", run: () => { tabs.close(); onClose(); } },
+        ...(tabs.closedCount ? [{ id: "a:reopen", group: "Actions", label: "Reopen closed tab", hint: "Alt+Shift+T", icon: "refresh",
+          run: () => { tabs.reopenClosed(); onClose(); } }] : []),
+      ] : []),
       { id: "a:theme", group: "Actions", label: theme === "dark" ? "Switch to light mode" : "Switch to dark mode",
         icon: theme === "dark" ? "sun" : "moon", run: () => { toggle(); onClose(); } },
     ];
     const devs: Item[] = devices.map((d) => ({
       id: `d:${d.id}`, group: "Devices", label: d.hostname, device: d,
       hint: [d.ip ?? d.ip_addresses?.[0], osLabel(d.os, d.version)].filter(Boolean).join(" · "),
-      run: go(`/devices/${d.id}`),
+      path: `/devices/${d.id}`, run: go(`/devices/${d.id}`),
     }));
     const needle = q.trim().toLowerCase();
     const match = (i: Item) => !needle || `${i.label} ${i.hint ?? ""} ${i.device?.sys_name ?? ""}`.toLowerCase().includes(needle);
     return [...devs.filter(match).slice(0, needle ? 12 : 6), ...pages.filter(match), ...actions.filter(match)];
-  }, [q, devices, me, theme, nav, onClose, toggle]);
+  }, [q, devices, me, theme, nav, onClose, toggle, tabs]);
 
   useEffect(() => setActive(0), [q]);
   useEffect(() => {
@@ -79,7 +87,13 @@ function Palette({ initial, onClose }: { initial: string; onClose: () => void })
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") { e.preventDefault(); setActive((a) => Math.min(a + 1, items.length - 1)); }
     else if (e.key === "ArrowUp") { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
-    else if (e.key === "Enter") { e.preventDefault(); items[active]?.run(); }
+    else if (e.key === "Enter") {
+      e.preventDefault();
+      const it = items[active];
+      // Ctrl/Cmd+Enter: open in a new tab
+      if (it?.path && tabs && (e.ctrlKey || e.metaKey)) { tabs.openTab(it.path, { activate: !e.shiftKey }); onClose(); }
+      else it?.run();
+    }
     else if (e.key === "Escape") onClose();
   };
 
@@ -119,7 +133,7 @@ function Palette({ initial, onClose }: { initial: string; onClose: () => void })
           })}
         </div>
         <div className="px-4 py-2 border-t border-line text-xxs text-muted flex gap-4">
-          <span><kbd className="font-mono">↑↓</kbd> navigate</span><span><kbd className="font-mono">Enter</kbd> open</span>
+          <span><kbd className="font-mono">↑↓</kbd> navigate</span><span><kbd className="font-mono">Enter</kbd> open</span><span className="hidden sm:inline"><kbd className="font-mono">Ctrl Enter</kbd> new tab</span>
           <span className="ml-auto"><kbd className="font-mono">Ctrl K</kbd> anywhere</span>
         </div>
       </div>
