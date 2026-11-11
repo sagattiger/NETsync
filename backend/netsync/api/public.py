@@ -17,9 +17,9 @@ from sqlalchemy import select
 from netsync.api.deps import Session
 from netsync.api.icons import logo_alt, logo_src
 from netsync.api.tokens import PublicToken
-from netsync.metrics_query import bucketed_series
+from netsync.metrics_query import bucketed_series, latest_values
 from netsync.models import Component, Dashboard, Device, Probe, ProbeBeat, Service, State
-from netsync.presets import BY_ID, Preset
+from netsync.presets import BY_ID, Preset, SeriesDef
 from netsync.probing.uptime import uptimes
 
 router = APIRouter(prefix="/public", tags=["public"])
@@ -49,13 +49,75 @@ def worst(states) -> int:
 SORT = {State.CRIT: 0, State.WARN: 1, State.UNKNOWN: 2, State.OK: 3}  # worst first
 
 
+METRIC_TYPES = ("kpi", "gauge")  # one preset metric of a device or a probe
+
+
 def dashboard_devices(widgets: list[dict]) -> set[int]:
     """Real devices used by the dashboard (probe widgets don't count)."""
-    return {w["device_id"] for w in widgets if w.get("device_id") and not w.get("probe_id")}
+    out = {w["device_id"] for w in widgets if w.get("device_id") and not w.get("probe_id")}
+    for w in widgets:
+        if w.get("type") == "rings":
+            out |= {it["device_id"] for it in w.get("items") or [] if it.get("device_id") and not it.get("probe_id")}
+    return out
 
 
 def probe_ids(widgets: list[dict]) -> set[int]:
-    return {w["probe_id"] for w in widgets if w.get("type") in ("graph", "uptime") and w.get("probe_id")}
+    out = {w["probe_id"] for w in widgets if w.get("type") in ("graph", "uptime", *METRIC_TYPES) and w.get("probe_id")}
+    for w in widgets:
+        if w.get("type") == "rings":
+            out |= {it["probe_id"] for it in w.get("items") or [] if it.get("probe_id")}
+        if w.get("type") == "bars":
+            out |= set(w.get("probe_ids") or [])
+    return out
+
+
+def pick_metric(preset: Preset | None, key: str | None) -> SeriesDef | None:
+    """The preset series a kpi/gauge/ring/bars widget shows: by key (label or name), else the first."""
+    if not preset or not preset.metrics:
+        return None
+    return next((m for m in preset.metrics if key in (m.label, m.name)), preset.metrics[0])
+
+
+def last_avg(points: list) -> float | None:
+    for p in reversed(points or []):
+        if p[1] is not None:
+            return float(p[1])
+    return None
+
+
+def spark(points: list, n: int = 24) -> list[float]:
+    """At most ``n`` evenly spaced averages, oldest first (a sparkline, no timestamps)."""
+    vals = [float(p[1]) for p in points or [] if p[1] is not None]
+    if len(vals) <= n:
+        return [round(v, 3) for v in vals]
+    step = (len(vals) - 1) / (n - 1)
+    return [round(vals[round(i * step)], 3) for i in range(n)]
+
+
+def clamp(v: float | None, lo: float, hi: float) -> float | None:
+    return None if v is None else max(lo, min(hi, v))
+
+
+def threshold_state(v: float | None, warn: float | None, crit: float | None) -> str:
+    """Gauge level; thresholds work downwards when warn > crit (e.g. uptime %)."""
+    if v is None:
+        return "UNKNOWN"
+    down = warn is not None and crit is not None and warn > crit
+
+    def past(t):
+        return t is not None and (v <= t if down else v >= t)
+
+    return "CRIT" if past(crit) else "WARN" if past(warn) else "OK"
+
+
+def is_probe_metric(w: dict) -> bool:
+    """kpi/gauge reading a probe: a probe preset, or uptime %."""
+    preset = BY_ID.get(w.get("preset") or "")
+    return bool(w.get("probe_id")) and (w.get("stat") == "uptime" or bool(preset and preset.source == "probe"))
+
+
+def window_label(window: str) -> str:
+    return {"24h": "last 24 hours", "7d": "last 7 days", "30d": "last 30 days"}.get(window, window)
 
 
 UPTIME_WINDOWS = ("24h", "7d", "30d")
@@ -172,12 +234,15 @@ def probe_extras(probe, ups: dict) -> dict[str, Any]:
 def build_payload(d: Dashboard, range_: str, devices: dict[int, Device], services: list[Service],
                   components: dict[int, Component], series: dict[str, dict[str, list]],
                   probes: dict[int, Probe] | None = None, only: str | None = None,
-                  ups: dict[int, dict] | None = None, beats: dict[int, list] | None = None) -> dict[str, Any]:
+                  ups: dict[int, dict] | None = None, beats: dict[int, list] | None = None,
+                  bars: dict[str, list[tuple[str, int, float | None]]] | None = None) -> dict[str, Any]:
     """Pure: everything public about a dashboard. ``series`` maps widget id -> {metric: points}.
     ``probes`` maps probe id -> Probe (their services are in ``services``), ``ups`` probe id -> uptimes(),
     ``beats`` probe id -> [(time, state, response_ms)] oldest first.
+    kpi/gauge read ``series[widget id]``, rings ``series["<widget id>:<item index>"]``; ``bars`` maps widget
+    id -> [("component" | "probe", id, value)] (labels are resolved here, so no private name leaks).
     ``only``: build just that widget (the summary is still computed over the whole dashboard)."""
-    probes, ups, beats = probes or {}, ups or {}, beats or {}
+    probes, ups, beats, bars = probes or {}, ups or {}, beats or {}, bars or {}
     all_widgets = d.widgets or []
     used = dashboard_devices(all_widgets)
     probe_devs = {p.device_id for pid, p in probes.items() if pid in probe_ids(all_widgets)}
@@ -208,6 +273,7 @@ def build_payload(d: Dashboard, range_: str, devices: dict[int, Device], service
                 **base, "source": "probe", "title": w.get("public_title") or default_title,
                 "state": state_name(worst(s.state for s in own)) if own else "UNKNOWN",
                 "unit": preset.unit, "area": preset.area, "series": out_series,
+                **({"style": w["style"]} if w.get("style") else {}),
                 "last": {s["name"]: (s["points"][-1][1] if s["points"] else None) for s in out_series},
                 "loss_pct": (getattr(loss, "perf", None) or {}).get("value") if loss else None,
                 **({"colors": w["colors"]} if w.get("colors") else {}),
@@ -245,6 +311,7 @@ def build_payload(d: Dashboard, range_: str, devices: dict[int, Device], service
                 "series": out_series,
                 "last": {s["name"]: (s["points"][-1][1] if s["points"] else None) for s in out_series},
                 **({"colors": w["colors"]} if w.get("colors") else {}),
+                **({"style": w["style"]} if w.get("style") else {}),
             })
         elif kind == "device":
             own = by_device.get(dev_id, [])
@@ -272,6 +339,90 @@ def build_payload(d: Dashboard, range_: str, devices: dict[int, Device], service
                            "acknowledged": bool(s.acknowledged)} for s in probs],
             })
 
+        elif kind in METRIC_TYPES:
+            preset = BY_ID.get(w.get("preset") or "")
+            uptime_mode = w.get("stat") == "uptime"
+            if is_probe_metric(w):
+                probe = probes.get(w.get("probe_id"))
+                own = by_device.get(probe.device_id, []) if probe else []
+                pname = probe_public_name(probe) if probe else None
+            else:
+                probe, pname = None, None
+                comp = components.get(w.get("component_id")) if preset and preset.kind else None
+                if comp is not None and comp.device_id != dev_id:
+                    comp = None
+                own = [s for s in by_device.get(dev_id, []) if dev_id in used and (comp is None or s.component_id == comp.id)]
+            window = w.get("window") or "30d"
+            points = series.get(w.get("id"), {})
+            if uptime_mode:
+                up = ((ups.get(probe.id) or {}).get("uptime") or {}) if probe else {}
+                value, unit, pts = up.get(window), "pct", points.get("up_pct", [])
+            else:
+                m = pick_metric(preset, w.get("metric"))
+                pts = points.get(m.name, []) if m else []
+                value, unit = last_avg(pts), (preset.unit if preset else "count")
+            label = "Uptime" if uptime_mode else (preset.label if preset else "Value")
+            item = {**base, "title": w.get("public_title") or (f"{label} · {pname}" if pname else label),
+                    "value": None if value is None else round(float(value), 3), "unit": unit}
+            if kind == "kpi":
+                item.update({"caption": w.get("caption") or (window_label(window) if uptime_mode else label),
+                             "spark": spark(pts),
+                             "state": state_name(worst(s.state for s in own)) if own else "UNKNOWN"})
+            else:
+                item.update({"min": float(w["min"]) if w.get("min") is not None else 0.0,
+                             "max": float(w["max"]) if w.get("max") is not None else 100.0,
+                             "warn": w.get("warn"), "crit": w.get("crit"),
+                             "state": threshold_state(item["value"], w.get("warn"), w.get("crit"))})
+            if w.get("colors"):
+                item["colors"] = w["colors"]
+            widgets.append(item)
+        elif kind == "rings":
+            rings = []
+            for i, it in enumerate((w.get("items") or [])[:4]):
+                preset = BY_ID.get(it.get("preset") or "")
+                m = pick_metric(preset, it.get("metric"))
+                pts = series.get(f"{w.get('id')}:{i}", {}).get(m.name, []) if m else []
+                if it.get("probe_id"):
+                    probe = probes.get(it["probe_id"])
+                    default = (probe_public_name(probe) if probe else None) or (preset.label if preset else "Probe")
+                else:
+                    comp = components.get(it.get("component_id")) if preset and preset.kind else None
+                    own_comp = comp is not None and comp.device_id == it.get("device_id")
+                    default = comp.name if own_comp else (preset.label if preset else "Value")
+                v = clamp(last_avg(pts), 0.0, 100.0)
+                rings.append({"label": it.get("label") or default, "value": None if v is None else round(v, 1),
+                              **({"color": it["color"]} if it.get("color") else {})})
+            widgets.append({**base, "title": w.get("public_title") or "Health", "items": rings})
+        elif kind == "donut":
+            pool = by_device.get(dev_id, []) if dev_id else dash_services
+            problems_only = w.get("count") == "problems"
+            counts = service_counts(s for s in pool if not problems_only or s.state != State.OK)
+            names = {"OK": "ok", "WARN": "warning", "CRIT": "critical", "UNKNOWN": "unknown"}
+            items = [{"label": names[k], "value": n, "state": k} for k, n in counts.items() if n > 0]
+            widgets.append({
+                **base, "title": w.get("public_title") or ("Problems" if problems_only else "Services"),
+                "state": state_name(worst(s.state for s in pool)) if pool else "UNKNOWN",
+                "items": items, "center": sum(i["value"] for i in items),
+                "caption": "open" if problems_only else "services",
+            })
+        elif kind == "bars":
+            preset = BY_ID.get(w.get("preset") or "")
+            rows = []
+            for i, (src, ref, value) in enumerate(bars.get(w.get("id"), [])):
+                if src == "component":
+                    comp = components.get(ref)
+                    if not comp or comp.device_id != dev_id:
+                        continue  # never another device's component
+                    label = comp.name
+                else:
+                    probe = probes.get(ref)
+                    label = (probe_public_name(probe) if probe else None) or f"Probe {i + 1}"
+                rows.append({"label": label, "value": None if value is None else round(max(0.0, float(value)), 3)})
+            rows.sort(key=lambda r: -1.0 if r["value"] is None else r["value"], reverse=True)
+            limit = max(1, min(10, int(w.get("limit") or 5)))
+            widgets.append({**base, "title": w.get("public_title") or (preset.label if preset else "Top"),
+                            "unit": preset.unit if preset else "count", "items": rows[:limit]})
+
     dash_devices = [devices[i] for i in used if i in devices]
     up = sum(1 for dv in dash_devices if dv.status == State.OK)
     return {
@@ -293,6 +444,66 @@ async def _public_dashboard(session, dashboard_id: int) -> Dashboard:
     return d
 
 
+async def _metric_series(session, w: dict, devices: dict, components: dict, probes: dict, range_: str,
+                         series: dict[str, dict[str, list]]) -> None:
+    """Series for a kpi/gauge (key: widget id) or each ring (key: "<widget id>:<index>")."""
+    kind = w.get("type")
+    sources = [(w["id"], w)] if kind in METRIC_TYPES else [
+        (f"{w['id']}:{i}", it) for i, it in enumerate((w.get("items") or [])[:4])]
+    for key, src in sources:
+        preset = BY_ID.get(src.get("preset") or "")
+        if kind in METRIC_TYPES and src.get("stat") == "uptime":
+            probe = probes.get(src.get("probe_id"))
+            if probe:
+                series[key] = await bucketed_series(session, probe.device_id, 0, ["up_pct"], range_,
+                                                    BY_ID["probe_uptime"].bucket(range_))
+            continue
+        m = pick_metric(preset, src.get("metric"))
+        if not m:
+            continue
+        if preset.source == "probe":
+            probe = probes.get(src.get("probe_id"))
+            if probe:
+                series[key] = await bucketed_series(session, probe.device_id, 0, [m.name], range_, preset.bucket(range_))
+            continue
+        if src.get("device_id") not in devices:
+            continue
+        comp_id = 0
+        if preset.kind:
+            comp = components.get(src.get("component_id"))
+            if not comp or comp.device_id != src["device_id"]:
+                continue
+            comp_id = comp.id
+        series[key] = await bucketed_series(session, src["device_id"], comp_id, [m.name], range_)
+
+
+async def _bar_values(session, w: dict, devices: dict, probes: dict, range_: str,
+                      components: dict) -> list[tuple[str, int, float | None]] | None:
+    """[(source, id, value)] of a bars widget: a device's components of the preset kind, or listed probes."""
+    preset = BY_ID.get(w.get("preset") or "")
+    m = pick_metric(preset, w.get("metric"))
+    if not m:
+        return None
+    if preset.source == "probe":
+        rows = []
+        for pid in (w.get("probe_ids") or [])[:10]:
+            probe = probes.get(pid)
+            if probe:
+                data = await bucketed_series(session, probe.device_id, 0, [m.name], range_, preset.bucket(range_))
+                rows.append(("probe", pid, last_avg(data[m.name])))
+        return rows
+    if not preset.kind or w.get("device_id") not in devices:
+        return None
+    latest = await latest_values(session, w["device_id"], [m.name])
+    if not latest:
+        return []
+    comps = {c.id: c for c in await session.scalars(select(Component).where(
+        Component.device_id == w["device_id"], Component.kind == preset.kind,
+        Component.id.in_(list(latest)), Component.deleted.is_(False)))}
+    components.update(comps)
+    return [("component", cid, latest[cid].get(m.name)) for cid in comps]
+
+
 async def _build(session, d: Dashboard, range_: str, only: str | None = None) -> dict[str, Any]:
     widgets = d.widgets or []
     used = dashboard_devices(widgets)
@@ -302,11 +513,25 @@ async def _build(session, d: Dashboard, range_: str, only: str | None = None) ->
     svc_devs = used | {p.device_id for p in probes.values()}
     services = list(await session.scalars(select(Service).where(Service.device_id.in_(svc_devs)))) if svc_devs else []
     comp_ids = {w["component_id"] for w in widgets if w.get("component_id")}
+    comp_ids |= {it["component_id"] for w in widgets if w.get("type") == "rings"
+                 for it in w.get("items") or [] if it.get("component_id")}
     components = {c.id: c for c in await session.scalars(select(Component).where(Component.id.in_(comp_ids)))} if comp_ids else {}
 
     series: dict[str, dict[str, list]] = {}
+    bars: dict[str, list[tuple[str, int, float | None]]] = {}
     for w in widgets:
-        if w.get("type") != "graph" or (only is not None and w.get("id") != only):
+        if only is not None and w.get("id") != only:
+            continue
+        kind = w.get("type")
+        if kind in METRIC_TYPES or kind == "rings":
+            await _metric_series(session, w, devices, components, probes, range_, series)
+            continue
+        if kind == "bars":
+            rows = await _bar_values(session, w, devices, probes, range_, components)
+            if rows is not None:
+                bars[w["id"]] = rows
+            continue
+        if kind != "graph":
             continue
         preset = BY_ID.get(w.get("preset") or "")
         if is_probe_widget(w):
@@ -333,7 +558,7 @@ async def _build(session, d: Dashboard, range_: str, only: str | None = None) ->
         rows = await session.execute(select(ProbeBeat.time, ProbeBeat.state, ProbeBeat.response_ms)
                                      .where(ProbeBeat.probe_id == pid).order_by(ProbeBeat.time.desc()).limit(BEATS_MAX))
         beats[pid] = [(t, st, ms) for t, st, ms in rows][::-1]
-    return build_payload(d, range_, devices, services, components, series, probes, only, ups, beats)
+    return build_payload(d, range_, devices, services, components, series, probes, only, ups, beats, bars)
 
 
 @router.get("/dashboards")

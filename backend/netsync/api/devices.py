@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import case, func, select, text
 
-from netsync.metrics_query import bucketed_series
+from netsync.metrics_query import bucketed_series, latest_values
 from netsync.api.collab import author_avatars, comment_out, comments_for
 from netsync.api.deps import CurrentUser, Session, device_scope, get_device_for, require
 from netsync.api.schemas import (
@@ -140,6 +140,20 @@ async def metrics(
     """Time-bucketed series: {name: [[iso_time, avg, min, max], ...]}"""
     await get_device_for(session, user, device_id)
     return await bucketed_series(session, device_id, component_id, name, range)
+
+
+@router.get("/{device_id}/latest")
+async def latest(device_id: int, user: CurrentUser, session: Session, name: list[str] = Query(...),
+                 kind: str | None = None):
+    """Last sample per component: [{component_id, name, values: {metric: value}}] (top-N bar widgets).
+    ``kind`` keeps only components of that kind (e.g. port)."""
+    await get_device_for(session, user, device_id)
+    values = await latest_values(session, device_id, name[:8])
+    q = select(Component).where(Component.device_id == device_id, Component.id.in_(list(values)),
+                                Component.deleted.is_(False))
+    if kind:
+        q = q.where(Component.kind == kind)
+    return [{"component_id": c.id, "name": c.name, "values": values[c.id]} for c in await session.scalars(q)]
 
 
 @router.get("/{device_id}/history")

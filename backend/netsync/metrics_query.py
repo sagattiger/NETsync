@@ -35,3 +35,20 @@ async def bucketed_series(session: AsyncSession, device_id: int, component_id: i
     for n, t, avg, mn, mx in rows:
         out[n].append([t.isoformat(), avg, mn, mx])
     return out
+
+
+LATEST = text(
+    "SELECT DISTINCT ON (component_id, name) component_id, name, value FROM metrics "
+    "WHERE device_id = :d AND name = ANY(:names) AND time >= :since "
+    "ORDER BY component_id, name, time DESC"
+)
+
+
+async def latest_values(session: AsyncSession, device_id: int, names: list[str],
+                        max_age: timedelta = timedelta(minutes=30)) -> dict[int, dict[str, float]]:
+    """{component_id: {name: last value}} of a device's recent samples (top-N bar widgets)."""
+    rows = await session.execute(LATEST, {"d": device_id, "names": names, "since": datetime.now(UTC) - max_age})
+    out: dict[int, dict[str, float]] = {}
+    for comp, name, value in rows:
+        out.setdefault(comp, {})[name] = value
+    return out
