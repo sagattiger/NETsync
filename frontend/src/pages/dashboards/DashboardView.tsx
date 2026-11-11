@@ -1,13 +1,14 @@
-import React, { useEffect, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, Dashboard, prefs, Widget, WidgetCols, widgetCols } from "../../api";
 import { Icon } from "../../components/Icon";
 import { Page, PageHeader } from "../../components/Layout";
-import { Empty, Segmented } from "../../components/ui";
+import { Empty, Segmented, WidgetHead } from "../../components/ui";
 import { DashboardForm } from "./Dashboards";
 import WidgetEditor from "./WidgetEditor";
-import { autoTitle, useComponents, useDevices, useProbes, WidgetBody, WidgetLogo } from "./WidgetView";
+import { autoTitle, DashboardScope, deviceWorst, useComponents, useDevices, useProbes, WidgetBody, WidgetLogo, widgetScope } from "./WidgetView";
+import { STATES } from "../../api";
 import { usePresets } from "../../presets";
 
 // 12-column grid on wide screens, 6 on tablets, 1 on phones. Literal class names so Tailwind keeps them.
@@ -49,21 +50,60 @@ function ResizeHandle({ cols, onResize }: { cols: WidgetCols; onResize: (c: Widg
   );
 }
 
-function WidgetCard({ w, range, editing, onEdit, onRemove, onMove, onResize, first, last }: {
+/** "⋯" menu of a widget outside edit mode: open its device/probe, edit it. */
+function WidgetMenu({ open: to, openLabel, onEdit }: { open?: string; openLabel?: string; onEdit?: () => void }) {
+  const [shown, setShown] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!shown) return;
+    const close = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setShown(false); };
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setShown(false);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", esc); };
+  }, [shown]);
+  if (!to && !onEdit) return null;
+  const item = "block w-full text-left px-3 py-1.5 text-xs text-fg hover:bg-inset rounded-md";
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button className="px-1.5 py-0.5 -mr-1 rounded-md text-muted hover:text-strong hover:bg-inset leading-none text-lg tracking-tight"
+        onClick={() => setShown((v) => !v)} aria-label="Widget menu" aria-expanded={shown}>⋯</button>
+      {shown && (
+        <div className="absolute right-0 top-full mt-1 z-20 min-w-[10rem] p-1 card shadow-xl" role="menu">
+          {to && <Link to={to} className={item} role="menuitem" onClick={() => setShown(false)}>{openLabel}</Link>}
+          {onEdit && <button className={item} role="menuitem" onClick={() => { setShown(false); onEdit(); }}>Edit widget</button>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WidgetCard({ w, range, editing, onEdit, onRemove, onMove, onResize, onQuickEdit, first, last }: {
   w: Widget; range: string; editing: boolean; first: boolean; last: boolean;
   onEdit: () => void; onRemove: () => void; onMove: (dir: -1 | 1) => void; onResize: (cols: WidgetCols) => void;
+  /** edit this widget from view mode (owners only) */
+  onQuickEdit?: () => void;
 }) {
   const devices = useDevices();
   const components = useComponents(w.device_id);
   const { byId: presetById } = usePresets();
   const probes = useProbes();
   const ctl = "p-1.5 rounded-md text-muted hover:text-strong hover:bg-inset disabled:opacity-30";
+  const probe = w.probe_id ? probes.find((p) => p.id === w.probe_id) : undefined;
+  const device = !w.probe_id && w.device_id ? devices.find((d) => d.id === w.device_id) : undefined;
+  // small state dot: the probe or device behind the widget; neutral when it reads several sources
+  const state = probe ? probe.state : deviceWorst(device);
+  const dot = state == null ? "bg-ns-orange text-ns-orange" : ["bg-ok text-ok", "bg-warn text-warn", "bg-crit text-crit", "bg-unknown text-unknown"][state];
+  const open = probe ? { to: `/probes/${probe.id}`, label: "Open probe" } : device ? { to: `/devices/${device.id}`, label: "Open device" } : undefined;
   return (
-    <section className={`card overflow-hidden relative col-span-1 ${SPAN[widgetCols(w)]} ${editing ? "ring-1 ring-accent/30" : ""}`}>
-      <header className="px-4 py-2.5 border-b border-line flex items-center gap-2 min-h-[2.75rem]">
-        <WidgetLogo logo={w.logo} />
-        <h3 className="text-sm font-medium text-strong truncate flex-1">{w.title || autoTitle(w, devices, components, presetById, probes)}</h3>
-        {editing && (
+    <section className={`card relative col-span-1 ${SPAN[widgetCols(w)]} ${editing ? "ring-1 ring-accent/30" : ""}`}>
+      <WidgetHead
+        lead={<>
+          {w.logo ? <WidgetLogo logo={w.logo} /> : <span className={`dot glow ${dot}`} title={state != null ? STATES[state] : undefined} />}
+          {state != null && <span className="sr-only">State {STATES[state]}</span>}
+        </>}
+        title={w.title || autoTitle(w, devices, components, presetById, probes)}
+        right={editing ? (
           <div className="flex items-center gap-0.5 shrink-0">
             <button className={ctl} disabled={first} onClick={() => onMove(-1)} title="Move left / up"><Icon name="chevron" className="w-3.5 h-3.5 rotate-180" /></button>
             <button className={ctl} disabled={last} onClick={() => onMove(1)} title="Move right / down"><Icon name="chevron" className="w-3.5 h-3.5" /></button>
@@ -74,9 +114,8 @@ function WidgetCard({ w, range, editing, onEdit, onRemove, onMove, onResize, fir
             <button className={ctl} onClick={onEdit} title="Edit"><Icon name="edit" className="w-3.5 h-3.5" /></button>
             <button className={`${ctl} hover:text-crit`} onClick={onRemove} title="Remove"><Icon name="trash" className="w-3.5 h-3.5" /></button>
           </div>
-        )}
-      </header>
-      <WidgetBody w={w} range={range} />
+        ) : <WidgetMenu open={open?.to} openLabel={open?.label} onEdit={onQuickEdit} />} />
+      <div className="overflow-hidden rounded-b-2xl"><WidgetBody w={w} range={range} /></div>
       {editing && <ResizeHandle cols={widgetCols(w)} onResize={onResize} />}
     </section>
   );
@@ -94,6 +133,7 @@ export default function DashboardView() {
   const [settings, setSettings] = useState(false);
   const [saving, setSaving] = useState(false);
   const editing = !!draft;
+  const scope = useMemo(() => widgetScope((draft ?? dash)?.widgets ?? []), [draft, dash]);
 
   // ?edit=1 (right after creating) opens edit mode
   useEffect(() => {
@@ -162,15 +202,18 @@ export default function DashboardView() {
         {!widgets.length ? (
           !editing && <div className="card"><Empty>This dashboard is empty.{dash.can_edit && " Click Edit to add widgets."}</Empty></div>
         ) : (
+          <DashboardScope.Provider value={scope}>
           <div className="grid grid-cols-1 md:grid-cols-6 xl:grid-cols-12 gap-4">
             {widgets.map((w, i) => (
               <WidgetCard key={w.id} w={w} range={range} editing={editing} first={i === 0} last={i === widgets.length - 1}
                 onEdit={() => setEditor({ widget: w })}
+                onQuickEdit={dash.can_edit ? () => { setDraft(structuredClone(dash)); setEditor({ widget: w }); } : undefined}
                 onRemove={() => update(widgets.filter((x) => x.id !== w.id))}
                 onMove={(dir) => move(i, dir)}
                 onResize={(cols) => update(widgets.map((x) => (x.id === w.id ? { ...x, cols, size: sizeFor(cols) } : x)))} />
             ))}
           </div>
+          </DashboardScope.Provider>
         )}
       </Page>
       {editor && (

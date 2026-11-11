@@ -68,7 +68,12 @@ export interface DeviceEvent {
 
 export interface PinnedEvent extends DeviceEvent { device_id: number; hostname: string; pinned_at: string }
 
-export type WidgetType = "graph" | "device" | "problems" | "services" | "uptime";
+export type WidgetType = "graph" | "device" | "problems" | "services" | "uptime" | "kpi" | "gauge" | "rings" | "donut" | "bars";
+/** One ring of a rings widget (a device/component or probe metric, shown as 0–100 %). */
+export interface RingItem {
+  label?: string | null; device_id?: number | null; component_id?: number | null; probe_id?: number | null;
+  preset: string; metric?: string | null; color?: string | null;
+}
 export interface Widget {
   id: string; type: WidgetType; title: string; size: "s" | "m" | "l";
   device_id: number | null; component_id: number | null; preset: string | null;
@@ -81,6 +86,17 @@ export interface Widget {
   cols?: WidgetCols | null;
   height?: "compact" | "normal" | "tall" | null;
   compact?: boolean | null;
+  // UI kit widgets
+  style?: "area" | "line" | "spike" | "range" | null; // graph
+  metric?: string | null; // kpi/gauge/bars: series key of the preset (default: the first)
+  stat?: "last" | "uptime" | null; // kpi
+  window?: "24h" | "7d" | "30d" | null; // kpi uptime window
+  caption?: string | null; // kpi
+  min?: number | null; max?: number | null; warn?: number | null; crit?: number | null; // gauge
+  items?: RingItem[] | null; // rings
+  count?: "services" | "problems" | null; // donut
+  limit?: number | null; // bars: top N
+  probe_ids?: number[] | null; // bars of probes
 }
 export type WidgetCols = 3 | 4 | 6 | 8 | 12;
 export const SIZE_COLS: Record<Widget["size"], WidgetCols> = { s: 4, m: 6, l: 12 };

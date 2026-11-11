@@ -39,6 +39,17 @@ export function Card({ title, actions, children, className = "", flush = true }:
   );
 }
 
+/** Widget card header: state dot (or logo), 13 px uppercase title, optional "⋯" menu / controls on the right. */
+export function WidgetHead({ lead, title, right }: { lead?: ReactNode; title: ReactNode; right?: ReactNode }) {
+  return (
+    <header className="px-4 pt-3 pb-2 flex items-center gap-2.5 min-h-[2.75rem]">
+      {lead}
+      <h3 className="card-caps truncate flex-1">{title}</h3>
+      {right}
+    </header>
+  );
+}
+
 export function Tile({ label, value, tone, hint }: { label: string; value: ReactNode; tone?: number; hint?: ReactNode }) {
   return (
     <div className="card px-4 py-3.5">

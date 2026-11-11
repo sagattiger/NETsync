@@ -38,13 +38,16 @@ export function HeartbeatBar({ beats, max = 100, height = "h-7" }: { beats: Hear
   const shown = beats.slice(-max);
   const pad = Math.max(0, max - shown.length);
   return (
-    <div className={`flex items-end justify-between gap-[3px] ${height}`} role="img"
+    <div className={`flex items-end ${height}`} role="img"
       aria-label={`Last ${shown.length} checks: ${shown.filter((b) => b.state === 2).length} down, ${shown.filter((b) => b.state === 1).length} warning`}>
-      {Array.from({ length: pad }, (_, i) => <span key={`p${i}`} className="flex-1 min-w-[2px] max-w-[5px] h-full rounded-full bg-chip" />)}
+      {/* each beat gets an equal slot; the pill is at most 5 px wide and never overflows narrow cards */}
+      {Array.from({ length: pad }, (_, i) => <span key={`p${i}`} className="flex-1 min-w-0 h-full flex justify-center"><span className="w-[70%] max-w-[5px] h-full rounded-full bg-chip" /></span>)}
       {shown.map((b) => (
-        <span key={b.time} className={`flex-1 min-w-[2px] max-w-[5px] h-full rounded-full ${b.maintenance ? "bg-accent/50" : BEAT_BG[b.state] ?? "bg-chip"} hover:opacity-70`}
+        <span key={b.time} className="flex-1 min-w-0 h-full flex justify-center group"
           title={`${fmtDateTime(b.time)} · ${b.maintenance ? "Maintenance" : BEAT_LABEL[b.state] ?? "?"}${b.response_ms != null ? ` · ${fmtMs(b.response_ms)}` : ""}${b.message ? `
-${b.message}` : ""}`} />
+${b.message}` : ""}`}>
+          <span className={`w-[70%] max-w-[5px] h-full rounded-full ${b.maintenance ? "bg-accent/50" : BEAT_BG[b.state] ?? "bg-chip"} group-hover:opacity-70`} />
+        </span>
       ))}
     </div>
   );

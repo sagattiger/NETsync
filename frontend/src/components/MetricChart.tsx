@@ -28,12 +28,8 @@ export function seriesQuery({ deviceId, probeId, componentId = 0, names, range }
   };
 }
 
-export function MetricChart({
-  deviceId, probeId, componentId = 0, metrics, range, unit = "", height = 200, format, area = true,
-  colors, compact = false, band, style,
-}: {
-  deviceId?: number; probeId?: number; componentId?: number; metrics: MetricDef[]; range: string;
-  unit?: string; height?: number; format?: (v: number) => string; area?: boolean;
+type ChartProps = {
+  metrics: MetricDef[]; unit?: string; height?: number; format?: (v: number) => string; area?: boolean;
   /** one hex colour per series, in order (missing ones use the theme palette) */
   colors?: string[] | null;
   /** no legend, no axis labels: for small/minimalist widgets */
@@ -42,10 +38,21 @@ export function MetricChart({
   band?: { min: string; max: string; label?: string };
   /** area (glow fill) | line | spike (sharp, no fill) | range (min–max bars + average); default from `area` */
   style?: ChartStyle | null;
+};
+
+export function MetricChart({ deviceId, probeId, componentId = 0, range, ...rest }: ChartProps & {
+  deviceId?: number; probeId?: number; componentId?: number; range: string;
 }) {
-  const { theme } = useTheme();
-  const names = [...new Set([...metrics.map((m) => m.name), ...(band ? [band.min, band.max] : [])])];
+  const names = [...new Set([...rest.metrics.map((m) => m.name), ...(rest.band ? [rest.band.min, rest.band.max] : [])])];
   const { data, isLoading } = useQuery(seriesQuery({ deviceId, probeId, componentId, names, range }));
+  return <TimeChart data={data} isLoading={isLoading} {...rest} />;
+}
+
+/** The chart itself, from already-loaded series (MetricChart fetches; the /ui-kit page passes fake data). */
+export function TimeChart({
+  data, isLoading = false, metrics, unit = "", height = 200, format, area = true, colors, compact = false, band, style,
+}: ChartProps & { data: Series | undefined; isLoading?: boolean }) {
+  const { theme } = useTheme();
   const fmt = format ?? ((v: number) => `${Number.isInteger(v) ? v : v.toFixed(1)}${unit}`);
   const empty = !isLoading && metrics.every((m) => !(data?.[m.name]?.length));
   const colorKey = (colors ?? []).join(",");
