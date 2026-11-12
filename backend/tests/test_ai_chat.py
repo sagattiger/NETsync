@@ -45,8 +45,21 @@ def test_system_prompt_has_rules_page_and_site_context():
     from datetime import UTC, datetime
 
     p = chat.system_prompt({"language": "Portuguese", "extra_instructions": "Proxmox cluster"},
-                           "The user is looking at device 'pve002'.", datetime(2026, 11, 12, 10, 0, tzinfo=UTC))
-    assert "call a tool first" in p and "Portuguese" in p and "pve002" in p and "Proxmox cluster" in p
+                           datetime(2026, 11, 12, 10, 0, tzinfo=UTC))
+    assert "call a tool first" in p and "Portuguese" in p and "Proxmox cluster" in p and "2026-11-12" in p
+    assert "10:00" not in p  # the time goes with the question, the prompt stays cacheable
+
+
+def test_chat_tool_specs_are_short():
+    import json
+
+    from netsync.tools.builtin import TOOLS
+
+    specs = [chat.tool_spec(t) for t in TOOLS]
+    assert len(json.dumps(specs)) < 3500  # was ~4700 with the full wording
+    ms = next(s["function"] for s in specs if s["function"]["name"] == "netsync__metric_summary")
+    assert ms["parameters"]["required"] == ["device", "graph"] and "mem_usage" in ms["parameters"]["properties"]["graph"]["description"]
+    assert "maximum" not in json.dumps(specs) and "default" not in json.dumps(specs)
 
 
 class FakeSession:
@@ -134,6 +147,7 @@ def test_turn_calls_tool_then_streams_answer(monkeypatch, fake):
     # the tool list given to the model leaves out call_result; the tool answer goes back as a tool message
     assert [t["function"]["name"] for t in seen[0][1]] == ["netsync__alert_history"]
     assert seen[1][0][-1]["role"] == "tool" and '"times":3' in seen[1][0][-1]["content"]
+    assert seen[0][0][1]["content"].startswith("[") and "How often" in seen[0][0][1]["content"]
     answer = [m for m in FakeSession.stored if m.role == "assistant"][0]
     assert answer.content == "Ping failed 3 times, 192 minutes in total." and answer.model == "qwen3.5:0.8b"
     assert [m.role for m in FakeSession.stored] == ["tool", "assistant"]
@@ -151,6 +165,19 @@ def test_turn_stops_repeated_calls_and_unknown_tools(monkeypatch, fake):
     errors = [e["result"]["error"] for e in events if e["type"] == "tool_result" and e["result"]["error"]]
     assert any("unknown tool" in e for e in errors)
     assert any("already called" in m["content"] for m in seen[2][0] if m["role"] == "tool")
+
+
+def test_events_ping_while_the_model_is_quiet():
+    async def go():
+        turn = chat.Turn({"model": "m"}, Actor("user", "a"), 1, "q", None)
+        it = chat.events(turn, keepalive=0.01)
+        first = await it.__anext__()
+        turn.emit({"type": "delta", "text": "x"})
+        turn.queue.put_nowait(None)
+        return first, [e async for e in it]
+
+    first, rest = asyncio.run(go())
+    assert first == {"type": "ping"} and rest[-1] == {"type": "delta", "text": "x"}
 
 
 def test_last_round_offers_no_tools_and_errors_are_reported(monkeypatch, fake):

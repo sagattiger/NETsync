@@ -235,9 +235,10 @@ async def search_syslog(ctx: ToolContext, a: dict) -> dict:
 
 
 async def metric_summary(ctx: ToolContext, a: dict) -> dict:
-    preset = BY_ID.get(a["graph"])
+    graph = str(a["graph"]).strip().lower().replace(" ", "_").replace("-", "_")
+    preset = BY_ID.get(GRAPH_ALIASES.get(graph, graph))
     if preset is None or preset.source != "device":
-        raise ToolError(f"unknown graph {a['graph']!r}; see the list in this tool's description")
+        raise ToolError(f"unknown graph {a['graph']!r}; graphs: {GRAPHS}")
     rng = {1: "24h", 7: "7d", 30: "30d", 365: "1y"}[a["days"]]
     async with SessionLocal() as s:
         d = await resolve_device(s, ctx, a["device"])
@@ -274,6 +275,10 @@ async def call_result(ctx: ToolContext, a: dict) -> dict:
 # --------------------------------------------------------------------------- definitions
 
 GRAPHS = ", ".join(p.id for p in BY_ID.values() if p.source == "device")
+GRAPH_ALIASES = {"ram": "mem_usage", "mem": "mem_usage", "memory_usage": "mem_usage", "swap": "swap_usage",
+                 "traffic": "port_traffic", "bandwidth": "port_traffic", "disk": "storage", "filesystem": "storage",
+                 "ping": "latency", "packet_loss": "loss", "cpu_load": "cpu", "cpu_usage": "cpu", "temp": "temperature",
+                 "fan": "fanspeed", "load_average": "load"}
 
 TOOLS = [
     Tool("netsync__find_devices", "List monitored devices with reachability and service counts per state. "

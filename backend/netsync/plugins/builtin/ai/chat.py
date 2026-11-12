@@ -47,7 +47,8 @@ _busy: set[int] = set()  # users with an answer in progress
 _tasks: set[asyncio.Task] = set()  # keeps running turns referenced
 
 
-def system_prompt(cfg: dict[str, Any], page_note: str | None, now: datetime) -> str:
+def system_prompt(cfg: dict[str, Any], now: datetime) -> str:
+    """Stays the same all day, so Ollama can reuse its cache of the prompt and tool list between questions."""
     lines = [
         "You are the NETsync AI coworker, helping a network engineer with the NETsync monitoring system.",
         "Rules:",
@@ -57,10 +58,8 @@ def system_prompt(cfg: dict[str, Any], page_note: str | None, now: datetime) -> 
         "- Durations are in minutes unless a field says otherwise; times are UTC.",
         "- If a tool says it is waiting for approval, tell the user to approve it in Setup → AI tools.",
         f"- Answer in {cfg.get('language') or 'English'}.",
-        f"Current time: {now:%Y-%m-%d %H:%M} UTC.",
+        f"Today is {now:%Y-%m-%d} (UTC).",
     ]
-    if page_note:
-        lines.append(page_note)
     if (cfg.get("extra_instructions") or "").strip():
         lines.append("About this network: " + cfg["extra_instructions"].strip())
     return "\n".join(lines)
@@ -91,8 +90,37 @@ async def _may_see(session, actor: Actor, device_id: int) -> bool:
     return allowed is None or device_id in allowed
 
 
+# Shorter wording for the chat: every token of the tool list is read on each question, and small GPUs are slow at it
+CHAT_HINTS = {
+    "netsync__metric_summary": "Average, min, max (with time) and latest value of a device graph over 1, 7, 30 or 365 days.",
+}
+PARAM_HINTS = {
+    ("netsync__metric_summary", "graph"): "Graph id: cpu, load, mem_usage, swap_usage, storage, temperature, fanspeed, "
+                                          "latency, loss, port_traffic, port_errors, disk_io, uptime",
+    ("netsync__metric_summary", "component"): "Port, disk, filesystem or sensor name (needed for those graphs)",
+}
+
+
+def first_sentence(text: str, limit: int = 200) -> str:
+    m = re.match(r"(.+?[.!?])(\s|$)", text.strip(), re.S)
+    s = m.group(1) if m else text.strip()
+    return s if len(s) <= limit else s[: limit - 1] + "…"
+
+
 def tool_spec(t: Tool) -> dict:
-    return {"type": "function", "function": {"name": t.name, "description": t.description, "parameters": t.input_schema}}
+    """The tool as the chat model sees it: short descriptions, no limits or defaults (the hub checks those)."""
+    props = {}
+    for key, spec in (t.input_schema.get("properties") or {}).items():
+        p = {k: spec[k] for k in ("type", "enum") if k in spec}
+        desc = PARAM_HINTS.get((t.name, key)) or spec.get("description")
+        if desc:
+            p["description"] = first_sentence(desc, 120)
+        props[key] = p
+    params = {"type": "object", "properties": props}
+    if t.input_schema.get("required"):
+        params["required"] = t.input_schema["required"]
+    return {"type": "function", "function": {
+        "name": t.name, "description": CHAT_HINTS.get(t.name) or first_sentence(t.description), "parameters": params}}
 
 
 def compact(value: Any, limit: int) -> str:
@@ -184,9 +212,14 @@ class Turn:
             rows = list(await s.scalars(select(ChatMessage).where(ChatMessage.conversation_id == self.conversation_id)
                                         .order_by(ChatMessage.id)))
             note = await page_note(s, self.actor, self.page)
-        # rows already holds this turn's question (saved before the turn started)
-        messages = [{"role": "system", "content": system_prompt(self.cfg, note, datetime.now(UTC))},
-                    *history_messages(rows)]
+        # rows already holds this turn's question (saved before the turn started); the page and time go with it
+        # rather than in the system prompt, which keeps the prompt prefix cacheable
+        now = datetime.now(UTC)
+        history = history_messages(rows)
+        if history and history[-1]["role"] == "user":
+            context = f"[{now:%H:%M} UTC. {note}]" if note else f"[{now:%H:%M} UTC]"
+            history[-1] = {**history[-1], "content": context + "\n" + history[-1]["content"]}
+        messages = [{"role": "system", "content": system_prompt(self.cfg, now)}, *history]
         tools = await hub.visible_tools(self.actor)
         specs = [tool_spec(t) for t in tools if t.name != "netsync__call_result"]
         known = {t.name for t in tools}
@@ -285,9 +318,14 @@ def busy(user_id: int) -> bool:
     return user_id in _busy
 
 
-async def events(turn: Turn) -> AsyncIterator[dict]:
+async def events(turn: Turn, keepalive: float = 15) -> AsyncIterator[dict]:
+    """The turn's events; a ping when it is quiet (a slow model) so proxies don't close the stream."""
     while True:
-        ev = await turn.queue.get()
+        try:
+            ev = await asyncio.wait_for(turn.queue.get(), keepalive)
+        except TimeoutError:
+            yield {"type": "ping"}
+            continue
         if ev is None:
             return
         yield ev
