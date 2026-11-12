@@ -24,6 +24,8 @@ New components (sensors, disks, system statistics) appear after the next discove
 
 ## Optional: swap device and disk models (Intel Optane detection)
 
+Step-by-step guide with sample output: [OPTANE-SWAP.md](OPTANE-SWAP.md).
+
 Standard SNMP doesn't say which disk holds swap or what model a disk is. One small `extend` adds both, so
 NETsync can show *"Swap: /dev/nvme0n1p1 · Intel Optane · INTEL MEMPEK1W016GA"* and tag the disk on the
 Disk I/O page. On the host, as root:

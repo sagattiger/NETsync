@@ -12,8 +12,13 @@ service states, threshold rules, problem views, acknowledgements, downtimes and 
 - **SNMP v1 / v2c / v3** discovery and polling (async, 64 devices in parallel by default)
 - **Vendor / OS detection**: Cisco IOS/IOS-XE/NX-OS/ASA, MikroTik, Fortinet, Palo Alto, Juniper,
   Arista, Aruba/HPE, Ubiquiti, VMware ESXi, pfSense/OPNsense, Windows, Linux, Proxmox, FreeBSD
-- **Device pages**: Overview, Ports (traffic, errors, utilization), Health (CPU, memory, storage),
-  Services, Latency, Syslog, Events, Settings
+- **Device pages**: Overview, Ports (traffic, packets, errors, utilization), Health (processor, memory,
+  storage, disk I/O, temperature, fan speed), Graphs, Services, Latency, Syslog, Events, Settings
+- **Linux host metrics** over plain SNMP: CPU model and cores, load, detailed memory and swap, sensors,
+  disk I/O, IP/TCP/UDP/SNMP statistics, see [docs/HOST-METRICS.md](docs/HOST-METRICS.md). Intel Optane swap
+  detection: [docs/OPTANE-SWAP.md](docs/OPTANE-SWAP.md)
+- **Housekeeping**: every poll for 30 days, hourly averages for 1 year, daily averages for 5 years,
+  compression, and adjustable retention for graphs, syslog and events (Setup → Housekeeping)
 - **Service states and threshold rules** in the CheckMK style (per check, device group and item regex,
   with priorities), plus a problems dashboard and live updates over websocket
 - **Alerts**: email, Telegram, webhook; acknowledgements; scheduled downtimes
