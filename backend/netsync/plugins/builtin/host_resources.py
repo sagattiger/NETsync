@@ -14,6 +14,8 @@ from netsync.snmp.client import text
 
 HR_PROCESSOR_LOAD = "1.3.6.1.2.1.25.3.3.1.2"
 HR_DEVICE_DESCR = "1.3.6.1.2.1.25.3.2.1.3"  # same index as hrProcessorTable
+HR_DEVICE_TYPE = "1.3.6.1.2.1.25.3.2.1.2"
+HR_DEVICE_PROCESSOR = "1.3.6.1.2.1.25.3.1.3"
 HR_STORAGE = "1.3.6.1.2.1.25.2.3.1"
 STORAGE_COLS = {
     "type": f"{HR_STORAGE}.2",
@@ -59,10 +61,15 @@ class HostResourcesModule(Module):
         specs = []
         loads = await ctx.snmp.walk(HR_PROCESSOR_LOAD)
         try:
-            descrs = await ctx.snmp.walk(HR_DEVICE_DESCR) if loads else {}
+            types = await ctx.snmp.walk(HR_DEVICE_TYPE)
+            descrs = await ctx.snmp.walk(HR_DEVICE_DESCR)
         except Exception:
-            descrs = {}
-        for index in loads:
+            types, descrs = {}, {}
+        # net-snmp leaves hrProcessorLoad empty for about a minute after it starts: the device table lists the
+        # processors straight away, so use it (and the load table as a fallback for agents without it)
+        cpu_indexes = [i for i, t in types.items() if str(t).strip(".") == HR_DEVICE_PROCESSOR] or list(loads)
+        cpu_indexes.sort(key=lambda i: int(i) if str(i).isdigit() else 0)
+        for index in cpu_indexes:
             model = cpu_model(text(descrs.get(index)))
             specs.append(ComponentSpec("processor", index, f"CPU {len(specs)}", descr=model,
                                        attrs={"model": model} if model else {}))

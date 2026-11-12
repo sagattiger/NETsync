@@ -16,6 +16,16 @@ from netsync.snmp.client import SnmpClient, SnmpError
 
 log = logging.getLogger(__name__)
 
+MISSES_BEFORE_DELETE = 2  # discoveries in a row a component must be missing before it is marked removed
+
+
+def count_miss(comp) -> bool:
+    """Record that discovery didn't find ``comp``; True once it has been missing MISSES_BEFORE_DELETE times in a row
+    (a component that is found again gets fresh attrs, which resets the count)."""
+    misses = int((comp.attrs or {}).get("missing", 0)) + 1
+    comp.attrs = {**(comp.attrs or {}), "missing": misses}
+    return misses >= MISSES_BEFORE_DELETE
+
 
 async def load_components(session: AsyncSession, device: Device) -> list[Component]:
     return list(await session.scalars(select(Component).where(Component.device_id == device.id)))
@@ -61,6 +71,10 @@ async def discover_device(session: AsyncSession, device: Device) -> None:
             comp.last_seen = now
         for key, comp in by_key.items():
             if key[0] in module.kinds and key not in seen and not comp.deleted:
+                # One short or empty answer (agent just restarted, a timeout) must not wipe components:
+                # only mark one removed when it is missing in two discoveries in a row.
+                if not count_miss(comp):
+                    continue
                 comp.deleted = True
                 await session.execute(delete(Service).where(Service.component_id == comp.id))
 

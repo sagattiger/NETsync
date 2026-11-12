@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import func, or_, select
 
 from netsync.db import SessionLocal
 from netsync.metrics_query import bucketed_series
@@ -219,12 +219,14 @@ async def search_syslog(ctx: ToolContext, a: dict) -> dict:
             q = q.where(SyslogMessage.device_id.in_(allowed))
         if a.get("min_severity") is not None:
             q = q.where(SyslogMessage.severity <= SEVERITY.index(a["min_severity"]))
-        stats = (await s.execute(select(func.count(), func.min(SyslogMessage.time), func.max(SyslogMessage.time))
-                                 .select_from(q.subquery()))).first()
-        per_device = await s.execute(select(Device.hostname, func.count()).select_from(q.subquery().alias("m"))
-                                     .join(Device, Device.id == text("m.device_id"), isouter=True).group_by(Device.hostname))
+        sub = q.subquery()
+        stats = (await s.execute(select(func.count(), func.min(sub.c.time), func.max(sub.c.time)))).first()
+        counts = list(await s.execute(select(sub.c.device_id, func.count()).group_by(sub.c.device_id)
+                                      .order_by(func.count().desc()).limit(50)))
         sample = list(await s.scalars(q.order_by(SyslogMessage.time.desc()).limit(a["limit"])))
-        hosts = {d.id: d.hostname for d in await s.scalars(select(Device).where(Device.id.in_({m.device_id for m in sample if m.device_id})))}
+        ids = {did for did, _ in counts if did} | {m.device_id for m in sample if m.device_id}
+        hosts = {d.id: d.hostname for d in await s.scalars(select(Device).where(Device.id.in_(ids)))} if ids else {}
+        per_device = [(hosts.get(did) if did else None, n) for did, n in counts]
     return {"text": a["text"], "days": a["days"], "count": stats[0], "first": iso(stats[1]), "last": iso(stats[2]),
             "by_device": {h or "unknown sender": n for h, n in per_device},
             "latest": [{"time": iso(m.time), "device": hosts.get(m.device_id, m.hostname), "severity": SEVERITY[m.severity]
