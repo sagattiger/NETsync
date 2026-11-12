@@ -187,16 +187,21 @@ async def backfill_rollups() -> list[str]:
             return done
         for view in ("metrics_hourly", "metrics_daily"):
             mat = await _mat_table(conn, view)
-            # look at the stored rows: a real-time view also shows buckets computed on the fly from raw data
-            if mat is None or await conn.scalar(text(f"SELECT EXISTS (SELECT 1 FROM {mat})")):
+            if mat is None:
                 continue
             bucket = timedelta(hours=1) if view == "metrics_hourly" else timedelta(days=1)
+            # Look at the stored rows (a real-time view also shows buckets computed on the fly). The refresh
+            # policy fills the last days by itself, so "filled" means: the oldest raw data is covered.
+            stored_from = await conn.scalar(text(f"SELECT min(bucket) FROM {mat}"))
+            if stored_from is not None and stored_from <= oldest + 2 * bucket:
+                continue
             start = oldest.replace(minute=0, second=0, microsecond=0)
-            end = datetime.now(UTC) - bucket
+            end = stored_from or datetime.now(UTC) - bucket
             t = start
             while end - t >= bucket:  # TimescaleDB rejects a window shorter than one bucket
                 step = min(t + timedelta(days=7), end)
-                await conn.execute(text(f"CALL refresh_continuous_aggregate('{view}', :a, :b)"), {"a": t, "b": step})
+                await conn.execute(text(f"CALL refresh_continuous_aggregate('{view}', CAST(:a AS timestamptz), "
+                                        "CAST(:b AS timestamptz))"), {"a": t, "b": step})
                 t = step
             done.append(f"{view}: filled from {start:%Y-%m-%d}")
     return done
@@ -350,11 +355,12 @@ class HousekeepingService(BackgroundService):
                 await asyncio.sleep(CHECK_EVERY)
             due = time.monotonic() - last_purge >= PURGE_EVERY
             if requested or due or key != last_cfg:
-                await run_once("requested" if requested else "scheduled" if due else "settings changed",
-                               do_purge=requested or due)
-                last_cfg = key
-                if requested or due:
-                    last_purge = time.monotonic()
+                result = await run_once("requested" if requested else "scheduled" if due else "settings changed",
+                                        do_purge=requested or due)
+                if result.get("ok"):  # on failure: try again at the next check (a minute later)
+                    last_cfg = key
+                    if requested or due:
+                        last_purge = time.monotonic()
 
 
 router = APIRouter()
