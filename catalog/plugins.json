@@ -4,12 +4,13 @@
     {
       "name": "ssh",
       "title": "SSH terminal",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "author": "NETsync",
       "icon": "terminal",
-      "description": "Terminals on your Linux servers inside NETsync. Every NETsync user gets their own account on each server (ns-<user>), with rights from their group: read-only, read and write, or full. Accounts are removed from all servers when the user is removed from NETsync.",
+      "description": "Terminals on your Linux servers inside NETsync, and an SSH port (2222) for desktop clients such as OpenSSH, PuTTY and Muxus. Every NETsync user gets their own account on each server (ns-<user>), with rights from their group: read-only, read and write, or full. Accounts are removed from all servers when the user is removed from NETsync.",
       "permissions": ["terminal", "events"],
       "memory_mb": 256,
+      "ports": [{"container": 2222, "host": 2222}],
       "source": {"repo": "sagattiger/NETsync", "ref": "main", "context": "plugins", "dockerfile": "ssh/Dockerfile"},
       "docs": "docs/TERMINAL.md"
     },

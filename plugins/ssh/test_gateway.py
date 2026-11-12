@@ -257,3 +257,95 @@ def test_removal_runs_against_the_server(ssh_server, data_dir):
     store.queue_removal("ns-bob")
     assert asyncio.run(gw.run_removals()) == 1
     assert "ns-bob" not in FakeServer.accounts and store.accounts("ns-bob") == []
+
+
+# --------------------------------------------------------------------------- bastion (desktop SSH clients)
+
+import bastion  # noqa: E402
+
+
+def test_bastion_user_names():
+    assert bastion.parse_username("alice:pve002") == ("alice", "pve002")
+    assert bastion.parse_username("alice@pve002.qsync.net") == ("alice", "pve002.qsync.net")
+    assert bastion.parse_username("alice+10.0.0.5") == ("alice", "10.0.0.5")
+    assert bastion.parse_username("alice") is None and bastion.parse_username("a:b c") is None
+
+
+class FakeCore:
+    def __init__(self, port):
+        self.port, self.calls = port, []
+
+    async def login(self, username, password, target, client_ip):
+        self.calls.append((username, target))
+        if password != "netsync-pw":
+            raise bastion.CoreError(401, "Wrong user name or password")
+        if target == "forbidden":
+            raise bastion.CoreError(403, "Your groups don't give you terminal access to forbidden")
+        return {"sid": f"b{len(self.calls)}", "account": "ns-alice", "level": "read", "level_label": "Read-only",
+                "device_id": 1, "hostname": "srv1", "host": "127.0.0.1", "port": self.port}
+
+
+class Answers(asyncssh.SSHClient):
+    """A desktop client: answers each keyboard-interactive prompt from a script and records the instructions."""
+
+    def __init__(self, script):
+        self.script, self.seen = script, []
+
+    def kbdint_auth_requested(self):
+        return ""
+
+    def kbdint_challenge_received(self, name, instructions, lang, prompts):
+        self.seen.append((instructions, [p for p, _ in prompts]))
+        return [self.script.pop(0) if self.script else "" for _ in prompts]
+
+
+def run_bastion(ssh_server, data_dir, username, script, command="echo-test"):
+    async def go():
+        store = gateway.Store(data_dir)
+        FakeServer.gateway_key = store.key
+        reports = []
+
+        async def report(sid, **f):
+            reports.append(f)
+
+        srv = await bastion.start(gateway.Gateway(store), store, FakeCore(ssh_server), report, 0, "127.0.0.1")
+        port = srv.sockets[0].getsockname()[1]
+        client = Answers(list(script))
+        out = None
+        try:
+            async with asyncssh.connect("127.0.0.1", port, username=username, known_hosts=None, client_keys=[],
+                                        password=None, preferred_auth="keyboard-interactive",
+                                        client_factory=lambda: client) as conn:
+                proc = await conn.create_process(term_type="xterm", encoding=None)
+                proc.stdin.write(b"hello\nexit\n")
+                out = (await proc.stdout.read()).decode()
+        except asyncssh.PermissionDenied:
+            out = "DENIED"
+        srv.close()
+        await asyncio.sleep(0.2)
+        return out, client.seen, reports
+
+    return asyncio.run(go())
+
+
+def test_bastion_first_login_sets_password_then_bridges(ssh_server, data_dir):
+    out, seen, reports = run_bastion(ssh_server, data_dir, "alice:srv1",
+                                     ["netsync-pw", "short", "short", "a-long-password", "a-long-password"])
+    assert "welcome ns-alice" in out and "echo:hello" in out
+    assert "NETsync password for alice" in seen[0][1][0]
+    assert "created ns-alice" in seen[1][0] and seen[1][1] == ["New password: ", "Repeat it: "]
+    assert "At least" in seen[2][0]  # too short, asked again
+    assert FakeServer.accounts["ns-alice"]["password"] == "a-long-password"
+    assert [r["status"] for r in reports] == ["connected", "ended"] and "desktop client" in reports[1]["reason"]
+
+
+def test_bastion_wrong_passwords_and_refusals(ssh_server, data_dir):
+    FakeServer.accounts["ns-alice"] = {"password": "server-pw-123", "level": "read"}
+    out, seen, _ = run_bastion(ssh_server, data_dir, "alice:srv1", ["netsync-pw", "nope", "server-pw-123"])
+    assert "echo:hello" in out and "Wrong password" in seen[2][0]
+    out, seen, _ = run_bastion(ssh_server, data_dir, "alice:srv1", ["bad", "bad", "bad"])
+    assert out == "DENIED"
+    out, seen, _ = run_bastion(ssh_server, data_dir, "alice:forbidden", ["netsync-pw", ""])
+    assert out == "DENIED" and "terminal access" in seen[-1][0]
+    out, seen, _ = run_bastion(ssh_server, data_dir, "alice", [""])
+    assert out == "DENIED" and "Log in as" in seen[0][0]

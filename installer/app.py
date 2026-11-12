@@ -1,8 +1,9 @@
 """NETsync plugin installer: the only NETsync container with access to Docker.
 
 The API asks it to build and run store plugins; it applies the same locked-down settings to every plugin no
-matter what it is asked: no privileges, no capabilities, no host folders, no published ports, memory and process
-limits, one named volume for /data, on the NETsync network only.
+matter what it is asked: no privileges, no capabilities, no host folders, memory and process limits, one named
+volume for /data, on the NETsync network only. Ports are published only when the catalog declares them (TCP,
+above 1024, at most 3), e.g. the SSH bastion's 2222.
 
 Plugin sources are GitHub repositories, downloaded as a tarball (no git needed) and built with their Dockerfile.
 
@@ -88,12 +89,18 @@ class Source(BaseModel):
     dockerfile: str = "Dockerfile"
 
 
+class Port(BaseModel):
+    container: int
+    host: int
+
+
 class InstallIn(BaseModel):
     name: str
     version: str
     source: Source
     env: dict[str, str] = Field(default_factory=dict)
     memory_mb: int = 256
+    ports: list[Port] = Field(default_factory=list)
 
 
 def validate(body: InstallIn) -> None:
@@ -107,6 +114,8 @@ def validate(body: InstallIn) -> None:
             raise HTTPException(400, f"environment variable {k} not allowed (NETSYNC_* only)")
     if not 32 <= body.memory_mb <= MAX_MEMORY_MB:
         raise HTTPException(400, f"memory must be 32-{MAX_MEMORY_MB} MB")
+    if len(body.ports) > 3 or any(not (1024 < p.container < 65536 and 1024 < p.host < 65536) for p in body.ports):
+        raise HTTPException(400, "ports must be TCP ports above 1024, at most 3")
 
 
 def context_tar(raw: bytes, context: str) -> io.BytesIO:
@@ -165,6 +174,7 @@ def install(job: dict, body: InstallIn) -> None:
     _log(job, f"Starting {cname}")
     client().containers.run(
         image, name=cname, detach=True, environment=body.env, network=network, dns=dns or None,
+        ports={f"{p.container}/tcp": p.host for p in body.ports} or None,
         restart_policy={"Name": "unless-stopped"}, mem_limit=f"{body.memory_mb}m", pids_limit=256,
         cap_drop=["ALL"], security_opt=["no-new-privileges:true"], privileged=False,
         volumes={f"{PREFIX}{name}-data": {"bind": "/data", "mode": "rw"}},

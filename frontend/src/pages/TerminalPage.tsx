@@ -11,13 +11,37 @@ import { TerminalView } from "../components/TerminalView";
 export interface TerminalStatus { available: boolean; plugin: string | null; plugin_status: string | null; account: string }
 export interface TerminalSessionRow {
   id: string; created_at: string; username: string; account: string; device_id: number | null; hostname: string; level: string;
-  status: string; reason: string | null; client_ip: string | null; connected_at: string | null; ended_at: string | null;
+  status: string; via?: string; reason: string | null; client_ip: string | null; connected_at: string | null; ended_at: string | null;
   bytes_in: number | null; bytes_out: number | null;
 }
 export const useTerminalStatus = () =>
   useQuery({ queryKey: ["terminal-status"], queryFn: () => api<TerminalStatus>("/terminal/status"), staleTime: 60_000, retry: false }).data;
 
 interface Tab { key: string; deviceId: number; title: string }
+interface Bastion { port: number; fingerprint: string; running: boolean; user: string }
+
+/** How to reach servers from a desktop SSH client (OpenSSH, PuTTY, Muxus) through the NETsync bastion. */
+export function DesktopClients({ example }: { example?: string }) {
+  const { data: b } = useQuery({ queryKey: ["terminal-bastion"], queryFn: () => api<Bastion>("/terminal/bastion"), staleTime: 300_000, retry: false });
+  if (!b) return null;
+  const host = location.hostname;
+  const server = example || "pve002";
+  const cfg = `Host ${server}
+    HostName ${host}
+    Port ${b.port}
+    User ${b.user}:${server}`;
+  return (
+    <Card title="Desktop SSH clients (OpenSSH, PuTTY, Muxus)" flush={false}>
+      {!b.running && <div className="text-sm text-crit mb-2">The SSH port is not running; see the plugin's logs in the Plugin store.</div>}
+      <p className="text-sm text-fg2">Connect to NETsync on port <b>{b.port}</b> with <code>{b.user}:&lt;server&gt;</code> as user name. You're asked for your
+        NETsync password, then your password on that server (the first time you choose it). Same account and rights as here.</p>
+      <pre className="mt-2 text-xs bg-inset border border-line rounded-lg p-2 overflow-x-auto">ssh -p {b.port} {b.user}:{server}@{host}</pre>
+      <div className="text-xs text-muted mt-2">In <code>~/.ssh/config</code> (Muxus reads it too), or as a host in PuTTY / Muxus with the same values:</div>
+      <pre className="mt-1 text-xs bg-inset border border-line rounded-lg p-2 overflow-x-auto">{cfg}</pre>
+      <div className="text-xs text-muted mt-2 break-all">NETsync's SSH key fingerprint, to compare on the first connection: <code>{b.fingerprint}</code></div>
+    </Card>
+  );
+}
 
 export default function TerminalPage() {
   const status = useTerminalStatus();
@@ -107,6 +131,7 @@ export default function TerminalPage() {
               </table>
             )}
           </Card>
+          <DesktopClients example={recent[0]?.hostname?.split(".")[0]} />
         </div>
       )}
 

@@ -77,7 +77,7 @@ async def plugin_request(p: RemotePlugin, method: str, path: str, **kw) -> Any:
 
 
 def session_out(t: TerminalSession) -> dict:
-    return {k: getattr(t, k) for k in ("id", "created_at", "username", "account", "device_id", "hostname", "level",
+    return {k: getattr(t, k) for k in ("id", "created_at", "username", "account", "device_id", "hostname", "level", "via",
                                        "status", "reason", "client_ip", "connected_at", "ended_at", "bytes_in", "bytes_out")}
 
 
@@ -231,6 +231,80 @@ async def report_session(sid: str, body: SessionReport, session: Session,
         t.bytes_in, t.bytes_out = body.bytes_in, body.bytes_out
     await session.commit()
     return {"ok": True}
+
+
+# --------------------------------------------------------------------------- bastion (desktop SSH clients)
+
+MAX_FAILURES = 5
+FAILURE_WINDOW = 300
+_failures: dict[tuple[str, str], list[float]] = {}
+
+
+def _limited(key: tuple[str, str], now: float) -> bool:
+    recent = [t for t in _failures.get(key, []) if now - t < FAILURE_WINDOW]
+    _failures[key] = recent
+    return len(recent) >= MAX_FAILURES
+
+
+class BastionIn(BaseModel):
+    username: str = Field(max_length=64)
+    password: str = Field(max_length=256)
+    target: str = Field(max_length=255)
+    client_ip: str = Field("", max_length=64)
+
+
+async def find_device(session, user: User, ref: str) -> Device:
+    """A server by IP, id or (part of a) hostname, among the devices the user may see."""
+    from netsync.api.deps import device_scope
+    from netsync.tools.base import Actor, ToolContext, ToolError
+    from netsync.tools.builtin import resolve_device
+
+    by_ip = list(await session.scalars(device_scope(select(Device).where(Device.ip == ref), user)))
+    if len(by_ip) == 1:
+        return by_ip[0]
+    try:
+        return await resolve_device(session, ToolContext(Actor("user", user.username, user=user)), ref)
+    except ToolError as e:
+        raise HTTPException(404, str(e)) from e
+
+
+@router.post("/plugin-api/terminal/bastion")
+async def bastion_login(body: BastionIn, session: Session, p: Annotated[RemotePlugin, Depends(_terminal_caller)]):
+    """A desktop SSH client logs in through the plugin's bastion: check the NETsync password and the user's
+    rights on the server, open an audited session and tell the plugin where to connect and as whom."""
+    from netsync.security import verify_password
+
+    now = time.time()
+    key = (body.username.lower(), body.client_ip)
+    if _limited(key, now):
+        raise HTTPException(429, "Too many failed logins, wait a few minutes")
+    user = await session.scalar(select(User).where(User.username == body.username))
+    if user is None or not user.is_active or not verify_password(body.password, user.password_hash):
+        _failures.setdefault(key, []).append(now)
+        raise HTTPException(401, "Wrong user name or password")
+    _failures.pop(key, None)
+    device = await find_device(session, user, body.target.strip())
+    level = level_for(user, device)
+    if level == "none":
+        raise HTTPException(403, f"Your groups don't give you terminal access to {device.hostname}")
+    sid = uuid.uuid4().hex
+    t = TerminalSession(id=sid, user_id=user.id, username=user.username, account=account_name(user.username),
+                        device_id=device.id, hostname=device.hostname, level=level, status="issued", via="ssh",
+                        client_ip=body.client_ip[:64])
+    session.add(t)
+    await session.commit()
+    return {"sid": sid, "account": t.account, "level": level, "level_label": LEVEL_LABELS[level], "device_id": device.id,
+            "hostname": device.hostname, "host": device.ip or device.hostname, "port": 22}
+
+
+@router.get("/terminal/bastion")
+async def bastion_info(user: CurrentUser, session: Session):
+    """How to connect with a desktop SSH client (port and host key fingerprint)."""
+    p = await terminal_plugin(session)
+    if p is None or p.status != "online":
+        raise HTTPException(503, "The SSH terminal plugin is not running")
+    info = await plugin_request(p, "GET", "/admin/bastion")
+    return {**info, "user": user.username}
 
 
 @router.get("/plugin-api/terminal/accounts")

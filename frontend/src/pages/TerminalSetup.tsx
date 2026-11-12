@@ -6,7 +6,7 @@ import { api, Device, fmtAgo, Group } from "../api";
 import { Icon } from "../components/Icon";
 import { Page, PageHeader } from "../components/Layout";
 import { Card, Empty } from "../components/ui";
-import { TerminalSessionRow, useTerminalStatus } from "./TerminalPage";
+import { DesktopClients, TerminalSessionRow, useTerminalStatus } from "./TerminalPage";
 
 interface AdminInfo {
   plugin: string; plugin_status: string; public_key: string;
@@ -128,6 +128,8 @@ export default function TerminalSetup() {
         </Card>
       )}
 
+      {info.data && <DesktopClients />}
+
       {info.data && (
         <>
           <Card title={`Accounts NETsync created (${info.data.accounts.length})`}>
@@ -174,7 +176,7 @@ export default function TerminalSetup() {
       <Card title="Sessions">
         {sessions.length === 0 ? <div className="p-4 text-sm text-muted">No terminal sessions yet.</div> : (
           <table className="table">
-            <thead><tr><th>When</th><th>User</th><th>Server</th><th>Level</th><th>Status</th><th className="hidden lg:table-cell">From</th></tr></thead>
+            <thead><tr><th>When</th><th>User</th><th>Server</th><th>Level</th><th>Via</th><th>Status</th><th className="hidden lg:table-cell">From</th></tr></thead>
             <tbody>
               {sessions.map((s) => (
                 <tr key={s.id}>
@@ -182,6 +184,7 @@ export default function TerminalSetup() {
                   <td>{s.username} <span className="text-xs text-muted font-mono">{s.account}</span></td>
                   <td>{s.device_id ? <Link to={`/devices/${s.device_id}`} className="hover:underline">{s.hostname}</Link> : s.hostname}</td>
                   <td>{s.level}</td>
+                  <td className="text-xs">{s.via === "ssh" ? "SSH client" : "browser"}</td>
                   <td className="text-xs max-w-[18rem] truncate" title={s.reason ?? ""}>{s.status}{s.reason ? ` · ${s.reason}` : ""}</td>
                   <td className="hidden lg:table-cell text-xs text-muted">{s.client_ip}</td>
                 </tr>

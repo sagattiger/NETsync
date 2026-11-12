@@ -36,6 +36,35 @@ Level changes apply at the next login. **Removing or disabling a user** in NETsy
 every server at once (offline servers are retried every 10 minutes), and an hourly check removes accounts of users
 that no longer exist.
 
+## Desktop SSH clients (OpenSSH, PuTTY, Muxus)
+
+The same plugin listens on **port 2222** of the NETsync host. Use `<NETsync user>:<server>` as the user name
+(`alice@pve002` works too, e.g. `ssh -l alice@pve002`); the server can be its hostname, part of it if unique,
+or its IP:
+
+```bash
+ssh -p 2222 alice:pve002@10.128.101.112
+```
+
+You're asked for your **NETsync password**, then for your password on that server (the first time you choose
+it, exactly like in the browser). Same account, same rights, same audit (the session log shows "SSH client").
+
+`~/.ssh/config` (Muxus reads it, and lists the hosts):
+
+```
+Host pve002
+    HostName 10.128.101.112
+    Port 2222
+    User alice:pve002
+```
+
+In PuTTY or as a Muxus-only host: host = the NETsync address, port 2222, user `alice:pve002`.
+
+* Compare the host key fingerprint on the first connection with the one on the Terminal page.
+* Five wrong NETsync passwords from the same address lock that user out for five minutes there.
+* NETsync connects the client to the server itself (it is not a plain jump host), so port forwarding, agent
+  forwarding, `scp` and SFTP are not available through it yet; shells and commands (`ssh … uptime`) are.
+
 ## Setup
 
 1. **Setup → Plugin store → SSH terminal → Install.**

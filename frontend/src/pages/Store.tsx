@@ -9,7 +9,7 @@ import { useMe } from "./probes/shared";
 
 interface StoreEntry {
   name: string; title: string; version: string; author: string; icon: string; description: string;
-  permissions: string[]; memory_mb: number; source: { repo: string; ref: string; context: string; dockerfile: string };
+  permissions: string[]; memory_mb: number; ports: { container: number; host: number }[]; source: { repo: string; ref: string; context: string; dockerfile: string };
   docs: string | null; installed: string | null; update: boolean; foreign: boolean; status: string | null;
   status_detail: string | null; container: { status: string; version: string } | null; job: string | null;
 }
@@ -112,6 +112,7 @@ export default function Store() {
             <div className="flex flex-wrap gap-1.5">
               {p.permissions.map((perm) => <span key={perm} className="pill pill-unknown text-xxs px-2 py-0.5" title={PERMISSION_TEXT[perm]}>{perm}</span>)}
               <span className="pill pill-unknown text-xxs px-2 py-0.5">{p.memory_mb} MB</span>
+              {p.ports.map((x) => <span key={x.host} className="pill pill-warn text-xxs px-2 py-0.5" title="Published on the NETsync host">port {x.host}</span>)}
             </div>
             {isAdmin && (
               <div className="flex flex-wrap gap-2">
@@ -147,6 +148,10 @@ export default function Store() {
                   {installing.permissions.map((perm) => <li key={perm} className="flex gap-2"><Icon name="check" className="w-4 h-4 text-accent shrink-0 mt-0.5" /><span><b>{perm}</b>: {PERMISSION_TEXT[perm] ?? perm}</span></li>)}
                 </ul>
               </div>
+              {installing.ports.length > 0 && (
+                <div className="text-sm"><b className="text-strong">Opens on the NETsync host:</b> {installing.ports.map((x) => `TCP ${x.host}`).join(", ")}
+                  <span className="text-muted"> (nothing else may use {installing.ports.length > 1 ? "them" : "it"})</span></div>
+              )}
               <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} /> I accept these permissions</label>
               {err && <div className="text-sm text-crit">{err}</div>}
               <div className="flex justify-end gap-2">

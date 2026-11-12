@@ -69,6 +69,8 @@ def parse_catalog(data: Any) -> dict:
             "description": str(e.get("description") or "")[:1000],
             "permissions": [p for p in e.get("permissions") or [] if p in remote.PERMISSIONS],
             "memory_mb": int(e.get("memory_mb") or 256),
+            "ports": [{"container": int(p["container"]), "host": int(p["host"])} for p in e.get("ports") or []
+                      if isinstance(p, dict) and str(p.get("container", "")).isdigit() and str(p.get("host", "")).isdigit()][:3],
             "source": {k: str(src.get(k, d)) for k, d in (("repo", ""), ("ref", "main"), ("context", ""),
                                                          ("dockerfile", "Dockerfile"))},
             "docs": e.get("docs"),
@@ -159,6 +161,7 @@ async def install(name: str, body: InstallIn, session: Session, user=require(Rol
         p.granted = entry["permissions"]
     job = await installer("POST", "/install", json={
         "name": name, "version": entry["version"], "source": entry["source"], "memory_mb": entry["memory_mb"],
+        "ports": entry["ports"],
         "env": {"NETSYNC_PLUGIN_SECRET": secret, "NETSYNC_URL": "http://api:8000", "NETSYNC_PLUGIN_NAME": name}})
     p.store = {"version": entry["version"], "title": entry["title"], "job": job["id"], "installed_by": user.username}
     remote.invalidate()

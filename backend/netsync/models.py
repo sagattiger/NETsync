@@ -568,6 +568,7 @@ class TerminalSession(Base):
     hostname: Mapped[str] = mapped_column(String(255))
     level: Mapped[str] = mapped_column(String(8))
     status: Mapped[str] = mapped_column(String(16), default="issued")  # issued | connected | ended | failed
+    via: Mapped[str] = mapped_column(String(8), default="web", server_default="web")  # web | ssh (desktop client)
     reason: Mapped[str | None] = mapped_column(Text)
     client_ip: Mapped[str | None] = mapped_column(String(64))
     connected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -8,6 +8,9 @@ Routes:
   POST /admin/check {"host","port"}        is a server set up? (secret)
   POST /admin/forget-host {"target"}       forget a host key after a reinstall (secret)
   POST /admin/remove {"account"}           remove an account from every server now (secret)
+  GET  /admin/bastion                      bastion port and host key fingerprint (secret)
+
+The bastion (bastion.py) listens on NETSYNC_BASTION_PORT (2222) for desktop SSH clients.
 """
 
 from __future__ import annotations
@@ -16,9 +19,11 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 import time
 
 import asyncssh
+import bastion
 import httpx
 from fastapi import Request, WebSocket, WebSocketDisconnect
 from gateway import Gateway, GatewayError, Store, Ticket, setup_script, target_of, valid_password, verify
@@ -27,7 +32,7 @@ from netsync_plugin import NetsyncPlugin
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("netsync.ssh")
 
-plugin = NetsyncPlugin("ssh", version="0.1.0", permissions=["terminal", "events"],
+plugin = NetsyncPlugin("ssh", version="0.2.0", permissions=["terminal", "events"],
                        description="SSH terminal in the browser with per-user accounts on Linux servers")
 store = Store()
 gw = Gateway(store)
@@ -35,6 +40,7 @@ app = plugin.app()
 MAX_TRIES = 3
 RECONCILE_EVERY = 3600
 REMOVALS_EVERY = 600
+BASTION_PORT = int(os.environ.get("NETSYNC_BASTION_PORT", "2222"))
 
 
 # --------------------------------------------------------------------------- reporting to NETsync
@@ -214,7 +220,17 @@ def _admin(request: Request) -> None:
 async def info(request: Request):
     _admin(request)
     return {"public_key": store.public_key, "host_keys": store.host_keys(), "accounts": store.accounts(),
-            "pending_removals": store.pending_removals()}
+            "pending_removals": store.pending_removals(), "bastion": bastion_info()}
+
+
+def bastion_info() -> dict:
+    return {"port": BASTION_PORT, "fingerprint": bastion.fingerprint(store), "running": getattr(app.state, "bastion", None) is not None}
+
+
+@app.get("/admin/bastion")
+async def bastion_status(request: Request):
+    _admin(request)
+    return bastion_info()
 
 
 @app.post("/admin/setup")
@@ -300,3 +316,9 @@ async def listen() -> None:
 @app.on_event("startup")
 async def start() -> None:
     app.state.tasks = [asyncio.create_task(lifecycle()), asyncio.create_task(listen())]
+    try:
+        app.state.bastion = await bastion.start(gw, store, bastion.Core(plugin.netsync_url, plugin.secret), report,
+                                                BASTION_PORT)
+    except OSError as e:
+        app.state.bastion = None
+        log.warning("bastion not started on port %s: %s", BASTION_PORT, e)

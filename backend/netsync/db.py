@@ -106,6 +106,9 @@ ADDED_COLUMNS = {
     "remote_plugins": [
         "store JSON",
     ],
+    "terminal_sessions": [
+        "via VARCHAR(8) NOT NULL DEFAULT 'web'",
+    ],
     "api_tokens": [
         "kind VARCHAR(16) NOT NULL DEFAULT 'public'",  # public (dashboards API) | mcp (tool hub)
         "scopes JSON NOT NULL DEFAULT '{}'",  # mcp: {"tools": ["netsync__*"], "write": false}
