@@ -2,7 +2,7 @@ import { BackLink } from "../components/Tabs";
 import { Fragment, ReactNode, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, Component, Device, fmtAgo, fmtBps, fmtBytes, fmtUptime, Me, PluginInfo, prefs, Service, SyslogMsg } from "../api";
+import { api, Component, Device, fmtAgo, fmtBps, fmtUptime, Me, PluginInfo, prefs, Service, SyslogMsg } from "../api";
 import { Icon } from "../components/Icon";
 import { MetricChart } from "../components/MetricChart";
 import ServiceTable from "../components/ServiceTable";
@@ -12,7 +12,11 @@ import { SyslogTable } from "./Syslog";
 import EventsTab from "./device/EventsTab";
 import NotesTab from "./device/NotesTab";
 import NetstatTab from "./device/NetstatTab";
+import HealthTab, { cpuLine, HealthSub } from "./device/HealthTab";
+import GraphsTab from "./device/GraphsTab";
+import { MEMORY_COLORS } from "./device/charts";
 import { AddToDashboard } from "../components/AddToDashboard";
+import { FORMATS, usePresets } from "../presets";
 
 const RANGES: [string, string][] = [["1h", "1h"], ["6h", "6h"], ["24h", "24h"], ["7d", "7d"], ["30d", "30d"], ["1y", "1y"]];
 
@@ -28,7 +32,8 @@ function Meta({ label, children }: { label: string; children: ReactNode }) {
 export default function DevicePage() {
   const params = useParams();
   const id = Number(params.id);
-  const tab = params["*"] || "overview";
+  const [tab, subPath] = (params["*"] || "overview").split("/");
+  const healthSub = (subPath || "overview") as HealthSub;
   const nav = useNavigate();
   const qc = useQueryClient();
   const [range, setRange] = useState(() => prefs.get().default_range ?? "24h");
@@ -42,7 +47,7 @@ export default function DevicePage() {
   if (!device) return <Empty>Loading…</Empty>;
 
   const ports = components.filter((c) => c.kind === "port");
-  const health = components.filter((c) => ["processor", "mempool", "storage", "sensor"].includes(c.kind));
+  const health = components.filter((c) => ["processor", "mempool", "storage", "sensor", "disk"].includes(c.kind));
   const netstat = components.find((c) => c.kind === "netstat");
   const pluginTabs = plugins.flatMap((p) => p.ui_tabs);
   const canEdit = me?.role !== "viewer";
@@ -50,6 +55,7 @@ export default function DevicePage() {
     ["overview", "Overview"],
     ["ports", "Ports", ports.length],
     ["health", "Health", health.length],
+    ["graphs", "Graphs"],
     ["services", "Services", services.length],
     ...(netstat ? [["netstat", "Network stack"] as [string, string]] : []),
     ...pluginTabs.map((t) => [t.id, t.label] as [string, string]),
@@ -59,7 +65,7 @@ export default function DevicePage() {
     ...(canEdit ? [["settings", "Settings"] as [string, string]] : []),
   ];
   const worst = services.reduce((w, s) => Math.max(w, s.state), 0);
-  const showRange = ["overview", "ports", "health", "netstat", ...pluginTabs.map((t) => t.id)].includes(tab);
+  const showRange = ["overview", "ports", "health", "graphs", "netstat", ...pluginTabs.map((t) => t.id)].includes(tab);
 
   async function action(kind: "discover" | "poll") {
     await api(`/devices/${id}/${kind}`, { method: "POST" });
@@ -120,7 +126,11 @@ export default function DevicePage() {
       <div className="px-4 sm:px-6 py-5 space-y-4">
         {tab === "overview" && <OverviewTab device={device} components={components} services={services} range={range} />}
         {tab === "ports" && <PortsTab deviceId={id} ports={ports} range={range} />}
-        {tab === "health" && <HealthTab deviceId={id} components={health} range={range} />}
+        {tab === "health" && (
+          <HealthTab deviceId={id} components={components} services={services} range={range} sub={healthSub}
+            onSub={(sub) => nav(`/devices/${id}/health${sub === "overview" ? "" : `/${sub}`}`)} />
+        )}
+        {tab === "graphs" && <GraphsTab deviceId={id} range={range} />}
         {tab === "services" && <Card><ServiceTable services={services} canAck={canEdit} /></Card>}
         {tab === "syslog" && <DeviceSyslog deviceId={id} />}
         {tab === "events" && <EventsTab deviceId={id} />}
@@ -132,9 +142,13 @@ export default function DevicePage() {
             <iframe key={t.id} src={t.url.replace("{device_id}", String(id))} className="w-full h-[70vh] card" />
           ) : t.id === "latency" ? (
             <Fragment key={t.id}>
-              <Card title="Round-trip time" flush={false}>
-                <MetricChart deviceId={id} range={range} unit=" ms" height={260} area={false}
-                  metrics={[{ name: "ping_avg", label: "avg" }, { name: "ping_min", label: "min" }, { name: "ping_max", label: "max" }]} />
+              <Card title="Average" flush={false}>
+                <MetricChart deviceId={id} range={range} format={FORMATS.ms} height={200} area={false}
+                  metrics={[{ name: "ping_avg", label: "avg" }]} />
+              </Card>
+              <Card title="Aggregate · min / avg / max" flush={false}>
+                <MetricChart deviceId={id} range={range} format={FORMATS.ms} height={260} style="range"
+                  metrics={[{ name: "ping_avg", label: "avg" }]} band={{ min: "ping_min", max: "ping_max" }} />
               </Card>
               <Card title="Packet loss" flush={false}>
                 <MetricChart deviceId={id} range={range} unit="%" height={150} metrics={[{ name: "ping_loss", label: "loss" }]} />
@@ -162,6 +176,8 @@ function OverviewTab({ device, components, services, range }: { device: Device; 
     refetchInterval: prefs.refreshMs(30_000),
   });
   const hasCpu = components.some((c) => c.kind === "processor");
+  const stats = components.find((c) => c.kind === "system_stats");
+  const memTotal = stats?.values.mem_total as number | undefined;
   const counts = [0, 1, 2, 3].map((st) => services.filter((s) => s.state === st).length);
 
   return (
@@ -186,7 +202,8 @@ function OverviewTab({ device, components, services, range }: { device: Device; 
         <Card title="Device">
           <table className="tbl"><tbody>
             {([
-              ["System name", device.sys_name], ["Hardware", device.hardware], ["Kernel", device.kernel], ["Serial", device.serial],
+              ["System name", device.sys_name], ["Hardware", device.hardware], ["Processor", cpuLine(components)],
+              ["Kernel", device.kernel], ["Serial", device.serial],
               ["Contact", device.sys_contact], ["Object ID", device.sys_object_id],
               ["SNMP", `v${device.snmp_version} · port ${device.snmp_port}`],
               ["Poll time", device.poll_duration != null ? `${device.poll_duration.toFixed(2)} s` : null],
@@ -213,11 +230,17 @@ function OverviewTab({ device, components, services, range }: { device: Device; 
           {problems.length ? <ServiceTable services={problems} problems /> : <Empty>No problems on this device</Empty>}
         </Card>
         {hasCpu && (
-          <Card title="Processor" flush={false}>
+          <Card title={<>Processor <span className="font-normal text-muted ml-1">{cpuLine(components)}</span></>} flush={false}>
             <MetricChart deviceId={device.id} range={range} unit="%" metrics={[{ name: "cpu_util", label: "CPU" }]} />
           </Card>
         )}
-        {mem && (
+        {memTotal ? (
+          <Card title="Memory" flush={false}>
+            <MetricChart deviceId={device.id} range={range} format={FORMATS.bytes} stack rulerMetric="mem_total" colors={MEMORY_COLORS()}
+              metrics={[{ name: "mem_used", label: "used" }, { name: "mem_buffers", label: "buffers" },
+                { name: "mem_cached", label: "cached" }, { name: "mem_free", label: "free" }]} />
+          </Card>
+        ) : mem && (
           <Card title="Memory" flush={false}>
             <MetricChart deviceId={device.id} componentId={mem.id} range={range} unit="%" metrics={[{ name: "used_pct", label: "used" }]} />
           </Card>
@@ -231,8 +254,11 @@ function OverviewTab({ device, components, services, range }: { device: Device; 
   );
 }
 
+const PORT_GRAPHS = ["port_packets", "port_nucast", "port_pkt_size", "port_util"];
+
 function PortsTab({ deviceId, ports, range }: { deviceId: number; ports: Component[]; range: string }) {
   const [open, setOpen] = useState<number | null>(null);
+  const { byId } = usePresets();
   const [filter, setFilter] = useState("");
   const rows = ports.filter((p) => !filter || `${p.name} ${p.descr ?? ""}`.toLowerCase().includes(filter.toLowerCase()));
   if (!ports.length) return <Card><Empty>No ports discovered</Empty></Card>;
@@ -284,6 +310,16 @@ function PortsTab({ deviceId, ports, range }: { deviceId: number; ports: Compone
                         <MetricChart deviceId={deviceId} componentId={p.id} range={range} area={false} format={(x) => x.toFixed(2)}
                           metrics={[{ name: "in_errors" }, { name: "out_errors" }, { name: "in_discards" }, { name: "out_discards" }]} />
                       </div>
+                      {PORT_GRAPHS.map((gid) => {
+                        const g = byId(gid);
+                        return g && (
+                          <div key={gid}>
+                            <div className="text-xs text-muted mb-1">{g.label}</div>
+                            <MetricChart deviceId={deviceId} componentId={p.id} range={range} area={g.area} format={g.format}
+                              metrics={g.metrics} ruler={gid === "port_util" ? 100 : null} rulerLabel="link" />
+                          </div>
+                        );
+                      })}
                     </div>
                   </td></tr>
                 )}
@@ -293,48 +329,6 @@ function PortsTab({ deviceId, ports, range }: { deviceId: number; ports: Compone
         </tbody>
       </table>
     </Card>
-  );
-}
-
-function HealthTab({ deviceId, components, range }: { deviceId: number; components: Component[]; range: string }) {
-  const [open, setOpen] = useState<number | null>(null);
-  if (!components.length) return <Card><Empty>No health components discovered</Empty></Card>;
-  const groups: [string, string][] = [["processor", "Processors"], ["mempool", "Memory"], ["storage", "Storage"], ["sensor", "Sensors"]];
-  return (
-    <>
-      {groups.map(([kind, title]) => {
-        const items = components.filter((c) => c.kind === kind);
-        if (!items.length) return null;
-        return (
-          <Card key={kind} title={title}>
-            <table className="tbl"><tbody>
-              {items.map((c) => (
-                <Fragment key={c.id}>
-                  <tr className="cursor-pointer" onClick={() => setOpen(open === c.id ? null : c.id)}>
-                    <td className="text-strong font-medium">
-                      <div className="flex items-center gap-2">
-                        <Icon name="chevron" className={`w-3.5 h-3.5 text-muted transition-transform ${open === c.id ? "rotate-90" : ""}`} />
-                        <span className="truncate max-w-[14rem]" title={c.name}>{c.name}</span>
-                      </div>
-                    </td>
-                    <td><Bar pct={kind === "processor" ? c.values.load : c.values.pct} /></td>
-                    <td className={`text-xs text-muted text-right whitespace-nowrap ${hideSm}`}>
-                      {kind !== "processor" && `${fmtBytes(c.values.used)} of ${fmtBytes(c.values.size)}`}
-                    </td>
-                  </tr>
-                  {open === c.id && (
-                    <tr><td colSpan={3} className="bg-inset/40">
-                      <MetricChart deviceId={deviceId} componentId={c.id} range={range} unit="%"
-                        metrics={[{ name: kind === "processor" ? "load" : "used_pct", label: kind === "processor" ? "load" : "used" }]} />
-                    </td></tr>
-                  )}
-                </Fragment>
-              ))}
-            </tbody></table>
-          </Card>
-        );
-      })}
-    </>
   );
 }
 

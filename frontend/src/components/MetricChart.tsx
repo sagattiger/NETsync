@@ -3,12 +3,13 @@ import { useQuery } from "@tanstack/react-query";
 import ReactECharts from "echarts-for-react";
 import { api, Series } from "../api";
 import { useTheme } from "../theme";
-import { chartThemeName, ChartStyle, lineSeries, rangeSeries, seriesPalette, timeBase, withAlpha } from "../lib/chartTheme";
+import { chartThemeName, ChartStyle, lineSeries, ns, rangeSeries, seriesPalette, timeBase, withAlpha, withGaps } from "../lib/chartTheme";
 
 export interface MetricDef { name: string; label?: string; scale?: number }
 
-/** Hex (#RGB/#RRGGBB) to the comma rgb() form ECharts needs. */
+/** Hex (#RGB/#RRGGBB) to the comma rgb() form ECharts needs; other colour strings pass through. */
 function hexColor(hex: string): string {
+  if (!hex.startsWith("#")) return hex;
   let h = hex.replace("#", "");
   if (h.length === 3) h = h.split("").map((c) => c + c).join("");
   const n = parseInt(h, 16);
@@ -38,19 +39,32 @@ type ChartProps = {
   band?: { min: string; max: string; label?: string };
   /** area (glow fill) | line | spike (sharp, no fill) | range (min–max bars + average); default from `area` */
   style?: ChartStyle | null;
+  /** stack the series (parts of one whole: used + buffers + cached + free) */
+  stack?: boolean;
+  /** real capacity (RAM size, disk size, thread count): top of the scale, drawn as a dashed "total" line */
+  ruler?: number | null;
+  rulerLabel?: string;
+  /** range name (1h…1y): the time axis spans all of it */
+  range?: string;
 };
 
-export function MetricChart({ deviceId, probeId, componentId = 0, range, ...rest }: ChartProps & {
+export function MetricChart({ deviceId, probeId, componentId = 0, range, rulerMetric, ...rest }: ChartProps & {
   deviceId?: number; probeId?: number; componentId?: number; range: string;
+  /** device-level series whose newest value is the capacity (e.g. mem_total, cpu_count) */
+  rulerMetric?: string | null;
 }) {
-  const names = [...new Set([...rest.metrics.map((m) => m.name), ...(rest.band ? [rest.band.min, rest.band.max] : [])])];
+  const names = [...new Set([...rest.metrics.map((m) => m.name), ...(rest.band ? [rest.band.min, rest.band.max] : []),
+    ...(rulerMetric && !componentId ? [rulerMetric] : [])])];
   const { data, isLoading } = useQuery(seriesQuery({ deviceId, probeId, componentId, names, range }));
-  return <TimeChart data={data} isLoading={isLoading} {...rest} />;
+  // a ruler on a component chart (rare) would need a second request; device-level rulers come with the data
+  const ruler = rest.ruler ?? (rulerMetric ? lastValue(data, rulerMetric) : null);
+  return <TimeChart data={data} isLoading={isLoading} {...rest} ruler={ruler} range={range} />;
 }
 
 /** The chart itself, from already-loaded series (MetricChart fetches; the /ui-kit page passes fake data). */
 export function TimeChart({
   data, isLoading = false, metrics, unit = "", height = 200, format, area = true, colors, compact = false, band, style,
+  stack = false, ruler, rulerLabel = "total", range,
 }: ChartProps & { data: Series | undefined; isLoading?: boolean }) {
   const { theme } = useTheme();
   const fmt = format ?? ((v: number) => `${Number.isInteger(v) ? v : v.toFixed(1)}${unit}`);
@@ -80,12 +94,21 @@ export function TimeChart({
       const lines = metrics.map((m, i) => lineSeries({
         name: m.label ?? m.name,
         color: palette[i % palette.length],
-        data: (data?.[m.name] ?? []).map(([t, avg]) => [t, avg == null ? null : avg * (m.scale ?? 1)]),
-        style: look,
+        data: withGaps((data?.[m.name] ?? []).map(([t, avg]) => [t, avg == null ? null : avg * (m.scale ?? 1)] as [string, number | null])),
+        style: stack ? "area" : look,
         compact,
         // stacked fills turn to mud past three series: only the first three get the gradient
-        fill: i < 3,
+        fill: stack || i < 3,
       }));
+      if (stack) {
+        for (const l of lines) {
+          l.stack = "total";
+          l.smooth = false;
+          const color = (l.lineStyle as { color: string }).color;
+          l.lineStyle = { ...(l.lineStyle as object), width: 1 };
+          l.areaStyle = { color: withAlpha(color, 0.55) };
+        }
+      }
       legend.push(...lines.map((l) => l.name as string));
       const bandSeries = band && data && look !== "spike" ? (() => {
         const mins = data[band.min] ?? [];
@@ -105,10 +128,22 @@ export function TimeChart({
       })() : [];
       series = [...bandSeries, ...lines];
     }
-    return { ...timeBase({ compact, fmt, legend }), color: palette, series };
+    const base = timeBase({ compact, fmt, legend, range }) as Record<string, any>;
+    if (ruler != null && ruler > 0 && series.length) {
+      // the real capacity is the top of the scale; the data can still go above it (e.g. load > threads)
+      base.yAxis = { ...base.yAxis, min: 0, max: (v: { max: number }) => Math.max(ruler, v.max) };
+      const last = series[series.length - 1];
+      last.markLine = {
+        silent: true, symbol: "none", animation: false,
+        lineStyle: { type: [4, 4], width: 1, color: ns("muted") },
+        label: { position: "insideEndTop", color: "inherit", fontSize: 10, formatter: `${rulerLabel} ${fmt(ruler)}` },
+        data: [{ yAxis: ruler }],
+      };
+    }
+    return { ...base, color: palette, series };
     // theme is a dependency so the tokens are re-read after switching
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, theme, look, unit, colorKey, compact, metrics.map((m) => m.label).join("|")]);
+  }, [data, theme, look, unit, colorKey, compact, stack, ruler, range, metrics.map((m) => m.label).join("|")]);
 
   return (
     <div style={{ height }} className="relative">

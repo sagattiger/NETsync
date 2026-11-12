@@ -1,10 +1,10 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, fmtBps } from "./api";
+import { api, fmtBps, fmtBytes, fmtUptime } from "./api";
 import type { MetricDef } from "./components/MetricChart";
 
 /** Graph presets come from the backend (GET /api/presets, netsync/presets.py) so they never drift. */
-export type Unit = "bps" | "pct" | "ms" | "s" | "rate" | "count";
+export type Unit = "bps" | "pct" | "ms" | "s" | "rate" | "count" | "bytes" | "Bps" | "celsius" | "rpm" | "load" | "duration";
 
 export interface Preset {
   id: string;
@@ -15,6 +15,8 @@ export interface Preset {
   metrics: MetricDef[];
   area: boolean;
   source: "device" | "probe"; // probe presets point at widget.probe_id
+  stack?: boolean; // stacked series (parts of one whole)
+  ruler?: string | null; // metric with the real capacity (mem_total, cpu_count): top of the scale
   format: (v: number) => string;
 }
 
@@ -27,6 +29,12 @@ export const FORMATS: Record<Unit, (v: number) => string> = {
   s: (v) => `${v.toFixed(2)} s`,
   rate: (v) => (v >= 100 ? `${v.toFixed(0)}/s` : `${v.toFixed(v < 1 ? 2 : 1)}/s`),
   count: (v) => `${Math.round(v)}`,
+  bytes: (v) => fmtBytes(v),
+  Bps: (v) => `${fmtBytes(v)}/s`,
+  celsius: (v) => `${v.toFixed(1)} °C`,
+  rpm: (v) => `${Math.round(v)} RPM`,
+  load: (v) => v.toFixed(2),
+  duration: (v) => fmtUptime(v),
 };
 
 export function usePresets() {

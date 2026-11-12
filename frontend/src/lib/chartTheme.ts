@@ -36,6 +36,27 @@ export function withAlpha(color: string, alpha: number): string {
   return m && m.length >= 3 ? `rgba(${m[0]}, ${m[1]}, ${m[2]}, ${alpha})` : color;
 }
 
+/** Range name -> milliseconds (the x-axis always spans the whole range, even when data starts later). */
+export const RANGE_MS: Record<string, number> = {
+  "1h": 3_600_000, "6h": 21_600_000, "24h": 86_400_000, "7d": 604_800_000, "30d": 2_592_000_000, "1y": 31_536_000_000,
+};
+
+/** Insert a null where samples are missing (gap > 3x the usual step), so a line breaks instead of
+ *  drawing a straight or curved bridge across an outage. */
+export function withGaps<T extends [string | number, ...unknown[]]>(points: T[]): (T | [string | number, null])[] {
+  if (points.length < 3) return points;
+  const ts = points.map((p) => new Date(p[0]).getTime());
+  const steps = ts.slice(1).map((t, i) => t - ts[i]).filter((d) => d > 0).sort((a, b) => a - b);
+  const step = steps[Math.floor(steps.length / 2)] ?? 0;
+  if (!step) return points;
+  const out: (T | [string | number, null])[] = [points[0]];
+  for (let i = 1; i < points.length; i++) {
+    if (ts[i] - ts[i - 1] > step * 3) out.push([new Date(ts[i - 1] + step).toISOString(), null]);
+    out.push(points[i]);
+  }
+  return out;
+}
+
 export const glowOn = () => cssVar("--ns-glow") === "1";
 export const reducedMotion = () => typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -62,10 +83,12 @@ export function chartThemeName(theme: "light" | "dark"): string {
   return name;
 }
 
-export interface TimeAxisOpts { compact?: boolean; fmt: (v: number) => string; legend?: string[]; yMin?: number }
+export interface TimeAxisOpts { compact?: boolean; fmt: (v: number) => string; legend?: string[]; yMin?: number; range?: string }
 
 /** Grid, axes, tooltip and legend shared by every time-series chart. */
-export function timeBase({ compact, fmt, legend, yMin }: TimeAxisOpts): Record<string, unknown> {
+export function timeBase({ compact, fmt, legend, yMin, range }: TimeAxisOpts): Record<string, unknown> {
+  const span = range ? RANGE_MS[range] : undefined;
+  const now = Date.now();
   const motion = !reducedMotion();
   return {
     backgroundColor: "transparent",
@@ -90,6 +113,7 @@ export function timeBase({ compact, fmt, legend, yMin }: TimeAxisOpts): Record<s
     xAxis: {
       type: "time",
       show: !compact,
+      ...(span ? { min: now - span, max: now } : {}),
       axisLine: { show: false },
       axisTick: { show: false },
       axisLabel: { color: ns("muted"), fontSize: 11, hideOverlap: true },

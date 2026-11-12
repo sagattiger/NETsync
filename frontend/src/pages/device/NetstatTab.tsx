@@ -3,8 +3,9 @@ import { AddToDashboard } from "../../components/AddToDashboard";
 import { MetricChart } from "../../components/MetricChart";
 import { Card, Empty } from "../../components/ui";
 import { usePresets } from "../../presets";
+import { presetHasData, useMetricNames } from "./charts";
 
-const GRAPHS = ["tcp_conns", "tcp_retrans", "tcp_segments", "tcp_failures", "tcp_opens", "udp_traffic", "udp_errors", "ip_errors", "icmp"];
+const GRAPHS = ["tcp_conns", "tcp_retrans", "tcp_segments", "tcp_failures", "tcp_opens", "udp_traffic", "udp_errors", "ip_stats", "ip_errors", "ip_frag", "icmp", "icmp_info", "ipv4_packets", "ipv6_packets", "snmp_packets", "snmp_stats"];
 
 function Stat({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
   return (
@@ -19,6 +20,7 @@ const r = (v: number | undefined) => (v == null ? "-" : v >= 100 ? `${v.toFixed(
 
 export default function NetstatTab({ deviceId, component, range }: { deviceId: number; component?: Component; range: string }) {
   const { byId: presetById } = usePresets();
+  const names = useMetricNames(deviceId);
   if (!component) return <Card><Empty>This device does not expose TCP-MIB / UDP-MIB statistics over SNMP.</Empty></Card>;
   const v = component.values;
   const out = v.tcp_out_segs_rate ?? 0;
@@ -39,7 +41,7 @@ export default function NetstatTab({ deviceId, component, range }: { deviceId: n
       <div className="grid lg:grid-cols-2 gap-4">
         {GRAPHS.map((id) => {
           const p = presetById(id);
-          if (!p) return null;
+          if (!p || !presetHasData(p, names)) return null;
           return (
             <Card key={id} title={p.label} actions={<AddToDashboard deviceId={deviceId} preset={id} label="" />}>
               <div className="p-3">
