@@ -65,21 +65,46 @@ def system_prompt(cfg: dict[str, Any], now: datetime) -> str:
     return "\n".join(lines)
 
 
-async def page_note(session, actor: Actor, page: dict | None) -> str | None:
-    """What the user is looking at, so "this device" works."""
+async def page_note(session, actor: Actor, page: dict | None) -> tuple[str | None, str | None]:
+    """What the user is looking at (so "this device" works), and the device's hostname on a device page."""
     path = str((page or {}).get("path") or "")
     m = DEVICE_PAGE.match(path)
     if m:
         dev = await session.get(Device, int(m.group(1)))
         if dev is None or not await _may_see(session, actor, dev.id):
-            return None
+            return None, None
         tab = f" ({m.group(2)} tab)" if m.group(2) else ""
         return (f"The user is looking at device '{dev.hostname}'{tab}. When they say 'this device', 'this host' or "
-                f"don't name one, use device '{dev.hostname}'.")
+                f"don't name one, use device '{dev.hostname}'."), dev.hostname
     for pattern, label in PAGES:
         if pattern.match(path):
-            return f"The user is looking at {label}."
-    return None
+            return f"The user is looking at {label}.", None
+    return None, None
+
+
+def mentioned(value: str, text: str) -> bool:
+    """Whether a device name the model chose appears in the conversation (small models invent hostnames)."""
+    v = value.strip().lower()
+    if not v:
+        return False
+    if v.isdigit() or v in text:
+        return True
+    short = v.split(".")[0]
+    return len(short) >= 3 and short in text
+
+
+def guard_device(args: dict, schema: dict, said: str, page_host: str | None) -> dict:
+    """Replace or drop a 'device' argument nobody mentioned: the page's device, or no device when it's optional."""
+    dev = args.get("device")
+    if not isinstance(dev, str) or "device" not in (schema.get("properties") or {}):
+        return args
+    if mentioned(dev, said) or (page_host and mentioned(dev, page_host.lower())):
+        return args
+    if page_host:
+        return {**args, "device": page_host}
+    if "device" not in (schema.get("required") or []):
+        return {k: v for k, v in args.items() if k != "device"}
+    return args
 
 
 async def _may_see(session, actor: Actor, device_id: int) -> bool:
@@ -179,6 +204,8 @@ class Turn:
         self.cfg, self.actor, self.conversation_id, self.text, self.page = cfg, actor, conversation_id, text, page
         self.queue: asyncio.Queue[dict | None] = asyncio.Queue()
         self.model = cfg.get("chat_model") or cfg.get("model")
+        self.page_host: str | None = None
+        self.said = text.lower()
 
     def emit(self, event: dict) -> None:
         self.queue.put_nowait(event)
@@ -211,7 +238,10 @@ class Turn:
         async with SessionLocal() as s:
             rows = list(await s.scalars(select(ChatMessage).where(ChatMessage.conversation_id == self.conversation_id)
                                         .order_by(ChatMessage.id)))
-            note = await page_note(s, self.actor, self.page)
+            note, self.page_host = await page_note(s, self.actor, self.page)
+        # everything said so far: device names the model uses must come from here (or the page)
+        self.said = " ".join(r.content for r in rows if r.role in ("user", "assistant")).lower()
+        self.said += " " + " ".join(json.dumps(r.result or {}, default=str) for r in rows if r.role == "tool").lower()
         # rows already holds this turn's question (saved before the turn started); the page and time go with it
         # rather than in the system prompt, which keeps the prompt prefix cacheable
         now = datetime.now(UTC)
@@ -222,7 +252,7 @@ class Turn:
         messages = [{"role": "system", "content": system_prompt(self.cfg, now)}, *history]
         tools = await hub.visible_tools(self.actor)
         specs = [tool_spec(t) for t in tools if t.name != "netsync__call_result"]
-        known = {t.name for t in tools}
+        known = {t.name: t for t in tools}
         seen_calls: set[str] = set()
 
         for round_ in range(MAX_ROUNDS):
@@ -259,7 +289,9 @@ class Turn:
                 messages.append({"role": "tool", "tool_name": name, "content": compact(for_model(out), TOOL_CHARS)})
         return ""
 
-    async def _call(self, name: str, args: dict, known: set[str]) -> dict:
+    async def _call(self, name: str, args: dict, known: dict[str, Tool]) -> dict:
+        if name in known:
+            args = guard_device(args, known[name].input_schema, self.said, self.page_host)
         self.emit({"type": "tool", "tool": name, "arguments": args})
         if name not in known:
             out = {"status": "error", "error": f"unknown tool {name}. Available: {', '.join(sorted(known))}"}

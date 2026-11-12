@@ -92,7 +92,7 @@ def fake(monkeypatch):
     monkeypatch.setattr(chat, "SessionLocal", FakeSession)
 
     async def no_note(*_a):
-        return None
+        return None, None
 
     monkeypatch.setattr(chat, "page_note", no_note)
 
@@ -165,6 +165,18 @@ def test_turn_stops_repeated_calls_and_unknown_tools(monkeypatch, fake):
     errors = [e["result"]["error"] for e in events if e["type"] == "tool_result" and e["result"]["error"]]
     assert any("unknown tool" in e for e in errors)
     assert any("already called" in m["content"] for m in seen[2][0] if m["role"] == "tool")
+
+
+def test_guard_device_replaces_or_drops_invented_hostnames():
+    s_opt = {"properties": {"device": {}, "limit": {}}}
+    s_req = {"properties": {"device": {}}, "required": ["device"]}
+    said = "how often did ping fail on pve002 last week?"
+    assert chat.guard_device({"device": "pve002.qsync.net"}, s_opt, said, None)["device"] == "pve002.qsync.net"
+    assert chat.guard_device({"device": "homepage", "limit": 5}, s_opt, said, None) == {"limit": 5}
+    assert chat.guard_device({"device": "homepage"}, s_req, said, "rou002.qsync.net") == {"device": "rou002.qsync.net"}
+    assert chat.guard_device({"device": "homepage"}, s_req, said, None) == {"device": "homepage"}  # the tool reports it
+    assert chat.guard_device({"device": "12"}, s_req, said, None) == {"device": "12"}
+    assert chat.guard_device({"text": "x"}, {"properties": {"text": {}}}, said, None) == {"text": "x"}
 
 
 def test_events_ping_while_the_model_is_quiet():

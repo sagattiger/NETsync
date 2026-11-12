@@ -203,7 +203,11 @@ async def alert_history(ctx: ToolContext, a: dict) -> dict:
                          for e in eps[-a["max_episodes"]:]],
         })
     report.sort(key=lambda r: (-r["times"], -r["total_minutes"]))
-    return {"device": d.hostname, "days": a["days"], "services_with_problems": len([r for r in report if r["times"]]),
+    hit = [r for r in report if r["times"]]
+    return {"device": d.hostname, "days": a["days"], "services_with_problems": len(hit),
+            "alerts_total": sum(r["times"] for r in hit), "minutes_total": sum(r["total_minutes"] for r in hit),
+            "longest": max(({"service": r["service"], "minutes": r["longest_minutes"]} for r in hit),
+                           key=lambda x: x["minutes"], default=None),
             "services": report[:50]}
 
 
