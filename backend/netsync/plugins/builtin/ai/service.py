@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 
 from redis.exceptions import TimeoutError as RedisTimeoutError
 from sqlalchemy import func, or_, select, update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
 
 from netsync.alerting import publish, redis
@@ -96,6 +96,39 @@ def trim_preamble(answer: str) -> str:
     m = FIRST_SECTION.search(answer)
     return answer[m.start():].lstrip() if m and m.start() > 0 else answer
 
+DEADLOCK_RETRIES = 3
+
+
+def is_deadlock(e: Exception) -> bool:
+    return "deadlock detected" in str(e).lower()
+
+
+async def save_result(job_id: int, fields: dict, comment: dict | None) -> bool:
+    """Write a finished job (and its event comment) in a fresh session. Retried on a deadlock, which can happen
+    when a restarting API runs its schema upgrade while the answer is saved. False = the device is gone."""
+    for attempt in range(DEADLOCK_RETRIES):
+        async with SessionLocal() as s:
+            job = await s.get(AIJob, job_id)
+            if not job:
+                return False
+            for k, v in fields.items():
+                setattr(job, k, v)
+            if comment:
+                s.add(EventComment(**comment))
+            try:
+                await s.commit()
+                return True
+            except (StaleDataError, IntegrityError):
+                await s.rollback()
+                return False
+            except DBAPIError as e:
+                await s.rollback()
+                if not is_deadlock(e) or attempt == DEADLOCK_RETRIES - 1:
+                    raise
+                await asyncio.sleep(1 + attempt)
+    return False
+
+
 async def run_job(job_id: int) -> None:
     enabled, cfg = await cached_settings(plugin(), ttl=5)
     async with SessionLocal() as s:
@@ -132,6 +165,22 @@ async def run_job(job_id: int) -> None:
             # the device (and its jobs) was deleted while the model was answering
             await s.rollback()
             log.info("AI job %s dropped: its device was deleted meanwhile", job_id)
+            return
+        except DBAPIError as e:
+            if not is_deadlock(e):
+                raise
+            # rare lock clash (e.g. an API restart upgrading the schema): save again in a new session
+            fields = {k: getattr(job, k) for k in ("status", "result", "error", "model", "duration", "finished_at")}
+            comment = None
+            if job.kind == "event" and job.status == "done":
+                comment = {"device_id": job.device_id, "service_id": job.service_id, "event_time": job.event_time,
+                           "body": job.result, "author": AI_AUTHOR, "author_id": None, "ai": True}
+            device_id = job.device_id
+            await s.rollback()
+            if not await save_result(job_id, fields, comment):
+                log.info("AI job %s dropped: its device was deleted meanwhile", job_id)
+                return
+            await publish("ai_job", {"job_id": job_id, "status": fields["status"], "device_id": device_id})
             return
         await publish("ai_job", {"job_id": job.id, "status": job.status, "device_id": job.device_id})
 
