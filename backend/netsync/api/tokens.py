@@ -65,7 +65,8 @@ class TokenIn(BaseModel):
 
 @router.get("", dependencies=[require(Role.ADMIN)])
 async def list_tokens(session: Session):
-    return [token_out(t) for t in await session.scalars(select(ApiToken).order_by(ApiToken.created_at.desc()))]
+    rows = await session.scalars(select(ApiToken).where(ApiToken.kind == "public").order_by(ApiToken.created_at.desc()))
+    return [token_out(t) for t in rows]
 
 
 @router.post("")
@@ -120,7 +121,7 @@ async def public_token(request: Request, session: Session) -> ApiToken:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "API token required",
                             headers={"WWW-Authenticate": "Bearer"})
     now = datetime.now(UTC)
-    row = await session.scalar(select(ApiToken).where(ApiToken.token_hash == hash_token(value)))
+    row = await session.scalar(select(ApiToken).where(ApiToken.token_hash == hash_token(value), ApiToken.kind == "public"))
     if problem := token_problem(row, now):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, problem, headers={"WWW-Authenticate": "Bearer"})
     if await _rate_limited(row.id):

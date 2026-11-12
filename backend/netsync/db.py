@@ -94,6 +94,10 @@ ADDED_COLUMNS = {
     "event_comments": [
         "ai BOOLEAN NOT NULL DEFAULT false",
     ],
+    "api_tokens": [
+        "kind VARCHAR(16) NOT NULL DEFAULT 'public'",  # public (dashboards API) | mcp (tool hub)
+        "scopes JSON NOT NULL DEFAULT '{}'",  # mcp: {"tools": ["netsync__*"], "write": false}
+    ],
     "devices": [
         "ip_addresses JSON NOT NULL DEFAULT '[]'",
         "virtualization VARCHAR(16)",

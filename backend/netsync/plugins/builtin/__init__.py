@@ -1,4 +1,6 @@
 from netsync import housekeeping, probes
+from netsync.tools import builtin as tool_builtin
+from netsync.tools.remote import RemotePluginService
 from netsync.plugins.base import Plugin
 from netsync.plugins.builtin import ai, latency
 from netsync.plugins.builtin.host_resources import HostResourcesModule
@@ -38,5 +40,14 @@ BUILTIN_PLUGINS = [
     latency.plugin,
     probes.plugin,
     housekeeping.plugin,
+    Plugin(
+        name="netsync",
+        label="Tool hub (MCP)",
+        version="1.0.0",
+        description="NETsync's read-only AI tools, the MCP server, approvals and container plugins",
+        tools=tool_builtin.TOOLS,
+        services=[RemotePluginService()],
+        builtin=True,
+    ),
     ai.plugin,
 ]

@@ -13,6 +13,7 @@ from netsync.db import SessionLocal, init_db
 from netsync.models import Role, User
 from netsync.plugins.registry import registry
 from netsync.security import decode_token, hash_password
+from netsync.tools import api as tool_api
 
 log = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ def create_app() -> FastAPI:
     api = APIRouter(prefix="/api")
     for r in (auth.router, auth.avatars, devices.router, monitoring.router, admin.router, syslog.router,
               collab.router, dashboards.router, about.router, tokens.router, public.router,
-              probes.router, icons.router, push.router):
+              probes.router, icons.router, push.router, tool_api.router):
         api.include_router(r)
     for plugin in registry.plugins.values():
         if plugin.router is not None:

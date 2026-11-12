@@ -184,3 +184,5 @@ class Plugin:
     hooks: dict[str, list] = field(default_factory=dict)
     # Optional cross-field check of the settings; raise ValueError with a message for the admin.
     validate: Any = None
+    # Tools for the tool hub / MCP (netsync.tools.base.Tool), named "<plugin>__<tool>".
+    tools: list = field(default_factory=list)

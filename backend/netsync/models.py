@@ -326,6 +326,8 @@ class ApiToken(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+    kind: Mapped[str] = mapped_column(String(16), default="public")  # public | mcp
+    scopes: Mapped[dict] = mapped_column(JSON, default=dict)  # mcp: {"tools": [patterns], "write": bool}
 
 
 class Probe(Base):
@@ -462,3 +464,55 @@ class PluginSetting(Base):
     name: Mapped[str] = mapped_column(String(64), primary_key=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     config: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class ToolPolicy(Base):
+    """Admin override for one tool of the tool hub: mode auto | approve | off (missing row = the tool's default)."""
+
+    __tablename__ = "tool_policies"
+
+    name: Mapped[str] = mapped_column(String(128), primary_key=True)
+    mode: Mapped[str] = mapped_column(String(16))
+    updated_at: Mapped[datetime] = utcnow_col()
+
+
+class ToolCall(Base):
+    """Audit log of every tool call through the hub; pending rows are approval requests."""
+
+    __tablename__ = "tool_calls"
+    __table_args__ = (Index("ix_tool_calls_status_time", "status", "created_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = utcnow_col()
+    tool: Mapped[str] = mapped_column(String(128), index=True)
+    risk: Mapped[str] = mapped_column(String(8))  # read | write
+    origin: Mapped[str] = mapped_column(String(16))  # mcp | chat | ui | plugin
+    actor: Mapped[str] = mapped_column(String(128))  # "user:alice", "token:Claude desktop", "plugin:ssh"
+    arguments: Mapped[dict] = mapped_column(JSON, default=dict)  # secrets redacted
+    status: Mapped[str] = mapped_column(String(16))  # pending | rejected | running | done | error
+    result: Mapped[dict | None] = mapped_column(JSON)
+    error: Mapped[str | None] = mapped_column(Text)
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
+    decided_by: Mapped[str | None] = mapped_column(String(64))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reason: Mapped[str | None] = mapped_column(Text)  # why the caller wants it (write tools)
+
+
+class RemotePlugin(Base):
+    """A plugin running in its own container, reached over HTTP (see docs/PLUGIN-PROTOCOL.md)."""
+
+    __tablename__ = "remote_plugins"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True)
+    url: Mapped[str] = mapped_column(String(512))
+    secret_enc: Mapped[str] = mapped_column(Text)  # shared secret, encrypted (both directions)
+    secret_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    manifest: Mapped[dict] = mapped_column(JSON, default=dict)  # last manifest fetched from the plugin
+    granted: Mapped[list] = mapped_column(JSON, default=list)  # permissions the admin approved
+    status: Mapped[str] = mapped_column(String(16), default="pending")  # pending | online | offline | error
+    status_detail: Mapped[str | None] = mapped_column(Text)
+    last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = utcnow_col()
+    created_by: Mapped[str | None] = mapped_column(String(64))

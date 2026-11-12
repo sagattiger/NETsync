@@ -13,6 +13,7 @@ import Profile from "./pages/Profile";
 import About from "./pages/About";
 import Tokens from "./pages/Tokens";
 import Housekeeping from "./pages/Housekeeping";
+import AiTools from "./pages/AiTools";
 import Probes from "./pages/Probes";
 import ProbePage from "./pages/ProbePage";
 import Dashboards from "./pages/dashboards/Dashboards";
@@ -39,6 +40,7 @@ export const pageRoutes = (
     <Route path="/setup/plugins" element={<Plugins />} />
     <Route path="/setup/tokens" element={<Tokens />} />
     <Route path="/setup/housekeeping" element={<Housekeeping />} />
+    <Route path="/setup/ai-tools" element={<AiTools />} />
     <Route path="/profile" element={<Profile />} />
     <Route path="/dashboards" element={<Dashboards />} />
     <Route path="/dashboards/:id" element={<DashboardView />} />
