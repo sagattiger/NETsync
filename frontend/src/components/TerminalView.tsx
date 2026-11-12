@@ -73,6 +73,7 @@ export function TerminalView({ deviceId, className = "", onTitle, autoConnect = 
     } catch (e: any) {
       setPhase("closed"); setError(e.message); return;
     }
+    if (!o?.ticket || !o.socket) { setPhase("closed"); setError("NETsync did not return a terminal session."); return; }
     setInfo(o);
     onTitle?.(o.hostname);
     const proto = location.protocol === "https:" ? "wss" : "ws";
