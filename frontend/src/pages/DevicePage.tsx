@@ -37,6 +37,8 @@ export default function DevicePage() {
   const nav = useNavigate();
   const qc = useQueryClient();
   const [range, setRange] = useState(() => prefs.get().default_range ?? "24h");
+  const [busy, setBusy] = useState<null | "discover" | "poll">(null);
+  const [actionMsg, setActionMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/auth/me") });
   const { data: device } = useQuery({ queryKey: ["device", id], queryFn: () => api<Device>(`/devices/${id}`), refetchInterval: 30_000 });
@@ -67,9 +69,32 @@ export default function DevicePage() {
   const worst = services.reduce((w, s) => Math.max(w, s.state), 0);
   const showRange = ["overview", "ports", "health", "graphs", "netstat", ...pluginTabs.map((t) => t.id)].includes(tab);
 
+  /** Ask the worker to rediscover / poll, then wait until it has finished before refreshing the page. */
   async function action(kind: "discover" | "poll") {
-    await api(`/devices/${id}/${kind}`, { method: "POST" });
-    setTimeout(() => qc.invalidateQueries(), 3000);
+    const field = kind === "discover" ? "last_discovered" : "last_polled";
+    const before = device?.[field] ?? null;
+    setBusy(kind);
+    setActionMsg(null);
+    try {
+      await api(`/devices/${id}/${kind}`, { method: "POST" });
+      const deadline = Date.now() + 120_000;
+      let done = false;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const d = await api<Device>(`/devices/${id}`);
+        if (d[field] && d[field] !== before) { done = true; break; }
+      }
+      await qc.invalidateQueries();
+      setActionMsg(done
+        ? { ok: true, text: kind === "discover" ? "Rediscovery finished" : "Poll finished" }
+        : { ok: false, text: kind === "discover"
+          ? "Rediscovery didn't finish within 2 minutes: the device may be unreachable (see its status)"
+          : "The poll didn't finish within 2 minutes" });
+    } catch (e) {
+      setActionMsg({ ok: false, text: (e as Error).message });
+    } finally {
+      setBusy(null);
+    }
   }
 
   return (
@@ -92,8 +117,15 @@ export default function DevicePage() {
           </div>
           {canEdit && (
             <div className="flex gap-2 shrink-0">
-              <button className="btn" onClick={() => action("poll")}><Icon name="play" className="w-3.5 h-3.5" /> Poll now</button>
-              <button className="btn" onClick={() => action("discover")}><Icon name="refresh" className="w-3.5 h-3.5" /> Rediscover</button>
+              {actionMsg && (
+                <span role="status" className={`self-center text-xs ${actionMsg.ok ? "text-ok" : "text-warn"} max-w-[16rem]`}>{actionMsg.text}</span>
+              )}
+              <button className="btn" disabled={!!busy} onClick={() => action("poll")}>
+                <Icon name="play" className="w-3.5 h-3.5" /> {busy === "poll" ? "Polling…" : "Poll now"}
+              </button>
+              <button className="btn" disabled={!!busy} onClick={() => action("discover")}>
+                <Icon name="refresh" className={`w-3.5 h-3.5 ${busy === "discover" ? "animate-spin" : ""}`} /> {busy === "discover" ? "Rediscovering…" : "Rediscover"}
+              </button>
             </div>
           )}
         </div>
@@ -103,7 +135,7 @@ export default function DevicePage() {
           <Meta label="Operating system">{osLabel(device.os, device.version)}</Meta>
           <Meta label="Uptime">{fmtUptime(device.uptime)}</Meta>
           <Meta label="Location">{device.sys_location}</Meta>
-          <Meta label="Last polled">{fmtAgo(device.last_polled)}</Meta>
+          <Meta label="Last polled">{fmtAgo(device.last_polled)}<span className="text-muted text-xs"> · discovered {fmtAgo(device.last_discovered)}</span></Meta>
         </div>
       </div>
 

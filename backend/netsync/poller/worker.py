@@ -30,6 +30,8 @@ class Worker:
         self.settings = get_settings()
         self.sem = asyncio.Semaphore(self.settings.poll_concurrency)
         self.running: set[int] = set()
+        # jobs that arrived while the device was busy: device id -> discover?; run right after the current job
+        self.queued: dict[int, bool] = {}
         self.node_id: int | None = None
         self.stop = asyncio.Event()
 
@@ -46,6 +48,8 @@ class Worker:
 
     async def run_device(self, device_id: int, discover: bool) -> None:
         if device_id in self.running:
+            # e.g. "Rediscover" clicked during a scheduled poll: don't drop it, run it next
+            self.queued[device_id] = self.queued.get(device_id, False) or discover
             return
         self.running.add(device_id)
         try:
@@ -68,6 +72,8 @@ class Worker:
             log.exception("device %s job failed", device_id)
         finally:
             self.running.discard(device_id)
+            if device_id in self.queued and not self.stop.is_set():
+                asyncio.create_task(self.run_device(device_id, self.queued.pop(device_id)))
 
     async def scheduler(self) -> None:
         while not self.stop.is_set():
