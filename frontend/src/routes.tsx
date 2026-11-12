@@ -14,6 +14,9 @@ import About from "./pages/About";
 import Tokens from "./pages/Tokens";
 import Housekeeping from "./pages/Housekeeping";
 import AiTools from "./pages/AiTools";
+import Store from "./pages/Store";
+import TerminalPage from "./pages/TerminalPage";
+import TerminalSetup from "./pages/TerminalSetup";
 import Probes from "./pages/Probes";
 import ProbePage from "./pages/ProbePage";
 import Dashboards from "./pages/dashboards/Dashboards";
@@ -41,6 +44,9 @@ export const pageRoutes = (
     <Route path="/setup/tokens" element={<Tokens />} />
     <Route path="/setup/housekeeping" element={<Housekeeping />} />
     <Route path="/setup/ai-tools" element={<AiTools />} />
+    <Route path="/setup/store" element={<Store />} />
+    <Route path="/setup/terminal" element={<TerminalSetup />} />
+    <Route path="/terminal" element={<TerminalPage />} />
     <Route path="/profile" element={<Profile />} />
     <Route path="/dashboards" element={<Dashboards />} />
     <Route path="/dashboards/:id" element={<DashboardView />} />

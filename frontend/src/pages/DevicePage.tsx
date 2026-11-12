@@ -14,6 +14,7 @@ import NotesTab from "./device/NotesTab";
 import NetstatTab from "./device/NetstatTab";
 import HealthTab, { cpuLine, HealthSub } from "./device/HealthTab";
 import GraphsTab from "./device/GraphsTab";
+import { TerminalView } from "../components/TerminalView";
 import { MEMORY_COLORS } from "./device/charts";
 import { AddToDashboard } from "../components/AddToDashboard";
 import { FORMATS, usePresets } from "../presets";
@@ -45,6 +46,8 @@ export default function DevicePage() {
   const { data: components = [] } = useQuery({ queryKey: ["components", id], queryFn: () => api<Component[]>(`/devices/${id}/components`), refetchInterval: 60_000 });
   const { data: services = [] } = useQuery({ queryKey: ["services", id], queryFn: () => api<Service[]>(`/devices/${id}/services`), refetchInterval: 30_000 });
   const { data: plugins = [] } = useQuery({ queryKey: ["plugins"], queryFn: () => api<PluginInfo[]>("/plugins") });
+  const { data: termAccess } = useQuery({ queryKey: ["terminal-access", id], queryFn: () => api<{ level: string; available: boolean }>(`/terminal/access/${id}`), staleTime: 60_000, retry: false });
+  const canTerminal = !!termAccess?.available && termAccess.level !== "none";
 
   if (!device) return <Empty>Loading…</Empty>;
 
@@ -61,6 +64,7 @@ export default function DevicePage() {
     ["services", "Services", services.length],
     ...(netstat ? [["netstat", "Network stack"] as [string, string]] : []),
     ...pluginTabs.map((t) => [t.id, t.label] as [string, string]),
+    ...(canTerminal ? [["terminal", "Terminal"] as [string, string]] : []),
     ["events", "Events"],
     ["notes", "Notes"],
     ["syslog", "Syslog"],
@@ -165,6 +169,7 @@ export default function DevicePage() {
         {tab === "graphs" && <GraphsTab deviceId={id} range={range} />}
         {tab === "services" && <Card><ServiceTable services={services} canAck={canEdit} /></Card>}
         {tab === "syslog" && <DeviceSyslog deviceId={id} />}
+        {tab === "terminal" && canTerminal && <TerminalView deviceId={id} className="h-[70vh] min-h-[22rem]" />}
         {tab === "events" && <EventsTab deviceId={id} />}
         {tab === "notes" && <NotesTab deviceId={id} canEdit={canEdit} />}
         {tab === "netstat" && <NetstatTab deviceId={id} component={netstat} range={range} />}

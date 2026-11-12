@@ -59,6 +59,17 @@ services:
       - "514:1514/udp"
       - "514:1514/tcp"
 
+  # Builds and runs plugins from the store (Setup → Plugin store). The only container with Docker access;
+  # reachable only from the NETsync network, and only with a token derived from NETSYNC_SECRET_KEY.
+  installer:
+    build: ./installer
+    image: netsync-installer:latest
+    restart: unless-stopped
+    dns: *dns
+    env_file: .env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
   web:
     build: ./frontend
     restart: unless-stopped

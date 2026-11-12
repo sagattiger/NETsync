@@ -7,10 +7,11 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from netsync.api.deps import CurrentUser, Session, require
-from netsync.api.schemas import GroupIn, GroupOut, UserIn, UserOut, UserUpdate
+from netsync.api.schemas import GroupIn, GroupOut, GroupUpdate, UserIn, UserOut, UserUpdate
 from netsync.models import DeviceGroup, Node, PluginSetting, Role, User
 from netsync.plugins import settings as plugin_settings
 from netsync.plugins.registry import registry
+from netsync import terminal
 from netsync.security import hash_password
 
 router = APIRouter(tags=["admin"])
@@ -46,9 +47,12 @@ async def update_user(user_id: int, body: UserUpdate, session: Session):
         user.password_hash = hash_password(pw)
     if (gids := data.pop("group_ids", None)) is not None:
         user.groups = await _groups(session, gids)
+    was_active = user.is_active
     for k, v in data.items():
         setattr(user, k, v)
     await session.commit()
+    if was_active and not user.is_active:
+        await terminal.user_gone(user)
     return user
 
 
@@ -60,6 +64,7 @@ async def delete_user(user_id: int, session: Session, me=require(Role.ADMIN)):
     if user:
         await session.delete(user)
         await session.commit()
+        await terminal.user_gone(user)
     return {"ok": True}
 
 
@@ -75,6 +80,18 @@ async def list_groups(user: CurrentUser, session: Session):
 async def add_group(body: GroupIn, session: Session):
     group = DeviceGroup(**body.model_dump())
     session.add(group)
+    await session.commit()
+    return group
+
+
+@router.patch("/groups/{group_id}", response_model=GroupOut, dependencies=[require(Role.ADMIN)])
+async def update_group(group_id: int, body: GroupUpdate, session: Session):
+    group = await session.get(DeviceGroup, group_id)
+    if not group:
+        raise HTTPException(404)
+    for k, v in body.model_dump(exclude_unset=True).items():
+        if v is not None:
+            setattr(group, k, v)
     await session.commit()
     return group
 

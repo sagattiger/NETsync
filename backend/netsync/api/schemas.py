@@ -12,6 +12,7 @@ class GroupOut(ORM):
     id: int
     name: str
     description: str | None = None
+    terminal_access: str = "none"
 
 
 class DeviceIn(BaseModel):
@@ -200,6 +201,13 @@ class UserOut(ORM):
 class GroupIn(BaseModel):
     name: str
     description: str | None = None
+    terminal_access: str = Field("none", pattern="^(none|read|write|full)$")
+
+
+class GroupUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=64)
+    description: str | None = None
+    terminal_access: str | None = Field(None, pattern="^(none|read|write|full)$")
 
 
 class SyslogOut(ORM):

@@ -94,6 +94,12 @@ ADDED_COLUMNS = {
     "event_comments": [
         "ai BOOLEAN NOT NULL DEFAULT false",
     ],
+    "device_groups": [
+        "terminal_access VARCHAR(8) NOT NULL DEFAULT 'none'",
+    ],
+    "remote_plugins": [
+        "store JSON",
+    ],
     "api_tokens": [
         "kind VARCHAR(16) NOT NULL DEFAULT 'public'",  # public (dashboards API) | mcp (tool hub)
         "scopes JSON NOT NULL DEFAULT '{}'",  # mcp: {"tools": ["netsync__*"], "write": false}

@@ -51,7 +51,31 @@ A plugin that holds secrets, runs third-party code, needs its own loop or anothe
 container**. It talks to NETsync only over HTTP, with a shared secret. It gets no database access and no
 public port.
 
-### Register
+### Plugin store
+
+The easy way: **Setup → Plugin store** lists the plugins in [`catalog/plugins.json`](../catalog/plugins.json)
+(or the catalog at `NETSYNC_STORE_CATALOG_URL`). **Install** shows the permissions the plugin asks for; once you
+accept, NETsync registers it, and the **installer** container downloads the source from GitHub, builds it and
+starts `netsync-plugin-<name>` on the NETsync network. Update, restart, logs and remove are on the same page.
+
+The installer is the only container with access to Docker. Whatever it is asked, every plugin runs the same
+way: no privileges, all capabilities dropped, `no-new-privileges`, no host folders, no published ports, a memory
+and process limit, and one named volume mounted at `/data`. It accepts requests only from NETsync (a token derived
+from `NETSYNC_SECRET_KEY`) and only `NETSYNC_*` environment variables.
+
+A catalog entry:
+
+```json
+{"name": "ssh", "title": "SSH terminal", "version": "0.1.0", "icon": "terminal", "description": "…",
+ "permissions": ["terminal", "events"], "memory_mb": 256,
+ "source": {"repo": "owner/repo", "ref": "main", "context": "plugins", "dockerfile": "ssh/Dockerfile"}}
+```
+
+The plugin gets `NETSYNC_PLUGIN_SECRET`, `NETSYNC_URL` and `NETSYNC_PLUGIN_NAME`. Anything the browser must
+reach goes under `/public/` in the plugin: the web server forwards `/plugins/<name>/public/...` (WebSockets too)
+to it. Everything else stays on the internal network.
+
+### Register by hand
 
 1. In **Setup → AI tools → Container plugins**, add the plugin's name and the URL NETsync uses to reach it,
    e.g. `http://netsync-hello:8080` on the same Docker network. NETsync shows a secret **once**
@@ -68,6 +92,7 @@ Permissions:
 | `tools` | Offer its tools to the AI and MCP clients |
 | `events` | `GET /api/plugin-api/events`: NETsync events (alerts, recoveries, syslog, AI jobs) as server-sent events |
 | `call:read` | `POST /api/plugin-api/tools/call`: call other plugins' read-only tools |
+| `terminal` | Serve SSH terminals: NETsync signs each session ticket with the plugin secret; `PATCH /api/plugin-api/terminal/sessions/<id>` and `GET /api/plugin-api/terminal/accounts` (see [TERMINAL.md](TERMINAL.md)) |
 
 ### What the plugin implements
 

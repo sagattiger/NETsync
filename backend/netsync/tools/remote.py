@@ -40,6 +40,7 @@ PERMISSIONS = {
     "tools": "Offer its tools to the AI and MCP clients",
     "events": "Receive NETsync events (alerts, recoveries, syslog) as they happen",
     "call:read": "Call NETsync's read-only tools (devices, alerts, metrics, syslog)",
+    "terminal": "Open SSH terminals for NETsync users (NETsync signs each session with the user's rights)",
 }
 TIMEOUT = httpx.Timeout(10.0, read=120.0)
 _cache: tuple[float, list[Tool]] | None = None

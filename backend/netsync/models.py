@@ -116,6 +116,8 @@ class DeviceGroup(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(64), unique=True)
     description: Mapped[str | None] = mapped_column(Text)
+    # what members get in the SSH terminal on the group's devices: none | read | write | full
+    terminal_access: Mapped[str] = mapped_column(String(8), default="none", server_default="none")
 
 
 # --------------------------------------------------------------------------- inventory
@@ -322,6 +324,7 @@ class ApiToken(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     prefix: Mapped[str] = mapped_column(String(8))
     created_by: Mapped[str | None] = mapped_column(String(64))
+    store: Mapped[dict | None] = mapped_column(JSON)  # installed from the plugin store: catalog entry, job id
     created_at: Mapped[datetime] = utcnow_col()
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -548,3 +551,26 @@ class ChatMessage(Base):
     model: Mapped[str | None] = mapped_column(String(128))
     duration: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = utcnow_col()
+
+
+class TerminalSession(Base):
+    """Audit of SSH terminal sessions: who opened which device, with which rights, how it ended."""
+
+    __tablename__ = "terminal_sessions"
+    __table_args__ = (Index("ix_terminal_sessions_time", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    created_at: Mapped[datetime] = utcnow_col()
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    username: Mapped[str] = mapped_column(String(64))
+    account: Mapped[str] = mapped_column(String(32))
+    device_id: Mapped[int | None] = mapped_column(ForeignKey("devices.id", ondelete="SET NULL"))
+    hostname: Mapped[str] = mapped_column(String(255))
+    level: Mapped[str] = mapped_column(String(8))
+    status: Mapped[str] = mapped_column(String(16), default="issued")  # issued | connected | ended | failed
+    reason: Mapped[str | None] = mapped_column(Text)
+    client_ip: Mapped[str | None] = mapped_column(String(64))
+    connected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    bytes_in: Mapped[int | None] = mapped_column(BigInteger)
+    bytes_out: Mapped[int | None] = mapped_column(BigInteger)

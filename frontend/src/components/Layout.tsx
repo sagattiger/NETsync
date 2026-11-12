@@ -11,6 +11,7 @@ import { Icon } from "./Icon";
 import { LogoIcon } from "./Brand";
 import { BackLink, DocumentTitle, TabBar, TabsProvider, TabViews, useTabs } from "./Tabs";
 import { pageRoutes } from "../routes";
+import { useTerminalStatus } from "../pages/TerminalPage";
 
 interface Overview { devices: Record<string, number>; services: Record<string, number>; unhandled: number }
 
@@ -87,6 +88,7 @@ function Sidebar({ me, collapsed, onToggle, onNavigate, mobile }: {
   const { theme, toggle: toggleTheme } = useTheme();
   const ai = useAI();
   const chat = useChat();
+  const terminal = useTerminalStatus();
   const qc = useQueryClient();
   const { data: ov } = useQuery({ queryKey: ["overview"], queryFn: () => api<Overview>("/overview"), refetchInterval: 30_000 });
   const problems = ov?.unhandled ?? 0; // open, not acknowledged (same as the Home list)
@@ -99,6 +101,7 @@ function Sidebar({ me, collapsed, onToggle, onNavigate, mobile }: {
     { to: "/devices", label: "Devices", icon: "server" },
     { to: "/probes", label: "Probes", icon: "pulse" },
     { to: "/syslog", label: "Syslog", icon: "list" },
+    ...(terminal?.available ? [{ to: "/terminal", label: "Terminal", icon: "terminal" }] : []),
   ];
   const setup: NavItem[] = [
     { to: "/setup/rules", label: "Threshold rules", icon: "sliders" },
@@ -106,6 +109,8 @@ function Sidebar({ me, collapsed, onToggle, onNavigate, mobile }: {
     { to: "/setup/users", label: "Users & groups", icon: "users", admin: true },
     { to: "/setup/plugins?configure=ai", label: "AI assistant", icon: "sparkles", admin: true },
     { to: "/setup/ai-tools", label: "AI tools & MCP", icon: "terminal" },
+    { to: "/setup/terminal", label: "Terminal access", icon: "lock", admin: true },
+    { to: "/setup/store", label: "Plugin store", icon: "puzzle", admin: true },
     { to: "/setup/tokens", label: "API tokens", icon: "lock", admin: true },
     { to: "/setup/housekeeping", label: "Housekeeping", icon: "list", admin: true },
     { to: "/setup/plugins", label: "Plugins & nodes", icon: "puzzle" },

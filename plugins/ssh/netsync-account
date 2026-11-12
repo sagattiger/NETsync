@@ -1,0 +1,89 @@
+#!/bin/bash
+# NETsync account manager. Installed by the NETsync terminal setup; the "netsync" account may run only this
+# script through sudo, so the NETsync key can create, change and remove ns-* accounts and nothing else.
+#
+#   netsync-account check
+#   netsync-account ensure ns-alice read|write|full   create or update the account and its rights
+#   netsync-account passwd ns-alice                   new password on stdin
+#   netsync-account lock ns-alice                     lock it and end its sessions
+#   netsync-account remove ns-alice                   end its sessions and delete it (with its home)
+#   netsync-account list                              managed accounts as JSON
+set -uo pipefail
+VERSION=1
+MANAGED=netsync-users
+
+out() { printf '%s\n' "$1"; }
+die() { out "{\"ok\":false,\"error\":\"$1\"}"; exit 1; }
+valid() { [[ "${1:-}" =~ ^ns-[a-z0-9][a-z0-9_-]{0,28}$ ]] || die "invalid account name"; }
+exists() { id "$1" >/dev/null 2>&1; }
+managed() { id -nG "$1" 2>/dev/null | tr ' ' '\n' | grep -qx "$MANAGED"; }
+has_group() { getent group "$1" >/dev/null 2>&1; }
+level_of() {
+  local g; g=$(id -nG "$1" 2>/dev/null | tr ' ' '\n')
+  if grep -qx netsync-full <<<"$g"; then echo full; elif grep -qx netsync-write <<<"$g"; then echo write; else echo read; fi
+}
+has_password() { [ "$(passwd -S "$1" 2>/dev/null | awk '{print $2}')" = "P" ] && echo true || echo false; }
+
+cmd="${1:-}"
+case "$cmd" in
+  check)
+    out "{\"ok\":true,\"version\":$VERSION}"
+    ;;
+  ensure)
+    user="${2:-}"; level="${3:-}"; valid "$user"
+    [[ "$level" =~ ^(read|write|full)$ ]] || die "invalid level"
+    created=false
+    if exists "$user"; then
+      managed "$user" || die "account $user exists and is not managed by NETsync"
+    else
+      useradd -m -s /bin/bash -c "NETsync managed account" -G "$MANAGED" "$user" >/dev/null 2>&1 || die "useradd failed"
+      created=true
+    fi
+    groups="$MANAGED"
+    for g in adm systemd-journal; do has_group "$g" && groups="$groups,$g"; done
+    [ "$level" = write ] && groups="$groups,netsync-write"
+    [ "$level" = full ] && groups="$groups,netsync-full"
+    usermod -G "$groups" "$user" >/dev/null 2>&1 || die "usermod failed"
+    usermod -U -e "" "$user" >/dev/null 2>&1 || true
+    out "{\"ok\":true,\"created\":$created,\"has_password\":$(has_password "$user"),\"level\":\"$level\"}"
+    ;;
+  passwd)
+    user="${2:-}"; valid "$user"; exists "$user" && managed "$user" || die "not a managed account"
+    IFS= read -r pw || die "no password given"
+    [ ${#pw} -ge 8 ] || die "password too short"
+    printf '%s:%s\n' "$user" "$pw" | chpasswd >/dev/null 2>&1 || die "chpasswd failed (password rejected by the server's policy?)"
+    out '{"ok":true}'
+    ;;
+  lock)
+    user="${2:-}"; valid "$user"
+    if exists "$user"; then
+      managed "$user" || die "not a managed account"
+      usermod -L -e 1 "$user" >/dev/null 2>&1
+      pkill -KILL -u "$user" >/dev/null 2>&1 || true
+    fi
+    out '{"ok":true}'
+    ;;
+  remove)
+    user="${2:-}"; valid "$user"
+    if exists "$user"; then
+      managed "$user" || die "not a managed account"
+      pkill -KILL -u "$user" >/dev/null 2>&1 || true
+      sleep 0.5
+      userdel -r "$user" >/dev/null 2>&1 || userdel "$user" >/dev/null 2>&1 || die "userdel failed"
+    fi
+    out '{"ok":true,"removed":true}'
+    ;;
+  list)
+    members=$(getent group "$MANAGED" | cut -d: -f4 | tr ',' ' ')
+    sep=""; json="["
+    for u in $members; do
+      [[ "$u" =~ ^ns- ]] || continue
+      json="$json$sep{\"account\":\"$u\",\"level\":\"$(level_of "$u")\",\"has_password\":$(has_password "$u")}"
+      sep=","
+    done
+    out "{\"ok\":true,\"accounts\":$json]}"
+    ;;
+  *)
+    die "unknown command"
+    ;;
+esac

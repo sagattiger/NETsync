@@ -36,6 +36,10 @@ class Settings(BaseSettings):
 
     public_url: str = "http://localhost:8080"
 
+    # Plugin store: the catalog and the installer container that builds and runs store plugins.
+    store_catalog_url: str = "https://raw.githubusercontent.com/sagattiger/NETsync/main/catalog/plugins.json"
+    installer_url: str = "http://installer:8090"
+
     # Probe heartbeats (one row per probe run) are kept this long.
     probe_beats_retention_days: int = 90
 

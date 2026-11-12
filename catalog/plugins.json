@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "plugins": [
+    {
+      "name": "ssh",
+      "title": "SSH terminal",
+      "version": "0.1.0",
+      "author": "NETsync",
+      "icon": "terminal",
+      "description": "Terminals on your Linux servers inside NETsync. Every NETsync user gets their own account on each server (ns-<user>), with rights from their group: read-only, read and write, or full. Accounts are removed from all servers when the user is removed from NETsync.",
+      "permissions": ["terminal", "events"],
+      "memory_mb": 256,
+      "source": {"repo": "sagattiger/NETsync", "ref": "main", "context": "plugins", "dockerfile": "ssh/Dockerfile"},
+      "docs": "docs/TERMINAL.md"
+    },
+    {
+      "name": "hello",
+      "title": "Hello (example)",
+      "version": "1.0.0",
+      "author": "NETsync",
+      "icon": "puzzle",
+      "description": "Example container plugin for developers: one read tool, one write tool that needs approval, and a call back into NETsync.",
+      "permissions": ["tools", "call:read"],
+      "memory_mb": 128,
+      "source": {"repo": "sagattiger/NETsync", "ref": "main", "context": "plugins", "dockerfile": "examples/hello/Dockerfile"},
+      "docs": "docs/PLUGIN-PROTOCOL.md"
+    }
+  ]
+}

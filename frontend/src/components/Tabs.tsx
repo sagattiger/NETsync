@@ -288,7 +288,8 @@ const STATIC: [string, string, string][] = [
   ["/", "Home", "grid"], ["/problems", "Problems", "alert"], ["/devices", "Devices", "server"], ["/probes", "Probes", "pulse"],
   ["/syslog", "Syslog", "list"], ["/dashboards", "Dashboards", "palette"], ["/setup/rules", "Threshold rules", "sliders"],
   ["/setup/notifications", "Notifications", "bell"], ["/setup/users", "Users & groups", "users"],
-  ["/setup/plugins", "Plugins & nodes", "puzzle"], ["/setup/tokens", "API tokens", "lock"], ["/profile", "Profile", "user"],
+  ["/setup/plugins", "Plugins & nodes", "puzzle"], ["/setup/store", "Plugin store", "puzzle"],
+  ["/setup/terminal", "Terminal access", "lock"], ["/terminal", "Terminal", "terminal"], ["/setup/tokens", "API tokens", "lock"], ["/profile", "Profile", "user"],
   ["/about", "About", "info"],
 ];
 

@@ -25,6 +25,11 @@ service states, threshold rules, problem views, acknowledgements, downtimes and 
 - **Syslog receiver** (UDP/TCP 514, RFC 3164 + RFC 5424) that links messages to devices
 - **SmokePing-style latency**: RTT min/avg/max, jitter, packet loss
 - **Users, roles** (admin / operator / viewer) and **device groups** that limit what each user sees
+- **SSH terminal** in the browser: each user gets their own account on each Linux server, with rights from their
+  groups (read-only, read and write, full), removed from every server when the user is removed, see
+  [docs/TERMINAL.md](docs/TERMINAL.md)
+- **Plugin store**: install container plugins with one click (Setup → Plugin store), see
+  [docs/PLUGIN-PROTOCOL.md](docs/PLUGIN-PROTOCOL.md)
 - **Plugin system**: everything above is a plugin, see [docs/PLUGINS.md](docs/PLUGINS.md)
 - **Cluster ready**: every poller is a *node*. Today one node runs next to the panel; later many
   nodes can report to one central panel.
