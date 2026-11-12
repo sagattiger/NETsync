@@ -17,6 +17,7 @@ import AiTools from "./pages/AiTools";
 import Store from "./pages/Store";
 import TerminalPage from "./pages/TerminalPage";
 import TerminalSetup from "./pages/TerminalSetup";
+import { ChartSettings, SettingsShell } from "./pages/Settings";
 import Probes from "./pages/Probes";
 import ProbePage from "./pages/ProbePage";
 import Dashboards from "./pages/dashboards/Dashboards";
@@ -37,16 +38,18 @@ export const pageRoutes = (
     <Route path="/probes" element={<Probes />} />
     <Route path="/probes/:id" element={<ProbePage />} />
     <Route path="/syslog" element={<Syslog />} />
-    <Route path="/setup/rules" element={<Rules />} />
+    <Route path="/setup/rules" element={<SettingsShell><Rules /></SettingsShell>} />
     <Route path="/setup/notifications" element={<Notifications />} />
-    <Route path="/setup/users" element={<Users />} />
-    <Route path="/setup/plugins" element={<Plugins />} />
-    <Route path="/setup/tokens" element={<Tokens />} />
-    <Route path="/setup/housekeeping" element={<Housekeeping />} />
-    <Route path="/setup/ai-tools" element={<AiTools />} />
+    <Route path="/setup/users" element={<SettingsShell><Users /></SettingsShell>} />
+    <Route path="/setup/plugins" element={<SettingsShell><Plugins /></SettingsShell>} />
+    <Route path="/setup/tokens" element={<SettingsShell><Tokens /></SettingsShell>} />
+    <Route path="/setup/housekeeping" element={<SettingsShell><Housekeeping /></SettingsShell>} />
+    <Route path="/setup/ai-tools" element={<SettingsShell><AiTools /></SettingsShell>} />
     <Route path="/setup/store" element={<Store />} />
-    <Route path="/setup/terminal" element={<TerminalSetup />} />
+    <Route path="/setup/terminal" element={<SettingsShell><TerminalSetup /></SettingsShell>} />
     <Route path="/terminal" element={<TerminalPage />} />
+    <Route path="/settings" element={<SettingsShell><ChartSettings /></SettingsShell>} />
+    <Route path="/settings/charts" element={<SettingsShell><ChartSettings /></SettingsShell>} />
     <Route path="/profile" element={<Profile />} />
     <Route path="/dashboards" element={<Dashboards />} />
     <Route path="/dashboards/:id" element={<DashboardView />} />

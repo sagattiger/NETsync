@@ -13,6 +13,33 @@ export const SERIES_ORDER = ["orange", "pink", "purple", "teal", "amber", "red"]
 /** OK, WARN, CRIT, UNKNOWN */
 export const STATE_TOKENS = ["green", "amber", "red", "grey"] as const;
 
+/** The user's chart look (Settings → Charts), saved in their preferences. */
+export interface ChartPrefs {
+  palette: PaletteName; colors: string[]; glow: boolean; line_width: number;
+  fill: "gradient" | "solid" | "none"; fill_opacity: number; smooth: boolean; style: "area" | "line"; grid: boolean;
+}
+export type PaletteName = "netsync" | "classic" | "tableau" | "colorblind" | "blues" | "custom";
+export const CHART_DEFAULTS: ChartPrefs = {
+  palette: "netsync", colors: [], glow: false, line_width: 1.5, fill: "gradient", fill_opacity: 0.18, smooth: true,
+  style: "area", grid: true,
+};
+/** null = the NETsync tokens (follow light/dark) */
+export const PALETTES: Record<PaletteName, { label: string; colors: string[] | null }> = {
+  netsync: { label: "NETsync", colors: null },
+  classic: { label: "Classic", colors: ["#5470c6", "#91cc75", "#fac858", "#ee6666", "#73c0de", "#3ba272"] },
+  tableau: { label: "Calm", colors: ["#4e79a7", "#f28e2b", "#59a14f", "#e15759", "#76b7b2", "#edc948"] },
+  colorblind: { label: "Colour-blind safe", colors: ["#0072b2", "#e69f00", "#009e73", "#cc79a7", "#56b4e9", "#d55e00"] },
+  blues: { label: "Blues", colors: ["#3b82f6", "#60a5fa", "#1d4ed8", "#93c5fd", "#2563eb", "#bfdbfe"] },
+  custom: { label: "My colours", colors: null },
+};
+let prefsNow: ChartPrefs = CHART_DEFAULTS;
+export const chartPrefs = () => prefsNow;
+export function setChartPrefs(p: Partial<ChartPrefs> | null | undefined): ChartPrefs {
+  prefsNow = { ...CHART_DEFAULTS, ...(p ?? {}) };
+  if (typeof document !== "undefined") document.documentElement.setAttribute("data-glow", prefsNow.glow ? "on" : "off");
+  return prefsNow;
+}
+
 function cssVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
@@ -57,7 +84,7 @@ export function withGaps<T extends [string | number, ...unknown[]]>(points: T[])
   return out;
 }
 
-export const glowOn = () => cssVar("--ns-glow") === "1";
+export const glowOn = () => prefsNow.glow && cssVar("--ns-glow") === "1";
 export const reducedMotion = () => typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /** Faint halo under a stroke (dark mode only). */
@@ -67,7 +94,9 @@ export function glow(color: string, blur = 6): Record<string, unknown> {
 
 /** Series colours in order, with the widget's own hex colours first where set. */
 export function seriesPalette(colors?: (string | null | undefined)[] | null): string[] {
-  return SERIES_ORDER.map((n, i) => colors?.[i] || ns(n));
+  const p = prefsNow;
+  const chosen = p.palette === "custom" ? (p.colors.length ? p.colors : null) : PALETTES[p.palette]?.colors ?? null;
+  return SERIES_ORDER.map((n, i) => colors?.[i] || (chosen ? chosen[i % chosen.length] : ns(n)));
 }
 
 export const stateColor = (state: number | null | undefined) => ns(STATE_TOKENS[state ?? 3] ?? "grey");
@@ -126,7 +155,7 @@ export function timeBase({ compact, fmt, legend, yMin, range }: TimeAxisOpts): R
       min: yMin,
       splitNumber: 4,
       axisLine: { show: false },
-      splitLine: { lineStyle: { color: ns("line"), type: [2, 4] } },
+      splitLine: { show: prefsNow.grid, lineStyle: { color: ns("line"), type: [2, 4] } },
       axisLabel: { color: ns("muted"), fontSize: 11, formatter: (v: number) => fmt(v) },
     },
   };
@@ -138,21 +167,23 @@ type Point = [string | number, number | null, ...unknown[]];
 export function lineSeries({ name, color, data, style = "area", compact, fill = true, z = 3 }: {
   name: string; color: string; data: Point[]; style?: ChartStyle; compact?: boolean; fill?: boolean; z?: number;
 }): Record<string, unknown> {
-  const area = style === "area" && fill;
+  const p = prefsNow;
+  const area = style === "area" && fill && p.fill !== "none";
+  const width = compact ? Math.max(1, p.line_width - 0.25) : p.line_width;
   return {
     name,
     type: "line",
-    smooth: style === "spike" ? false : 0.35,
+    smooth: style === "spike" || !p.smooth ? false : 0.35,
     showSymbol: false,
     symbol: "circle",
     symbolSize: 9,
     connectNulls: false,
-    lineStyle: { width: compact ? 2 : 2.5, color, join: style === "spike" ? "miter" : "round", ...glow(color) },
-    itemStyle: { color: "#fff", borderColor: color, borderWidth: 3 },
-    emphasis: { focus: "none", scale: false, lineStyle: { width: compact ? 2 : 2.5 } },
+    lineStyle: { width, color, join: style === "spike" ? "miter" : "round", ...glow(color) },
+    itemStyle: { color: "#fff", borderColor: color, borderWidth: 2 },
+    emphasis: { focus: "none", scale: false, lineStyle: { width } },
     areaStyle: area ? {
-      color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-        { offset: 0, color: withAlpha(color, glowOn() ? 0.3 : 0.22) },
+      color: p.fill === "solid" ? withAlpha(color, p.fill_opacity) : new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+        { offset: 0, color: withAlpha(color, p.fill_opacity) },
         { offset: 1, color: withAlpha(color, 0) },
       ]),
     } : undefined,
@@ -199,10 +230,12 @@ export function rangeSeries({ name, data, colors }: { name: string; data: [strin
     smooth: 0.4,
     showSymbol: false,
     connectNulls: false,
-    lineStyle: { width: 1.8, color: teal, ...glow(teal, 4) },
+    lineStyle: { width: prefsNow.line_width, color: teal, ...glow(teal, 4) },
     itemStyle: { color: "#fff", borderColor: teal, borderWidth: 3 },
     data: data.map((p) => [p[0], p[1]]),
     z: 3,
   };
   return [candles, avg];
 }
+
+setChartPrefs(null); // glow off until the user's settings load

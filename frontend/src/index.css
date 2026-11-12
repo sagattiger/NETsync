@@ -159,6 +159,8 @@ body { @apply bg-bg text-fg text-sm antialiased font-sans; }
 
 /* small state dot; a faint halo in dark mode only (text-* colour sets the halo colour) */
 .dot { display: inline-block; width: .5rem; height: .5rem; border-radius: 9999px; flex-shrink: 0; }
+[data-glow="off"] .glow, [data-glow="off"] .glow-soft { box-shadow: none !important; }
+[data-glow="off"] .svg-glow, [data-glow="off"] .glow-soft { filter: none !important; }
 [data-theme="dark"] .glow { box-shadow: 0 0 5px 0 color-mix(in srgb, currentColor 60%, transparent); }
 [data-theme="dark"] .glow-soft,
 [data-theme="dark"] .svg-glow { filter: drop-shadow(0 0 3px color-mix(in srgb, currentColor 50%, transparent)); }

@@ -46,6 +46,7 @@ export interface Preferences {
   table_density?: "comfortable" | "compact";
   sidebar?: "expanded" | "collapsed";
   dismissed_notice?: string;
+  chart?: Partial<import("./lib/chartTheme").ChartPrefs>;
 }
 
 export interface Me {

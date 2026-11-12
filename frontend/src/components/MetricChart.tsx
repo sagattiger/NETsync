@@ -3,7 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import ReactECharts from "echarts-for-react";
 import { api, Series } from "../api";
 import { useTheme } from "../theme";
-import { chartThemeName, ChartStyle, lineSeries, ns, rangeSeries, seriesPalette, timeBase, withAlpha, withGaps } from "../lib/chartTheme";
+import { useChartPrefs } from "../lib/useChartPrefs";
+import { chartPrefs, chartThemeName, ChartStyle, lineSeries, ns, rangeSeries, seriesPalette, timeBase, withAlpha, withGaps } from "../lib/chartTheme";
 
 export interface MetricDef { name: string; label?: string; scale?: number }
 
@@ -67,10 +68,11 @@ export function TimeChart({
   stack = false, ruler, rulerLabel = "total", range,
 }: ChartProps & { data: Series | undefined; isLoading?: boolean }) {
   const { theme } = useTheme();
+  const look_ = useChartPrefs();
   const fmt = format ?? ((v: number) => `${Number.isInteger(v) ? v : v.toFixed(1)}${unit}`);
   const empty = !isLoading && metrics.every((m) => !(data?.[m.name]?.length));
   const colorKey = (colors ?? []).join(",");
-  const look: ChartStyle = style ?? (area ? "area" : "line");
+  const look: ChartStyle = style ?? (area ? chartPrefs().style : "line");
 
   const option = useMemo(() => {
     const palette = seriesPalette(colors?.map((c) => (c ? hexColor(c) : c)));
@@ -143,7 +145,7 @@ export function TimeChart({
     return { ...base, color: palette, series };
     // theme is a dependency so the tokens are re-read after switching
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, theme, look, unit, colorKey, compact, stack, ruler, range, metrics.map((m) => m.label).join("|")]);
+  }, [data, theme, look_, look, unit, colorKey, compact, stack, ruler, range, metrics.map((m) => m.label).join("|")]);
 
   return (
     <div style={{ height }} className="relative">
@@ -152,7 +154,7 @@ export function TimeChart({
           {isLoading ? "Loading…" : "No data for this range yet"}
         </div>
       )}
-      <ReactECharts key={theme} option={option} theme={chartThemeName(theme)} style={{ height }} notMerge opts={{ renderer: "svg" }} />
+      <ReactECharts key={`${theme}${look_}`} option={option} theme={chartThemeName(theme)} style={{ height }} notMerge opts={{ renderer: "svg" }} />
     </div>
   );
 }

@@ -12,6 +12,8 @@ import { LogoIcon } from "./Brand";
 import { BackLink, DocumentTitle, TabBar, TabsProvider, TabViews, useTabs } from "./Tabs";
 import { pageRoutes } from "../routes";
 import { useTerminalStatus } from "../pages/TerminalPage";
+import { setChartPrefs } from "../lib/chartTheme";
+import { isSettingsPath } from "../pages/Settings";
 
 interface Overview { devices: Record<string, number>; services: Record<string, number>; unhandled: number }
 
@@ -61,14 +63,17 @@ function useSidebar(me?: Me) {
   return { collapsed, toggle };
 }
 
-type NavItem = { to: string; label: string; icon: string; admin?: boolean; badge?: number; end?: boolean };
+type NavItem = { to: string; label: string; icon: string; admin?: boolean; badge?: number; end?: boolean; match?: (path: string) => boolean };
 
 function NavEntry({ item, collapsed, onNavigate }: { item: NavItem; collapsed: boolean; onNavigate?: () => void }) {
+  const { pathname } = useLocation();
   return (
     <NavLink to={item.to} end={item.end} onClick={onNavigate} title={collapsed ? item.label : undefined}
-      className={({ isActive }) =>
-        `relative flex items-center gap-3 rounded-lg text-sm transition-colors ${collapsed ? "justify-center h-10 w-10 mx-auto" : "px-3 h-9"} ${
-          isActive ? "bg-active text-strong font-medium" : "text-fg2 hover:bg-active/50 hover:text-strong"}`}>
+      className={({ isActive: navActive }) => {
+        const isActive = item.match ? item.match(pathname) : navActive;
+        return `relative flex items-center gap-3 rounded-lg text-sm transition-colors ${collapsed ? "justify-center h-10 w-10 mx-auto" : "px-3 h-9"} ${
+          isActive ? "bg-active text-strong font-medium" : "text-fg2 hover:bg-active/50 hover:text-strong"}`;
+      }}>
       <Icon name={item.icon} className="w-[18px] h-[18px] shrink-0" />
       {!collapsed && <span className="truncate flex-1">{item.label}</span>}
       {!!item.badge && (
@@ -104,16 +109,9 @@ function Sidebar({ me, collapsed, onToggle, onNavigate, mobile }: {
     ...(terminal?.available ? [{ to: "/terminal", label: "Terminal", icon: "terminal" }] : []),
   ];
   const setup: NavItem[] = [
-    { to: "/setup/rules", label: "Threshold rules", icon: "sliders" },
     { to: "/setup/notifications", label: "Notifications", icon: "bell", admin: true },
-    { to: "/setup/users", label: "Users & groups", icon: "users", admin: true },
-    { to: "/setup/plugins?configure=ai", label: "AI assistant", icon: "sparkles", admin: true },
-    { to: "/setup/ai-tools", label: "AI tools & MCP", icon: "terminal" },
-    { to: "/setup/terminal", label: "Terminal access", icon: "lock", admin: true },
     { to: "/setup/store", label: "Plugin store", icon: "puzzle", admin: true },
-    { to: "/setup/tokens", label: "API tokens", icon: "lock", admin: true },
-    { to: "/setup/housekeeping", label: "Housekeeping", icon: "list", admin: true },
-    { to: "/setup/plugins", label: "Plugins & nodes", icon: "puzzle" },
+    { to: "/settings", label: "Settings", icon: "gear", match: isSettingsPath },
   ];
 
   const themeToggle = () => {
@@ -258,6 +256,7 @@ function Shell() {
   useEffect(() => {
     if (!me) return;
     prefs.set(me.preferences);
+    setChartPrefs(me.preferences.chart);
     if (me.preferences.theme) setChoice(me.preferences.theme);
   }, [me, setChoice]);
 
@@ -302,7 +301,7 @@ function Shell() {
             {me?.role !== "viewer" && (
               <Link to="/devices?add=1" className="hidden sm:inline-flex btn h-8"><Icon name="plus" className="w-3.5 h-3.5" /> Add device</Link>
             )}
-            <Link to="/profile" className={headerBtn} title="Settings"><Icon name="gear" className="w-4 h-4" /></Link>
+            <Link to="/settings" className={headerBtn} title="Settings"><Icon name="gear" className="w-4 h-4" /></Link>
             <button onClick={logout} className={`${headerBtn} hidden sm:flex`} title="Log out"><Icon name="logout" className="w-4 h-4" /></button>
             <Link to="/profile" title={me?.full_name || me?.username} className="ml-0.5">
               <Avatar name={me?.full_name || me?.username} url={me?.avatar_url} size={30} />

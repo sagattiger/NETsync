@@ -32,6 +32,37 @@ PREFERENCE_KEYS: dict[str, set | None] = {
     "dismissed_notice": None,  # id of the last dismissed announcement
 }
 
+HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
+CHART_PALETTES = {"netsync", "classic", "tableau", "colorblind", "blues", "custom"}
+
+
+def chart_preferences(value: Any) -> dict[str, Any]:
+    """Chart look (Settings → Charts): checked field by field, unknown fields dropped."""
+    if not isinstance(value, dict):
+        raise HTTPException(400, "Invalid value for chart")
+    out: dict[str, Any] = {}
+    for key in ("glow", "smooth", "grid"):
+        if key in value:
+            out[key] = bool(value[key])
+    if value.get("palette") in CHART_PALETTES:
+        out["palette"] = value["palette"]
+    if isinstance(value.get("colors"), list):
+        colors = [c for c in value["colors"][:8] if isinstance(c, str) and HEX.match(c)]
+        if len(colors) != len(value["colors"][:8]):
+            raise HTTPException(400, "Chart colours must be #rrggbb")
+        out["colors"] = colors
+    if value.get("fill") in ("gradient", "solid", "none"):
+        out["fill"] = value["fill"]
+    if value.get("style") in ("area", "line"):
+        out["style"] = value["style"]
+    for key, lo, hi in (("line_width", 0.5, 4.0), ("fill_opacity", 0.0, 0.8)):
+        if key in value:
+            try:
+                out[key] = min(hi, max(lo, float(value[key])))
+            except (TypeError, ValueError) as e:
+                raise HTTPException(400, f"Invalid value for chart.{key}") from e
+    return out
+
 
 class LoginIn(BaseModel):
     username: str
@@ -108,6 +139,9 @@ async def update_me(body: ProfileIn, user: CurrentUser, session: Session):
     if (prefs := data.pop("preferences", None)) is not None:
         merged = dict(u.preferences or {})
         for key, value in prefs.items():
+            if key == "chart":
+                merged["chart"] = chart_preferences(value) if value is not None else {}
+                continue
             allowed = PREFERENCE_KEYS.get(key, False)
             if allowed is False:
                 raise HTTPException(400, f"Unknown preference {key}")
