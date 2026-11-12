@@ -120,8 +120,9 @@ Field notes:
   device for device-level graphs.
 - `graph.series[]`: `key` is the series' original key (`in`/`out`, `avg`…), `name` is what to display: the
   admin's label (e.g. `Rx`/`Tx`) or, without one, the key. `last` is keyed by `name`.
-- `graph.unit`: how to format values. One of `bps` (bits per second), `pct`, `ms`, `s`, `rate` (per second)
-  and `count`. `last` is the newest average per series (`null` without data). Missing data gives an empty
+- `graph.unit`: how to format values. One of `bps` (bits per second), `pct`, `ms`, `s`, `rate` (per second),
+  `count`, and since the host metrics: `bytes`, `Bps` (bytes per second), `celsius`, `rpm`, `load` (load
+  average, a plain number) and `duration` (seconds, e.g. uptime). Treat an unknown unit as a plain number. `last` is the newest average per series (`null` without data). Missing data gives an empty
   `points` list, never an error.
 - Optional widget fields, **omitted when not set** (older widgets don't have them):
   - `cols`: width on a 12-column grid, one of `3`, `4`, `6`, `8`, `12`. When missing, derive it from `size`:
