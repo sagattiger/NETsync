@@ -324,7 +324,6 @@ class ApiToken(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     prefix: Mapped[str] = mapped_column(String(8))
     created_by: Mapped[str | None] = mapped_column(String(64))
-    store: Mapped[dict | None] = mapped_column(JSON)  # installed from the plugin store: catalog entry, job id
     created_at: Mapped[datetime] = utcnow_col()
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -519,6 +518,7 @@ class RemotePlugin(Base):
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = utcnow_col()
     created_by: Mapped[str | None] = mapped_column(String(64))
+    store: Mapped[dict | None] = mapped_column(JSON)  # installed from the plugin store: catalog entry, job id
 
 
 class ChatConversation(Base):

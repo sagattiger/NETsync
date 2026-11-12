@@ -114,3 +114,16 @@ def test_installer_token_matches_core(monkeypatch):
     monkeypatch.setattr(store, "get_settings", lambda: NS(secret_key="k1"))
     assert inst.token() == store.installer_token()
     assert get_settings  # imported for the side effect of config loading
+
+
+def test_new_columns_are_on_the_right_tables():
+    from netsync.db import ADDED_COLUMNS
+    from netsync.models import ApiToken, DeviceGroup, RemotePlugin
+
+    assert "store" in RemotePlugin.__table__.c and "store" not in ApiToken.__table__.c
+    assert "terminal_access" in DeviceGroup.__table__.c
+    # every column added later to an existing table is also created on upgrade
+    for table, cols in ADDED_COLUMNS.items():
+        model_cols = {c.name for t in [ApiToken, RemotePlugin, DeviceGroup] if t.__tablename__ == table for c in t.__table__.c}
+        for col in cols:
+            assert not model_cols or col.split()[0] in model_cols, (table, col)
