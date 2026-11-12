@@ -47,7 +47,13 @@ ROLLUP_POLICIES = (
 
 # Idempotent statements run after the column additions (type widening, indexes).
 SCHEMA_STATEMENTS = [
-    "ALTER TABLE probes ALTER COLUMN target TYPE VARCHAR(2048)",
+    # widen probes.target once (a no-op ALTER would still lock the table at every start)
+    """DO $$ BEGIN
+         IF (SELECT character_maximum_length FROM information_schema.columns
+             WHERE table_schema = current_schema() AND table_name = 'probes' AND column_name = 'target') < 2048 THEN
+           ALTER TABLE probes ALTER COLUMN target TYPE VARCHAR(2048);
+         END IF;
+       END $$""",
     "CREATE INDEX IF NOT EXISTS ix_probes_push_token_hash ON probes (push_token_hash)",
 ]
 
@@ -133,9 +139,14 @@ async def init_db() -> None:
         await conn.execute(text("SELECT pg_advisory_xact_lock(7061)"))
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS timescaledb"))
         await conn.run_sync(Base.metadata.create_all)
+        # ALTER TABLE locks the table even when the column exists, which deadlocks with the other process's
+        # queries at startup: only alter tables that really miss a column.
+        existing = {(t, c) for t, c in (await conn.execute(text(
+            "SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = current_schema()"))).all()}
         for table, columns in ADDED_COLUMNS.items():
             for column in columns:
-                await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column}"))
+                if (table, column.split()[0]) not in existing:
+                    await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column}"))
         for stmt in SCHEMA_STATEMENTS:
             await conn.execute(text(stmt))
         for table, retention in HYPERTABLES.items():
