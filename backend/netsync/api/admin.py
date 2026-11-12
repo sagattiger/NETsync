@@ -134,6 +134,8 @@ async def save_plugin_settings(name: str, body: PluginSettingsIn, session: Sessi
     _, current = await plugin_settings.get_settings(session, p)
     try:
         config = plugin_settings.coerce(p, body.config, current)
+        if p.validate:
+            p.validate(config)
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     row = await session.get(PluginSetting, p.name)

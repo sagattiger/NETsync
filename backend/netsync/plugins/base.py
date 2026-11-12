@@ -182,3 +182,5 @@ class Plugin:
     actions: list[dict[str, Any]] = field(default_factory=list)
     # Event hooks called by the core, e.g. {"state_change": [fn(events)], "syslog": [fn(rows)]}
     hooks: dict[str, list] = field(default_factory=dict)
+    # Optional cross-field check of the settings; raise ValueError with a message for the admin.
+    validate: Any = None

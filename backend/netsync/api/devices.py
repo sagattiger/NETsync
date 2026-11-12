@@ -92,6 +92,8 @@ async def update_device(device_id: int, body: DeviceUpdate, session: Session, us
 async def delete_device(device_id: int, session: Session, user=require(Role.ADMIN)):
     device = await get_device_for(session, user, device_id)
     await session.delete(device)
+    # its graphs, syslog and events are removed by the housekeeping job (big deletes don't belong in a request)
+    await session.execute(text("INSERT INTO deleted_devices (id) VALUES (:id) ON CONFLICT DO NOTHING"), {"id": device_id})
     await session.commit()
     return {"ok": True}
 

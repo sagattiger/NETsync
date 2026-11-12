@@ -14,13 +14,36 @@ async def get_session() -> AsyncIterator[AsyncSession]:
         yield session
 
 
-# Time-series tables become TimescaleDB hypertables with retention policies.
+# Time-series tables become TimescaleDB hypertables. The retention below is only the first-install
+# default: the housekeeping plugin (netsync/housekeeping.py) applies the admin's settings afterwards.
 HYPERTABLES = {
     "metrics": "90 days",
-    "syslog_messages": "30 days",
-    "state_changes": "365 days",
+    "syslog_messages": "90 days",
+    "state_changes": "730 days",
     "probe_beats": f"{get_settings().probe_beats_retention_days} days",
 }
+
+# Long-term metric history: hourly and daily rollups (real-time, so the newest bucket comes from the raw
+# table). Graphs of 30 days read the hourly rollup, 1 year the daily one; raw data can then expire early.
+METRICS_HOURLY = """
+CREATE MATERIALIZED VIEW IF NOT EXISTS metrics_hourly
+WITH (timescaledb.continuous, timescaledb.materialized_only = false) AS
+SELECT device_id, component_id, name, time_bucket(INTERVAL '1 hour', time) AS bucket,
+       avg(value) AS avg, min(value) AS mn, max(value) AS mx, count(*) AS n
+FROM metrics GROUP BY device_id, component_id, name, bucket WITH NO DATA
+"""
+METRICS_DAILY = """
+CREATE MATERIALIZED VIEW IF NOT EXISTS metrics_daily
+WITH (timescaledb.continuous, timescaledb.materialized_only = false) AS
+SELECT device_id, component_id, name, time_bucket(INTERVAL '1 day', bucket) AS bucket,
+       sum(avg * n) / nullif(sum(n), 0) AS avg, min(mn) AS mn, max(mx) AS mx, sum(n) AS n
+FROM metrics_hourly GROUP BY device_id, component_id, name, time_bucket(INTERVAL '1 day', bucket) WITH NO DATA
+"""
+# (view, start_offset, end_offset, schedule): the refresh window always stays inside the raw retention
+ROLLUP_POLICIES = (
+    ("metrics_hourly", "3 days", "1 hour", "30 minutes"),
+    ("metrics_daily", "7 days", "1 day", "6 hours"),
+)
 
 # Idempotent statements run after the column additions (type widening, indexes).
 SCHEMA_STATEMENTS = [
@@ -119,4 +142,14 @@ async def init_db() -> None:
         ))
         await conn.execute(text(
             "SELECT add_retention_policy('probe_beats_hourly', INTERVAL '400 days', if_not_exists => TRUE)"
+        ))
+        await conn.execute(text(METRICS_HOURLY))
+        await conn.execute(text(METRICS_DAILY))
+        for view, start, end, every in ROLLUP_POLICIES:
+            await conn.execute(text(
+                f"SELECT add_continuous_aggregate_policy('{view}', start_offset => INTERVAL '{start}', "
+                f"end_offset => INTERVAL '{end}', schedule_interval => INTERVAL '{every}', if_not_exists => TRUE)"
+            ))
+        await conn.execute(text(
+            "CREATE TABLE IF NOT EXISTS deleted_devices (id INTEGER PRIMARY KEY, deleted_at TIMESTAMPTZ NOT NULL DEFAULT now())"
         ))

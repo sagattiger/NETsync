@@ -12,6 +12,7 @@ import Plugins from "./pages/Plugins";
 import Profile from "./pages/Profile";
 import About from "./pages/About";
 import Tokens from "./pages/Tokens";
+import Housekeeping from "./pages/Housekeeping";
 import Probes from "./pages/Probes";
 import ProbePage from "./pages/ProbePage";
 import Dashboards from "./pages/dashboards/Dashboards";
@@ -37,6 +38,7 @@ export const pageRoutes = (
     <Route path="/setup/users" element={<Users />} />
     <Route path="/setup/plugins" element={<Plugins />} />
     <Route path="/setup/tokens" element={<Tokens />} />
+    <Route path="/setup/housekeeping" element={<Housekeeping />} />
     <Route path="/profile" element={<Profile />} />
     <Route path="/dashboards" element={<Dashboards />} />
     <Route path="/dashboards/:id" element={<DashboardView />} />

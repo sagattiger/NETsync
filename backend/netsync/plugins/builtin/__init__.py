@@ -1,4 +1,4 @@
-from netsync import probes
+from netsync import housekeeping, probes
 from netsync.plugins.base import Plugin
 from netsync.plugins.builtin import ai, latency
 from netsync.plugins.builtin.host_resources import HostResourcesModule
@@ -37,5 +37,6 @@ BUILTIN_PLUGINS = [
     ),
     latency.plugin,
     probes.plugin,
+    housekeeping.plugin,
     ai.plugin,
 ]

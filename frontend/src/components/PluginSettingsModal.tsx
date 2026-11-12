@@ -43,7 +43,7 @@ function ModelPicker({ plugin, config, value, onChange }: { plugin: string; conf
   );
 }
 
-function Field({ f, plugin, config, set }: { f: SettingField; plugin: string; config: Record<string, any>; set: (k: string, v: any) => void }) {
+export function Field({ f, plugin, config, set }: { f: SettingField; plugin: string; config: Record<string, any>; set: (k: string, v: any) => void }) {
   const v = config[f.key];
   if (f.type === "bool") {
     return (
@@ -139,7 +139,7 @@ export default function PluginSettingsModal({ name, onClose }: { name: string; o
         <label className="flex items-center justify-between gap-4 p-3 rounded-xl border border-line bg-inset/40 cursor-pointer">
           <span>
             <span className="block text-sm font-medium text-strong">Enable {data.label}</span>
-            <span className="block text-xs text-muted">When disabled nothing is sent to the AI server.</span>
+            <span className="block text-xs text-muted">{name === "ai" ? "When disabled nothing is sent to the AI server." : "When disabled this plugin does nothing."}</span>
           </span>
           <input type="checkbox" className="accent-accent w-4 h-4" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
         </label>

@@ -22,6 +22,27 @@ QUERY = text(
 )
 
 
+def rollup_query(view: str) -> str:
+    """Same result shape from a rollup: the average is weighted by the samples in each bucket."""
+    return (
+        "SELECT name, time_bucket(CAST(:bucket AS interval), bucket) AS t, sum(avg * n) / nullif(sum(n), 0), "
+        f"min(mn), max(mx) FROM {view} WHERE device_id = :d AND component_id = :c AND name = ANY(:names) "
+        "AND bucket >= :since GROUP BY name, t ORDER BY t"
+    )
+
+
+ROLLUPS = {"metrics_hourly": text(rollup_query("metrics_hourly")), "metrics_daily": text(rollup_query("metrics_daily"))}
+
+
+def source_for(bucket: timedelta) -> str:
+    """Raw samples for buckets under an hour (ranges up to 7 days), else the hourly or daily rollup."""
+    if bucket >= timedelta(days=1):
+        return "metrics_daily"
+    if bucket >= timedelta(hours=1):
+        return "metrics_hourly"
+    return "metrics"
+
+
 async def bucketed_series(session: AsyncSession, device_id: int, component_id: int, names: list[str],
                           range_: str, bucket: timedelta | None = None) -> dict[str, list]:
     """{name: [[iso_time, avg, min, max], ...]} - every requested name is present, possibly empty.
@@ -29,7 +50,9 @@ async def bucketed_series(session: AsyncSession, device_id: int, component_id: i
     span, default_bucket = RANGES.get(range_, RANGES["24h"])
     bucket = bucket or default_bucket
     since = datetime.now(UTC) - span
-    rows = await session.execute(QUERY, {"bucket": bucket, "d": device_id, "c": component_id,
+    source = source_for(bucket)
+    query = QUERY if source == "metrics" else ROLLUPS[source]
+    rows = await session.execute(query, {"bucket": bucket, "d": device_id, "c": component_id,
                                          "names": names, "since": since})
     out: dict[str, list] = {n: [] for n in names}
     for n, t, avg, mn, mx in rows:
