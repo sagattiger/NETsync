@@ -1,5 +1,7 @@
 """HOST-RESOURCES-MIB: processors, memory and storage (Linux, Windows, many appliances)."""
 
+import re
+
 from netsync.plugins.base import (
     CheckResult,
     ComponentSpec,
@@ -11,6 +13,7 @@ from netsync.plugins.base import (
 from netsync.snmp.client import text
 
 HR_PROCESSOR_LOAD = "1.3.6.1.2.1.25.3.3.1.2"
+HR_DEVICE_DESCR = "1.3.6.1.2.1.25.3.2.1.3"  # same index as hrProcessorTable
 HR_STORAGE = "1.3.6.1.2.1.25.2.3.1"
 STORAGE_COLS = {
     "type": f"{HR_STORAGE}.2",
@@ -28,6 +31,17 @@ TYPE_NETWORK_DISK = f"{HR_TYPE}.10"
 SKIP_MOUNTS = ("/proc", "/sys", "/dev", "/run", "/snap")
 
 
+def cpu_model(descr: str | None) -> str | None:
+    """'GenuineIntel: Intel(R) Xeon(R) CPU E5-2697 v2 @ 2.70GHz' -> 'Intel Xeon E5-2697 v2 @ 2.70GHz'."""
+    if not descr:
+        return None
+    s = re.sub(r"^(GenuineIntel|AuthenticAMD|CentaurHauls|HygonGenuine):\s*", "", descr.strip())
+    s = re.sub(r"\((?:R|TM|tm)\)", "", s)
+    s = re.sub(r"\bCPU\b\s*", "", s)
+    s = re.sub(r"\s+(?:\d+-Core|Processor)\b", "", s)
+    return re.sub(r"\s{2,}", " ", s).strip() or None
+
+
 def human_bytes(n: float) -> str:
     for unit in ("B", "KB", "MB", "GB", "TB"):
         if n < 1024:
@@ -43,8 +57,15 @@ class HostResourcesModule(Module):
 
     async def discover(self, ctx: DeviceContext):
         specs = []
-        for index in await ctx.snmp.walk(HR_PROCESSOR_LOAD):
-            specs.append(ComponentSpec("processor", index, f"CPU {len(specs)}"))
+        loads = await ctx.snmp.walk(HR_PROCESSOR_LOAD)
+        try:
+            descrs = await ctx.snmp.walk(HR_DEVICE_DESCR) if loads else {}
+        except Exception:
+            descrs = {}
+        for index in loads:
+            model = cpu_model(text(descrs.get(index)))
+            specs.append(ComponentSpec("processor", index, f"CPU {len(specs)}", descr=model,
+                                       attrs={"model": model} if model else {}))
 
         rows = [(index, r, text(r.get("descr")) or index) for index, r in (await ctx.snmp.table(STORAGE_COLS)).items()]
         # Shortest mount path first, so "/" wins over bind mounts of the same filesystem.
@@ -79,7 +100,7 @@ class HostResourcesModule(Module):
                     result.values[("processor", cpu.index)] = {"load": load}
             if values:
                 avg = sum(values) / len(values)
-                result.metrics.append(MetricSample("cpu_util", avg))
+                result.metrics += [MetricSample("cpu_util", avg), MetricSample("cpu_count", len(values))]
                 result.checks.append(
                     CheckResult("cpu_util", "CPU utilization", value=avg, unit="%",
                                 output=f"{avg:.1f}% average over {len(values)} cores")

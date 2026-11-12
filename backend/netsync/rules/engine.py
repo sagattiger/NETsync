@@ -32,6 +32,7 @@ DEFAULT_LEVELS: dict[str, Levels] = {
     "tls_days_left": Levels(21, 7, "below"),  # certificate expiry (probes)
     "tcp_retrans": Levels(5, 10),  # % of sent segments retransmitted
     "udp_errors": Levels(5, 50),  # received datagrams dropped per second
+    "temperature": Levels(70, 85),  # sensor °C (LM-SENSORS-MIB)
 }
 
 

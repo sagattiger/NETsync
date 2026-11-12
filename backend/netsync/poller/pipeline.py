@@ -161,9 +161,15 @@ async def poll_device(session: AsyncSession, device: Device) -> list[tuple[int, 
                 comp.values = values
 
     duration = time.monotonic() - started
+    metrics.append(MetricSample("available", 100.0 if reachable else 0.0))
     if reachable:
         checks.append(CheckResult("snmp", "SNMP", state=State.OK, output=f"polled in {duration:.2f}s"))
-        metrics.append(MetricSample("poll_duration", duration))
+        metrics += [
+            MetricSample("poll_duration", duration),
+            MetricSample("poll_snmp_requests", snmp.requests),
+            MetricSample("poll_snmp_time", snmp.seconds),
+            MetricSample("poll_snmp_errors", snmp.errors),
+        ]
     device.status = State.OK if reachable else State.CRIT
     device.status_reason = None if reachable else checks[-1].output
     device.last_polled = now

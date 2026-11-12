@@ -35,6 +35,12 @@ POLL_COLS = {
     "out_errors": f"{IF}.20",
     "in_discards": f"{IF}.13",
     "out_discards": f"{IF}.19",
+    "in_ucast": f"{IFX}.7",  # ifHCInUcastPkts
+    "in_mcast": f"{IFX}.8",
+    "in_bcast": f"{IFX}.9",
+    "out_ucast": f"{IFX}.11",
+    "out_mcast": f"{IFX}.12",
+    "out_bcast": f"{IFX}.13",
 }
 POLL_COLS_32 = {"in_octets": f"{IF}.10", "out_octets": f"{IF}.16"}
 
@@ -43,7 +49,23 @@ OPER_STATUS = {1: "up", 2: "down", 3: "testing", 4: "unknown", 5: "dormant", 6: 
 # ifTypes we skip by default (loopbacks, null, sub-layers that are noise).
 SKIP_TYPES = {24, 1}  # softwareLoopback, other
 
-COUNTERS = ("in_octets", "out_octets", "in_errors", "out_errors", "in_discards", "out_discards")
+COUNTERS = ("in_octets", "out_octets", "in_errors", "out_errors", "in_discards", "out_discards",
+            "in_ucast", "in_mcast", "in_bcast", "out_ucast", "out_mcast", "out_bcast")
+
+
+def packet_metrics(rates: dict[str, float]) -> dict[str, float]:
+    """Unicast / non-unicast packets per second and the average packet size (bytes) per direction."""
+    out: dict[str, float] = {}
+    for d in ("in", "out"):
+        if f"{d}_ucast" not in rates:
+            continue
+        ucast = rates[f"{d}_ucast"]
+        nucast = rates.get(f"{d}_mcast", 0.0) + rates.get(f"{d}_bcast", 0.0)
+        out[f"{d}_ucast_pps"] = ucast
+        out[f"{d}_nucast_pps"] = nucast
+        if (pkts := ucast + nucast) > 0 and f"{d}_octets" in rates:
+            out[f"{d}_pkt_size"] = rates[f"{d}_octets"] / pkts
+    return out
 
 
 def human_bps(bps: float) -> str:
@@ -126,6 +148,11 @@ class InterfacesModule(Module):
                 for c in ("in_errors", "out_errors", "in_discards", "out_discards"):
                     if c in rates:
                         result.metrics.append(MetricSample(c, rates[c], "port", port.index))
+                if util is not None:
+                    result.metrics.append(MetricSample("util", util, "port", port.index))
+                packets = packet_metrics(rates)
+                values.update(packets)
+                result.metrics += [MetricSample(k, v, "port", port.index) for k, v in packets.items()]
 
             if not port.attrs.get("monitor"):
                 continue

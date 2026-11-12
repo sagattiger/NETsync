@@ -11,6 +11,7 @@ TCP = "1.3.6.1.2.1.6"
 UDP = "1.3.6.1.2.1.7"
 IP = "1.3.6.1.2.1.4"
 ICMP = "1.3.6.1.2.1.5"
+SNMP = "1.3.6.1.2.1.11"
 
 GAUGES = {"tcp_estab": f"{TCP}.9.0"}  # tcpCurrEstab
 
@@ -40,7 +41,44 @@ COUNTERS = {
     "icmp_in_dest_unreachs": f"{ICMP}.3.0",
     "icmp_out_msgs": f"{ICMP}.14.0",
     "icmp_out_dest_unreachs": f"{ICMP}.16.0",
+    # IP statistics and fragmentation (IP-MIB scalars)
+    "ip_forw_datagrams": f"{IP}.6.0",
+    "ip_in_delivers": f"{IP}.9.0",
+    "ip_reasm_reqds": f"{IP}.14.0",
+    "ip_reasm_oks": f"{IP}.15.0",
+    "ip_reasm_fails": f"{IP}.16.0",
+    "ip_frag_oks": f"{IP}.17.0",
+    "ip_frag_fails": f"{IP}.18.0",
+    "ip_frag_creates": f"{IP}.19.0",
+    # ICMP informational (echo = ping)
+    "icmp_in_echos": f"{ICMP}.8.0",
+    "icmp_in_echo_reps": f"{ICMP}.9.0",
+    "icmp_out_echos": f"{ICMP}.21.0",
+    "icmp_out_echo_reps": f"{ICMP}.22.0",
+    "icmp_in_time_excds": f"{ICMP}.4.0",
+    "icmp_out_time_excds": f"{ICMP}.17.0",
+    # SNMP agent statistics (SNMPv2-MIB snmp group)
+    "snmp_in_pkts": f"{SNMP}.1.0",
+    "snmp_out_pkts": f"{SNMP}.2.0",
+    "snmp_in_bad_versions": f"{SNMP}.3.0",
+    "snmp_in_bad_community": f"{SNMP}.4.0",
+    "snmp_in_asn_errs": f"{SNMP}.6.0",
+    "snmp_in_get_requests": f"{SNMP}.15.0",
+    "snmp_in_get_nexts": f"{SNMP}.16.0",
+    "snmp_in_set_requests": f"{SNMP}.17.0",
+    "snmp_out_get_responses": f"{SNMP}.28.0",
+    "snmp_out_traps": f"{SNMP}.29.0",
 }
+
+# IP-MIB ipSystemStatsTable, row 1 = IPv4, 2 = IPv6 (64-bit HC columns where they exist)
+IP_SYSTEM_STATS = "1.3.6.1.2.1.4.31.1.1"
+SYSTEM_STATS_COLS = {
+    "in_receives": 4, "in_hdr_errors": 7, "in_no_routes": 8, "in_addr_errors": 9, "forw_datagrams": 13,
+    "reasm_reqds": 14, "reasm_oks": 15, "reasm_fails": 16, "in_discards": 17, "in_delivers": 19,
+    "out_requests": 21, "out_no_routes": 22, "out_discards": 25, "frag_reqds": 26, "frag_oks": 27,
+    "frag_fails": 28, "frag_creates": 29,
+}
+IP_VERSIONS = {"1": "ipv4", "2": "ipv6"}
 
 KIND, INDEX = "netstat", "0"
 MIN_SEGS_FOR_RETRANS = 10  # segments/s sent before the retransmit percentage is meaningful
@@ -65,14 +103,25 @@ class NetstatsModule(Module):
         if not ctx.components(KIND):
             return PollResult()
         oids = {**GAUGES, **COUNTERS}
-        raw = await ctx.snmp.get(*oids.values())
+        names = list(oids)
+        raw: dict = {}
+        for i in range(0, len(names), 24):  # agents limit the PDU size: several small GETs
+            raw |= await ctx.snmp.get(*(oids[n] for n in names[i:i + 24]))
         cur = {name: raw.get(oid) for name, oid in oids.items() if raw.get(oid) is not None}
+        try:
+            per_version = await ctx.snmp.table({k: f"{IP_SYSTEM_STATS}.{n}" for k, n in SYSTEM_STATS_COLS.items()})
+        except Exception:
+            per_version = {}
+        for idx, row in per_version.items():
+            if (ver := IP_VERSIONS.get(idx)):
+                cur |= {f"{ver}_{k}": v for k, v in row.items() if isinstance(v, int)}
+        counter_names = [n for n in cur if n not in GAUGES]
 
         now = ctx.now.timestamp()
         prev = ctx.previous(KIND, INDEX)
         dt = now - prev.get("ts", 0)
         rates: dict[str, float] = {}
-        for name in COUNTERS:
+        for name in counter_names:
             # skip on first poll, after long gaps, and on counter wrap/reset
             if name in cur and name in prev and 0 < dt < 3600 and cur[name] >= prev[name]:
                 rates[name] = (cur[name] - prev[name]) / dt

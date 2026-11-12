@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from pysnmp.hlapi.v3arch.asyncio import (
@@ -120,6 +121,10 @@ class SnmpClient:
             self.auth = CommunityData(community or "public", mpModel=0 if version == "1" else 1)
         self.bulk = version != "1"
         self._target: UdpTransportTarget | None = None
+        # per-client statistics (one client per poll): requests sent, failed, and seconds spent waiting
+        self.requests = 0
+        self.errors = 0
+        self.seconds = 0.0
 
     @classmethod
     def for_device(cls, device) -> SnmpClient:
@@ -140,14 +145,21 @@ class SnmpClient:
 
     async def get(self, *oids: str) -> dict[str, Any]:
         """GET scalar OIDs. Returns {oid: value} (value None when missing)."""
-        err_ind, err_status, err_index, var_binds = await get_cmd(
-            engine(),
-            self.auth,
-            await self.target(),
-            ContextData(),
-            *[ObjectType(ObjectIdentity(o)) for o in oids],
-            lookupMib=False,
-        )
+        started = time.monotonic()
+        self.requests += 1
+        try:
+            err_ind, err_status, err_index, var_binds = await get_cmd(
+                engine(),
+                self.auth,
+                await self.target(),
+                ContextData(),
+                *[ObjectType(ObjectIdentity(o)) for o in oids],
+                lookupMib=False,
+            )
+        finally:
+            self.seconds += time.monotonic() - started
+        if err_ind or err_status:
+            self.errors += 1
         if err_ind:
             raise SnmpTimeout(str(err_ind)) if "timeout" in str(err_ind).lower() else SnmpError(str(err_ind))
         if err_status:
@@ -182,18 +194,25 @@ class SnmpClient:
                 lexicographicMode=False,
                 lookupMib=False,
             )
-        async for err_ind, err_status, _idx, var_binds in gen:
-            if err_ind:
-                raise SnmpTimeout(str(err_ind)) if "timeout" in str(err_ind).lower() else SnmpError(str(err_ind))
-            if err_status:
-                break
-            for name, val in var_binds:
-                name = str(name)
-                if not name.startswith(base + "."):
-                    continue
-                v = convert(val)
-                if v is not None:
-                    out[name[len(base) + 1 :]] = v
+        started = time.monotonic()
+        try:
+            async for err_ind, err_status, _idx, var_binds in gen:
+                self.requests += 1
+                if err_ind:
+                    self.errors += 1
+                if err_ind:
+                    raise SnmpTimeout(str(err_ind)) if "timeout" in str(err_ind).lower() else SnmpError(str(err_ind))
+                if err_status:
+                    break
+                for name, val in var_binds:
+                    name = str(name)
+                    if not name.startswith(base + "."):
+                        continue
+                    v = convert(val)
+                    if v is not None:
+                        out[name[len(base) + 1 :]] = v
+        finally:
+            self.seconds += time.monotonic() - started
         return out
 
     async def table(self, columns: dict[str, str]) -> dict[str, dict[str, Any]]:

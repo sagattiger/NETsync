@@ -142,6 +142,16 @@ async def metrics(
     return await bucketed_series(session, device_id, component_id, name, range)
 
 
+@router.get("/{device_id}/metric-names")
+async def metric_names(device_id: int, user: CurrentUser, session: Session):
+    """Device-level series that received data in the last 6 hours (the device page hides empty graphs)."""
+    await get_device_for(session, user, device_id)
+    rows = await session.execute(text(
+        "SELECT DISTINCT name FROM metrics WHERE device_id = :d AND component_id = 0 AND time >= now() - interval '6 hours'"
+    ), {"d": device_id})
+    return sorted(r[0] for r in rows)
+
+
 @router.get("/{device_id}/latest")
 async def latest(device_id: int, user: CurrentUser, session: Session, name: list[str] = Query(...),
                  kind: str | None = None):

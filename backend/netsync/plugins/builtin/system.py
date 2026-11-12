@@ -4,6 +4,7 @@ import asyncio
 import ipaddress
 import re
 import socket
+import time
 
 from netsync.models import State
 from netsync.plugins.base import CheckResult, DeviceContext, MetricSample, Module, PollResult
@@ -129,7 +130,9 @@ class SystemModule(Module):
 
     async def poll(self, ctx: DeviceContext):
         # Raises SnmpTimeout when the device is unreachable -> poller marks it down.
+        started = time.monotonic()
         r = await ctx.snmp.get(SYS_UPTIME)
+        response_ms = (time.monotonic() - started) * 1000
         ticks = r.get(SYS_UPTIME) or 0
         uptime = int(ticks) // 100
         previous = ctx.device.uptime
@@ -137,7 +140,7 @@ class SystemModule(Module):
 
         rebooted = previous is not None and uptime < previous
         return PollResult(
-            metrics=[MetricSample("uptime", uptime)],
+            metrics=[MetricSample("uptime", uptime), MetricSample("snmp_response_ms", response_ms)],
             checks=[
                 CheckResult(
                     check="uptime",
