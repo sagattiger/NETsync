@@ -115,6 +115,13 @@ def interval_days(days: int) -> timedelta:
     return timedelta(days=int(days))
 
 
+def align(t: datetime, bucket: timedelta) -> datetime:
+    """Start of the bucket holding ``t``. Refresh windows must start on a bucket boundary: TimescaleDB only
+    stores buckets that lie entirely inside the window, so a window starting at 08:00 skips that day."""
+    t = t.astimezone(UTC)
+    return t.replace(hour=0, minute=0, second=0, microsecond=0) if bucket >= timedelta(days=1)         else t.replace(minute=0, second=0, microsecond=0)
+
+
 # --------------------------------------------------------------------------- policies
 
 
@@ -195,7 +202,7 @@ async def backfill_rollups() -> list[str]:
             stored_from = await conn.scalar(text(f"SELECT min(bucket) FROM {mat}"))
             if stored_from is not None and stored_from <= oldest + 2 * bucket:
                 continue
-            start = oldest.replace(minute=0, second=0, microsecond=0)
+            start = align(oldest, bucket)
             end = stored_from or datetime.now(UTC) - bucket
             t = start
             while end - t >= bucket:  # TimescaleDB rejects a window shorter than one bucket

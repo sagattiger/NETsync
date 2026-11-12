@@ -1,10 +1,10 @@
 """Housekeeping: settings rules, policy parsing and which data tier a graph reads."""
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
-from netsync.housekeeping import DEFAULTS, RETENTION, SETTINGS, _days_of, validate
+from netsync.housekeeping import DEFAULTS, RETENTION, SETTINGS, _days_of, align, validate
 from netsync.metrics_query import RANGES, source_for
 
 
@@ -47,3 +47,15 @@ def test_raw_retention_covers_raw_graphs():
     lo = next(f["min"] for f in SETTINGS if f["key"] == "metrics_raw_days")
     longest_raw = max(span for span, bucket in RANGES.values() if source_for(bucket) == "metrics")
     assert timedelta(days=lo) >= longest_raw
+
+
+def test_refresh_windows_start_on_bucket_boundaries():
+    t = datetime(2026, 10, 19, 8, 33, 17, tzinfo=UTC)
+    assert align(t, timedelta(days=1)) == datetime(2026, 10, 19, tzinfo=UTC)
+    assert align(t, timedelta(hours=1)) == datetime(2026, 10, 19, 8, tzinfo=UTC)
+    # a 7-day window from an aligned start ends on a boundary too, so no day is ever cut in two
+    start = align(t, timedelta(days=1))
+    assert (start + timedelta(days=7)).hour == 0
+    # local times are converted to UTC first (the rollups bucket in UTC)
+    brt = datetime(2026, 10, 19, 22, 0, tzinfo=timezone(timedelta(hours=-3)))
+    assert align(brt, timedelta(days=1)) == datetime(2026, 10, 20, tzinfo=UTC)
