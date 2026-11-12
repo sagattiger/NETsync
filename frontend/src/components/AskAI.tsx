@@ -4,12 +4,13 @@ import { AIJob, api, AskTarget, fmtDateTime } from "../api";
 import { Icon } from "./Icon";
 import { Markdown } from "./Markdown";
 import { Modal } from "./ui";
+import { useChat } from "./AIChat";
 
 /** Whether the AI assistant is enabled and configured (hides the buttons otherwise). */
 export function useAI() {
   return useQuery({
     queryKey: ["ai-status"],
-    queryFn: () => api<{ enabled: boolean; model: string | null }>("/plugins/ai/status"),
+    queryFn: () => api<{ enabled: boolean; model: string | null; chat?: boolean; chat_model?: string | null }>("/plugins/ai/status"),
     staleTime: 60_000,
     retry: false,
   }).data;
@@ -76,6 +77,11 @@ export function AIModal({ target, jobId: initialJob, title, onClose }: { target?
   const [jobId, setJobId] = useState<number | null>(initialJob ?? null);
   const [error, setError] = useState("");
   const { data: job } = useAIJob(jobId);
+  const chat = useChat();
+  // "AI · host · service" → a follow-up question for the chat (alerts only)
+  const parts = title.replace(/^AI · /, "").split(" · ");
+  const followUp = chat?.enabled && target && target.kind !== "syslog" && parts.length >= 2
+    ? `How many times and for how long did "${parts.slice(1).join(" · ")}" alert on ${parts[0]} in the last 30 days?` : null;
 
   async function ask(force = false) {
     if (!target) return;
@@ -100,6 +106,11 @@ export function AIModal({ target, jobId: initialJob, title, onClose }: { target?
     <Modal title={title} onClose={onClose}>
       {error ? <div className="text-sm text-crit">{error}</div> : <AIResult job={job} onRetry={target ? () => ask(true) : undefined} />}
       <div className="mt-5 flex justify-end gap-2">
+        {followUp && (
+          <button className="btn" onClick={() => { chat!.ask(followUp); onClose(); }} title={followUp}>
+            <Icon name="message" className="w-3.5 h-3.5" /> Follow up in chat
+          </button>
+        )}
         {target && job?.status === "done" && (
           <button className="btn" onClick={() => ask(true)}><Icon name="refresh" className="w-3.5 h-3.5" /> Ask again</button>
         )}

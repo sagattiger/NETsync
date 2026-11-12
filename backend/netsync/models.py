@@ -516,3 +516,35 @@ class RemotePlugin(Base):
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = utcnow_col()
     created_by: Mapped[str | None] = mapped_column(String(64))
+
+
+class ChatConversation(Base):
+    """A conversation with the AI coworker (sidebar chat), private to its user."""
+
+    __tablename__ = "chat_conversations"
+    __table_args__ = (Index("ix_chat_conversations_user", "user_id", "updated_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    title: Mapped[str] = mapped_column(String(120), default="New chat")
+    created_at: Mapped[datetime] = utcnow_col()
+    updated_at: Mapped[datetime] = utcnow_col()
+
+
+class ChatMessage(Base):
+    """One message of a conversation: the user's question, a tool the AI used, or the AI's answer."""
+
+    __tablename__ = "chat_messages"
+    __table_args__ = (Index("ix_chat_messages_conversation", "conversation_id", "id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("chat_conversations.id", ondelete="CASCADE"))
+    role: Mapped[str] = mapped_column(String(16))  # user | assistant | tool
+    content: Mapped[str] = mapped_column(Text, default="")
+    tool: Mapped[str | None] = mapped_column(String(128))  # role=tool: tool name
+    arguments: Mapped[dict | None] = mapped_column(JSON)
+    result: Mapped[dict | None] = mapped_column(JSON)  # {"status", "call_id", "result"|"error"} (trimmed)
+    page: Mapped[dict | None] = mapped_column(JSON)  # role=user: the page the user was on
+    model: Mapped[str | None] = mapped_column(String(128))
+    duration: Mapped[float | None] = mapped_column(Float)
+    created_at: Mapped[datetime] = utcnow_col()

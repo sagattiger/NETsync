@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, auth, Me, prefs } from "../api";
 import { useTheme } from "../theme";
 import { useAI } from "./AskAI";
+import { ChatPanel, ChatProvider, useChat } from "./AIChat";
 import { Avatar } from "./Avatar";
 import { CommandPaletteProvider, useCommandPalette } from "./CommandPalette";
 import { Icon } from "./Icon";
@@ -85,6 +86,7 @@ function Sidebar({ me, collapsed, onToggle, onNavigate, mobile }: {
   const palette = useCommandPalette();
   const { theme, toggle: toggleTheme } = useTheme();
   const ai = useAI();
+  const chat = useChat();
   const qc = useQueryClient();
   const { data: ov } = useQuery({ queryKey: ["overview"], queryFn: () => api<Overview>("/overview"), refetchInterval: 30_000 });
   const problems = ov?.unhandled ?? 0; // open, not acknowledged (same as the Home list)
@@ -159,6 +161,14 @@ function Sidebar({ me, collapsed, onToggle, onNavigate, mobile }: {
           <Icon name="search" className="w-[18px] h-[18px] shrink-0" />
           {!collapsed && <><span className="flex-1 text-left">Search</span><kbd className="text-xxs text-muted border border-line rounded px-1">Ctrl K</kbd></>}
         </button>
+        {chat?.enabled && (
+          <button onClick={() => { chat.toggle(); onNavigate?.(); }} title={collapsed ? "AI coworker" : undefined}
+            className={`w-full flex items-center gap-3 rounded-lg text-sm transition-colors ${collapsed ? "justify-center h-10 w-10 mx-auto" : "px-3 h-9"} ${
+              chat.open ? "bg-accent/15 text-accent font-medium" : "text-fg2 hover:bg-active/50 hover:text-strong"}`}>
+            <Icon name="sparkles" className="w-[18px] h-[18px] shrink-0" />
+            {!collapsed && <span className="flex-1 text-left">AI coworker</span>}
+          </button>
+        )}
         {main.map((i) => <NavEntry key={i.to} item={i} collapsed={collapsed} onNavigate={onNavigate} />)}
 
         <div className={`my-4 border-t border-line ${collapsed ? "mx-2" : "mx-3"}`} />
@@ -235,6 +245,7 @@ function Shell() {
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/auth/me") });
   const { collapsed, toggle } = useSidebar(me);
   const isAdmin = me?.role === "admin";
+  const chat = useChat();
 
   useEffect(() => setDrawer(false), [location.pathname]);
 
@@ -296,6 +307,13 @@ function Shell() {
         <DocumentTitle />
         <TabViews>{pageRoutes}</TabViews>
       </main>
+
+      {/* AI coworker: docked on wide screens, full screen on phones */}
+      {chat?.open && (
+        <aside className="fixed inset-0 z-50 lg:static lg:z-auto lg:w-[400px] lg:shrink-0 lg:border lg:border-line lg:rounded-2xl overflow-hidden">
+          <ChatPanel onClose={() => chat.setOpen(false)} />
+        </aside>
+      )}
     </div>
   );
 }
@@ -304,7 +322,9 @@ export default function Layout() {
   return (
     <TabsProvider>
       <CommandPaletteProvider>
-        <Shell />
+        <ChatProvider>
+          <Shell />
+        </ChatProvider>
       </CommandPaletteProvider>
     </TabsProvider>
   );

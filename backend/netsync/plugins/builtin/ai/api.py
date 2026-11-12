@@ -1,17 +1,28 @@
 """REST endpoints of the AI assistant, mounted at /api/plugins/ai."""
 
+import json
 import re
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, select
 
 from netsync.api.deps import CurrentUser, Session, device_scope, get_device_for, require
-from netsync.models import AIJob, Device, Role, Service, StateChange, SyslogMessage
+from netsync.models import (
+    AIJob,
+    ChatConversation,
+    ChatMessage,
+    Device,
+    Role,
+    Service,
+    StateChange,
+    SyslogMessage,
+)
 from netsync.plugins import settings as plugin_settings
-from netsync.plugins.builtin.ai import ollama
+from netsync.plugins.builtin.ai import chat, ollama
 from netsync.plugins.builtin.ai.service import create_job, plugin
 
 router = APIRouter()
@@ -32,7 +43,9 @@ def job_out(j: AIJob) -> dict:
 @router.get("/status")
 async def status(user: CurrentUser, session: Session):
     enabled, cfg = await plugin_settings.get_settings(session, plugin())
-    return {"enabled": enabled and bool(cfg.get("base_url")) and bool(cfg.get("model")), "model": cfg.get("model") or None}
+    on = enabled and bool(cfg.get("base_url")) and bool(cfg.get("model"))
+    return {"enabled": on, "model": cfg.get("model") or None, "chat": on and bool(cfg.get("chat_enabled", True)),
+            "chat_model": cfg.get("chat_model") or cfg.get("model") or None}
 
 
 class ConnIn(BaseModel):
@@ -191,3 +204,78 @@ async def insights(user: CurrentUser, session: Session, limit: int = 12):
         if len(out) >= limit:
             break
     return out
+
+
+# --------------------------------------------------------------------------- AI coworker (sidebar chat)
+
+class ChatIn(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+    conversation_id: int | None = None
+    page: dict[str, Any] | None = None
+
+
+def conv_out(c: ChatConversation) -> dict:
+    return {"id": c.id, "title": c.title, "created_at": c.created_at, "updated_at": c.updated_at}
+
+
+def msg_out(m: ChatMessage) -> dict:
+    return {"id": m.id, "role": m.role, "content": m.content, "tool": m.tool, "arguments": m.arguments,
+            "result": m.result, "page": m.page, "model": m.model, "duration": m.duration, "created_at": m.created_at}
+
+
+async def _conversation(session, user, conv_id: int) -> ChatConversation:
+    conv = await session.get(ChatConversation, conv_id)
+    if conv is None or conv.user_id != user.id:
+        raise HTTPException(404, "Conversation not found")
+    return conv
+
+
+@router.get("/chat/conversations")
+async def chat_conversations(user: CurrentUser, session: Session, limit: int = 50):
+    rows = await session.scalars(select(ChatConversation).where(ChatConversation.user_id == user.id)
+                                 .order_by(ChatConversation.updated_at.desc()).limit(min(limit, 200)))
+    return [conv_out(c) for c in rows]
+
+
+@router.get("/chat/conversations/{conv_id}")
+async def chat_conversation(conv_id: int, user: CurrentUser, session: Session):
+    conv = await _conversation(session, user, conv_id)
+    rows = await session.scalars(select(ChatMessage).where(ChatMessage.conversation_id == conv.id).order_by(ChatMessage.id))
+    return {**conv_out(conv), "messages": [msg_out(m) for m in rows], "busy": chat.busy(user.id)}
+
+
+@router.delete("/chat/conversations/{conv_id}")
+async def delete_chat(conv_id: int, user: CurrentUser, session: Session):
+    await session.delete(await _conversation(session, user, conv_id))
+    await session.commit()
+    return {"ok": True}
+
+
+@router.post("/chat")
+async def chat_send(body: ChatIn, user: CurrentUser, session: Session):
+    enabled, cfg = await plugin_settings.get_settings(session, plugin())
+    if not enabled or not cfg.get("base_url") or not (cfg.get("chat_model") or cfg.get("model")):
+        raise HTTPException(400, "The AI assistant is not enabled or has no model (Setup → AI assistant)")
+    if not cfg.get("chat_enabled", True):
+        raise HTTPException(400, "The AI chat is switched off in the AI assistant settings")
+    if chat.busy(user.id):
+        raise HTTPException(429, "Still answering your previous question")
+    from netsync.tools.api import user_actor
+
+    try:
+        conv_id, msg_id, turn = await chat.start_turn(cfg, user_actor(user), user.id, body.conversation_id,
+                                                      body.message.strip(), body.page)
+    except LookupError as e:
+        raise HTTPException(404, "Conversation not found") from e
+
+    async def stream():
+        yield _sse({"type": "start", "conversation_id": conv_id, "message_id": msg_id})
+        async for ev in chat.events(turn):
+            yield _sse(ev)
+
+    return StreamingResponse(stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+def _sse(ev: dict) -> str:
+    return f"data: {json.dumps(ev, default=str)}\n\n"

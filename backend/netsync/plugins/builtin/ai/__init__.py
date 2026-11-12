@@ -36,6 +36,11 @@ SETTINGS = [
      "help": "Facts about your network the AI should know, e.g. \"Core routers are MikroTik RouterOS 7, servers run on Proxmox LXC\"."},
     {"key": "hide_thinking", "label": "Hide reasoning (<think>) of reasoning models", "type": "bool", "section": "Answers"},
 
+    {"key": "chat_enabled", "label": "AI chat in the sidebar", "type": "bool", "section": "Chat",
+     "help": "The AI coworker: answers questions about alerts, logs and graphs using the read-only NETsync tools."},
+    {"key": "chat_model", "label": "Chat model (optional)", "type": "model", "section": "Chat",
+     "help": "Leave empty to use the model above. Pick one that supports tool calling (qwen3.5, qwen2.5, llama3.2)."},
+
     {"key": "temperature", "label": "Temperature", "type": "number", "min": 0, "max": 2, "float": True, "section": "Advanced"},
     {"key": "num_ctx", "label": "Context window (tokens)", "type": "number", "min": 2048, "max": 131072, "section": "Advanced"},
     {"key": "timeout_seconds", "label": "Timeout (seconds)", "type": "number", "min": 10, "max": 900, "section": "Advanced"},
@@ -56,6 +61,8 @@ DEFAULTS = {
     "max_words": 250,
     "extra_instructions": "",
     "hide_thinking": True,
+    "chat_enabled": True,
+    "chat_model": "",
     "temperature": 0.2,
     "num_ctx": 8192,
     "timeout_seconds": 180,
@@ -65,7 +72,7 @@ DEFAULTS = {
 plugin = Plugin(
     name="ai",
     label="AI assistant",
-    version="0.1.0",
+    version="0.2.0",
     description="Local LLM (Ollama) explains warning and critical events and syslog, and suggests fixes",
     services=[AIService()],
     router=router,
