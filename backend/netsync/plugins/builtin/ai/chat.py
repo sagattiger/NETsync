@@ -421,9 +421,16 @@ async def reply_in_thread(session, cfg: dict, job) -> str:
     lines = [f"- {'AI' if c.ai else c.author}: {c.body.strip()[:800]}" for c in thread if c.id != question.id][-8:]
     system = system_prompt(cfg, datetime.now(UTC)) + (
         f"\nYou are @{name}, replying in the comment thread of a monitoring alert. Answer the last comment directly, "
-        "in a few sentences. Use the tools for numbers (history, logs, graphs). Don't repeat the whole analysis.")
-    user_msg = (f"{event_text}\n\n## Comments so far\n" + ("\n".join(lines) or "(none)")
-                + f"\n\n## {question.author} asks you\n{question.body.strip()}")
+        "in two to four sentences. Start from the current state. Use the tools for history, logs and graphs. "
+        "Don't repeat the whole analysis and don't invent numbers.")
+    from netsync.models import Service, State
+
+    svc = await session.get(Service, job.service_id)
+    now_line = (f"RIGHT NOW the service '{svc.name}' is {State(svc.state).name}: {svc.output}. "
+                "Older numbers below are from when the alert started.") if svc else ""
+    user_msg = (f"## Current state\n{now_line}\n\n{event_text}\n\n## Comments so far\n" + ("\n".join(lines) or "(none)")
+                + f"\n\n## {question.author} asks you\n{question.body.strip()}\n\n"
+                "Reply to this comment: say whether it is right, based on the current state and the tools.")
     answer = await answer_with_tools(cfg, user_actor(user), [{"role": "system", "content": system},
                                                              {"role": "user", "content": user_msg}])
     if not answer:
