@@ -487,7 +487,7 @@ export function ProbeForm({ initial, onClose, onSaved }: { initial?: Probe; onCl
             <Field label="Tags">
               <div className="flex flex-wrap items-center gap-2">
                 {f.tags.map((t) => (
-                  <span key={t} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-chip text-xs text-fg">{t}
+                  <span key={t} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-pill bg-chip text-xs text-fg">{t}
                     <button type="button" onClick={() => set({ tags: f.tags.filter((x) => x !== t) })}><Icon name="x" className="w-3 h-3" /></button></span>
                 ))}
                 <input className="input py-1 w-40" maxLength={32} value={tagInput} placeholder="add tag, Enter" onChange={(e) => setTagInput(e.target.value)}
@@ -500,7 +500,7 @@ export function ProbeForm({ initial, onClose, onSaved }: { initial?: Probe; onCl
                   {groups.map((g) => {
                     const on = f.group_ids.includes(g.id);
                     return <button key={g.id} type="button" onClick={() => set({ group_ids: on ? f.group_ids.filter((x) => x !== g.id) : [...f.group_ids, g.id] })}
-                      className={`px-2.5 py-1 rounded-full text-xs border ${on ? "border-accent bg-accent/10 text-accent" : "border-edge text-muted hover:text-strong"}`}>{g.name}</button>;
+                      className={`px-2.5 py-1 rounded-pill text-xs border ${on ? "border-accent bg-accent/10 text-accent" : "border-edge text-muted hover:text-strong"}`}>{g.name}</button>;
                   })}
                 </div></Field>
             )}

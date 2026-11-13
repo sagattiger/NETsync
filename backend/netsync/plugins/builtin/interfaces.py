@@ -1,4 +1,7 @@
-"""IF-MIB / IF-MIB ifXTable: ports, traffic, errors, link state."""
+"""IF-MIB / IF-MIB ifXTable: ports, traffic, errors, link state; IP-MIB: the addresses on each port."""
+
+import ipaddress
+import logging
 
 from netsync.models import State
 from netsync.plugins.base import (
@@ -11,12 +14,18 @@ from netsync.plugins.base import (
 )
 from netsync.snmp.client import mac, text
 
+log = logging.getLogger(__name__)
+
 IF = "1.3.6.1.2.1.2.2.1"
+IP_ADDRESS_IFINDEX = "1.3.6.1.2.1.4.34.1.3"  # IP-MIB ipAddressIfIndex (IPv4 and IPv6)
+IP_AD_ENT_IFINDEX = "1.3.6.1.2.1.4.20.1.2"  # older ipAddrTable (IPv4 only)
+IP_AD_ENT_NETMASK = "1.3.6.1.2.1.4.20.1.3"
 IFX = "1.3.6.1.2.1.31.1.1.1"
 
 DISCOVER_COLS = {
     "descr": f"{IF}.2",
     "type": f"{IF}.3",
+    "mtu": f"{IF}.4",
     "speed": f"{IF}.5",
     "mac": f"{IF}.6",
     "admin": f"{IF}.7",
@@ -68,6 +77,55 @@ def packet_metrics(rates: dict[str, float]) -> dict[str, float]:
     return out
 
 
+def parse_ip_index(suffix: str) -> str | None:
+    """ipAddressTable index "<type>.<len>.<octets>" (1 = IPv4, 2 = IPv6, 3/4 = with zone) to an address."""
+    parts = suffix.split(".")
+    try:
+        kind, length = int(parts[0]), int(parts[1])
+        octets = bytes(int(x) for x in parts[2:2 + length])
+    except (ValueError, IndexError):
+        return None
+    if kind in (1, 3) and len(octets) >= 4:
+        return str(ipaddress.IPv4Address(octets[:4]))
+    if kind in (2, 4) and len(octets) >= 16:
+        return str(ipaddress.IPv6Address(octets[:16]))
+    return None
+
+
+async def port_addresses(snmp) -> dict[str, dict[str, list[str]]]:
+    """{ifIndex: {"ipv4": ["10.0.0.1/24"], "ipv6": ["2001:db8::1"]}} from IP-MIB."""
+    out: dict[str, dict[str, list[str]]] = {}
+
+    def add(if_index, family: str, addr: str) -> None:
+        bucket = out.setdefault(str(if_index), {"ipv4": [], "ipv6": []})[family]
+        if addr not in bucket:
+            bucket.append(addr)
+
+    try:
+        for suffix, if_index in (await snmp.walk(IP_ADDRESS_IFINDEX)).items():
+            addr = parse_ip_index(suffix)
+            if addr:
+                add(if_index, "ipv6" if ":" in addr else "ipv4", addr)
+    except Exception as e:  # noqa: BLE001 - old agents without the table
+        log.debug("ipAddressTable: %s", e)
+    try:
+        masks = await snmp.walk(IP_AD_ENT_NETMASK)
+        for ip, if_index in (await snmp.walk(IP_AD_ENT_IFINDEX)).items():
+            try:
+                prefix = ipaddress.IPv4Network(f"0.0.0.0/{masks.get(ip)}").prefixlen if masks.get(ip) else None
+            except ValueError:
+                prefix = None
+            cidr = f"{ip}/{prefix}" if prefix is not None else ip
+            bucket = out.setdefault(str(if_index), {"ipv4": [], "ipv6": []})["ipv4"]
+            if ip in bucket:
+                bucket[bucket.index(ip)] = cidr  # same address from the newer table, now with its prefix
+            elif cidr not in bucket:
+                bucket.append(cidr)
+    except Exception as e:  # noqa: BLE001
+        log.debug("ipAddrTable: %s", e)
+    return out
+
+
 def human_bps(bps: float) -> str:
     for unit in ("bps", "Kbps", "Mbps", "Gbps", "Tbps"):
         if bps < 1000:
@@ -83,6 +141,7 @@ class InterfacesModule(Module):
 
     async def discover(self, ctx: DeviceContext):
         rows = await ctx.snmp.table(DISCOVER_COLS)
+        addresses = await port_addresses(ctx.snmp)
         specs = []
         for index, r in rows.items():
             if r.get("type") in SKIP_TYPES:
@@ -100,6 +159,9 @@ class InterfacesModule(Module):
                         "if_type": r.get("type"),
                         "speed": speed,
                         "mac": mac(r.get("mac")),
+                        "mtu": r.get("mtu"),
+                        "ipv4": (addresses.get(str(index)) or {}).get("ipv4", []),
+                        "ipv6": (addresses.get(str(index)) or {}).get("ipv6", []),
                         # Like CheckMK: only ports that are up at discovery get a service.
                         "monitor": r.get("oper") == 1,
                     },
@@ -137,7 +199,10 @@ class InterfacesModule(Module):
             out_bps = rates.get("out_octets", 0) * 8
             speed = port.attrs.get("speed") or 0
             util = max(in_bps, out_bps) / speed * 100 if speed else None
-            values.update(in_bps=in_bps, out_bps=out_bps, util=util)
+            values.update(in_bps=in_bps, out_bps=out_bps, util=util,
+                          in_util=in_bps / speed * 100 if speed else None, out_util=out_bps / speed * 100 if speed else None)
+            # errors and discards per second for the port list (the counters themselves stay in values too)
+            values.update({f"{c}_rate": rates[c] for c in ("in_errors", "out_errors", "in_discards", "out_discards") if c in rates})
             result.values[("port", port.index)] = values
 
             if "in_octets" in rates:
@@ -152,6 +217,9 @@ class InterfacesModule(Module):
                     result.metrics.append(MetricSample("util", util, "port", port.index))
                 packets = packet_metrics(rates)
                 values.update(packets)
+                for d in ("in", "out"):
+                    if f"{d}_ucast_pps" in packets:
+                        values[f"{d}_pps"] = packets[f"{d}_ucast_pps"] + packets.get(f"{d}_nucast_pps", 0.0)
                 result.metrics += [MetricSample(k, v, "port", port.index) for k, v in packets.items()]
 
             if not port.attrs.get("monitor"):

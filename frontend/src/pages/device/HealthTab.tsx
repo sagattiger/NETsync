@@ -3,7 +3,7 @@ import { Fragment, ReactNode, useState } from "react";
 import { Component, fmtBytes, Service } from "../../api";
 import { Icon } from "../../components/Icon";
 import { MetricChart } from "../../components/MetricChart";
-import { Bar, Card, Empty, hideSm, StateBadge } from "../../components/ui";
+import { Bar, Card, Empty, hideSm, LevelBar } from "../../components/ui";
 import { FORMATS, usePresets } from "../../presets";
 import { MultiChart, PresetCard, PresetGrid, useMetricNames } from "./charts";
 
@@ -120,12 +120,20 @@ function SwapDevices({ stats }: { stats: Component }) {
 
 // ---------------------------------------------------------------- sensors
 
+/** warn/crit of the service checking this component (or, with ``check``, the first service of that check). */
+function limitsOf(services: Service[], componentId: number | null, check?: string): { warn?: number; crit?: number } {
+  const s = services.find((x) => (componentId != null ? x.component_id === componentId : x.check === check));
+  const p = (s?.perf ?? {}) as Record<string, number>;
+  return { ...(p.warn != null ? { warn: p.warn } : {}), ...(p.crit != null ? { crit: p.crit } : {}) };
+}
+
 function SensorTable({ items, services, unit, range, deviceId }: {
   items: Component[]; services: Service[]; unit: "celsius" | "rpm"; range: string; deviceId: number;
 }) {
   const [open, setOpen] = useState<number | null>(null);
   const fmt = FORMATS[unit];
   const groups = [...new Set(items.map((c) => c.attrs.group ?? "Board"))];
+  const top = Math.max(0, ...items.map((c) => Number(c.values.value) || 0));
   return (
     <>
       {groups.map((g) => (
@@ -133,16 +141,23 @@ function SensorTable({ items, services, unit, range, deviceId }: {
           <table className="tbl"><tbody>
             {items.filter((c) => (c.attrs.group ?? "Board") === g).map((c) => {
               const svc = services.find((s) => s.component_id === c.id);
+              const value = c.values.value != null ? Number(c.values.value) : null;
+              const warn = svc?.perf?.warn ?? null, crit = svc?.perf?.crit ?? null;
+              const below = (svc?.perf as any)?.direction === "below";
+              // the scale: past the critical limit for temperatures, a bit above the fastest fan for speeds
+              const max = unit === "celsius"
+                ? Math.max(100, (crit ?? 0) * 1.15, (value ?? 0) * 1.1)
+                : Math.max(top * 1.25, (warn ?? 0) * 1.5, 1000);
               return (
                 <Fragment key={c.id}>
                   <tr className="cursor-pointer" onClick={() => setOpen(open === c.id ? null : c.id)}>
-                    <td className="text-strong font-medium">
+                    <td className="text-strong font-medium w-40 whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <Icon name="chevron" className={`w-3.5 h-3.5 text-muted transition-transform ${open === c.id ? "rotate-90" : ""}`} />
-                        {c.name}
+                        <span className="truncate max-w-[9rem]" title={c.name}>{c.name}</span>
                       </div>
                     </td>
-                    <td className="text-right w-32"><StateBadge state={svc?.state ?? 0} small label={c.values.value != null ? fmt(c.values.value) : "–"} /></td>
+                    <td><LevelBar value={value} max={max} warn={warn} crit={crit} below={below} fmt={fmt} state={svc?.state} /></td>
                   </tr>
                   {open === c.id && (
                     <tr><td colSpan={2} className="bg-inset/40">
@@ -208,7 +223,7 @@ export default function HealthTab({ deviceId, components, services, range, sub, 
                   <span className="pill text-xxs px-2 py-0.5 bg-chip border-line text-fg2">× {cpu.threads} threads</span>
                   {cpu.cores > 0 && <span className="pill text-xxs px-2 py-0.5 bg-chip border-line text-fg2">{cpu.cores} cores</span>}
                 </div>
-                <Bar pct={cpu.avg} />
+                <Bar wide pct={cpu.avg} {...limitsOf(services, null, "cpu_util")} />
                 <div className="mt-3"><MetricChart deviceId={deviceId} range={range} metrics={[{ name: "cpu_util", label: "CPU" }]} format={fmtPct} height={140} /></div>
               </Section>
             )}
@@ -223,7 +238,7 @@ export default function HealthTab({ deviceId, components, services, range, sub, 
                   {storage.map((c) => (
                     <tr key={c.id}>
                       <td className="text-strong font-medium truncate max-w-[10rem]" title={c.name}>{c.name}</td>
-                      <td><Bar pct={c.values.pct} /></td>
+                      <td><Bar wide pct={c.values.pct} {...limitsOf(services, c.id)} /></td>
                       <td className={`text-xs text-muted text-right whitespace-nowrap ${hideSm}`}>{fmtBytes(c.values.used)} / {fmtBytes(c.values.size)}</td>
                     </tr>
                   ))}
@@ -256,7 +271,7 @@ export default function HealthTab({ deviceId, components, services, range, sub, 
             <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-x-6 gap-y-1 p-4">
               {cpu.cpus.map((c) => (
                 <div key={c.id} className="flex items-center gap-3 text-xs">
-                  <span className="w-14 text-muted">{c.name}</span><Bar pct={c.values.load} />
+                  <span className="w-14 text-muted shrink-0">{c.name}</span><Bar wide pct={c.values.load} {...limitsOf(services, c.id)} />
                 </div>
               ))}
             </div>
@@ -287,7 +302,7 @@ export default function HealthTab({ deviceId, components, services, range, sub, 
           <Card title="Filesystem usage" flush={false}>
             <MultiChart deviceId={deviceId} components={storage} metric="used_pct" range={range} format={fmtPct} height={240} />
           </Card>
-          <StorageTable deviceId={deviceId} storage={storage} range={range} />
+          <StorageTable deviceId={deviceId} storage={storage} range={range} services={services} />
           <PresetGrid deviceId={deviceId} names={names} range={range} ids={["system_io"]} />
         </>
       )}
@@ -335,7 +350,7 @@ export default function HealthTab({ deviceId, components, services, range, sub, 
 }
 
 /** Filesystems with sizes; expanding one shows its used space in bytes, scaled to the filesystem size. */
-function StorageTable({ deviceId, storage, range }: { deviceId: number; storage: Component[]; range: string }) {
+function StorageTable({ deviceId, storage, range, services }: { deviceId: number; storage: Component[]; range: string; services: Service[] }) {
   const [open, setOpen] = useState<number | null>(null);
   return (
     <Card title="Filesystems">
@@ -354,7 +369,7 @@ function StorageTable({ deviceId, storage, range }: { deviceId: number; storage:
                 <td className={`text-xs tabular-nums ${hideSm}`}>{fmtBytes(c.values.size)}</td>
                 <td className={`text-xs tabular-nums ${hideSm}`}>{fmtBytes(c.values.used)}</td>
                 <td className={`text-xs tabular-nums ${hideSm}`}>{c.values.size != null ? fmtBytes(c.values.size - (c.values.used ?? 0)) : "–"}</td>
-                <td><Bar pct={c.values.pct} /></td>
+                <td className="w-[45%]"><Bar wide pct={c.values.pct} {...limitsOf(services, c.id)} /></td>
               </tr>
               {open === c.id && (
                 <tr><td colSpan={5} className="bg-inset/40">

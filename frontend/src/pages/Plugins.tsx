@@ -37,7 +37,7 @@ export default function Plugins() {
                     {p.name === "ai" && <Icon name="sparkles" className="w-4 h-4 text-accent" />}
                     {p.label}
                   </div>
-                  <span className={`text-xxs px-2 py-0.5 rounded-full font-medium ${p.enabled ? "bg-ok/10 text-ok" : "bg-chip text-muted"}`}>
+                  <span className={`text-xxs px-2 py-0.5 rounded-pill font-medium ${p.enabled ? "bg-ok/10 text-ok" : "bg-chip text-muted"}`}>
                     {p.enabled ? "enabled" : "disabled"}
                   </span>
                 </div>

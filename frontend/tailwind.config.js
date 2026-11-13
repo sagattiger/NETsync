@@ -38,6 +38,10 @@ export default {
           .map((n) => [`ns-${n}`, v(`ns-${n}`)])),
       },
       fontSize: { xxs: ["0.6875rem", "1rem"] },
+      // corners follow the user's setting (Settings → Appearance): see the --r-* variables in index.css
+      borderRadius: {
+        sm: "var(--r-sm)", DEFAULT: "var(--r)", md: "var(--r-md)", lg: "var(--r-lg)", xl: "var(--r-xl)", "2xl": "var(--r-2xl)", pill: "var(--r-pill)",
+      },
       fontFamily: { sans: ["Inter", "Segoe UI", "Roboto", "system-ui", "sans-serif"] },
     },
   },

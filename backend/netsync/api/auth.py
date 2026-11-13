@@ -30,6 +30,8 @@ PREFERENCE_KEYS: dict[str, set | None] = {
     "table_density": {"comfortable", "compact"},
     "sidebar": {"expanded", "collapsed"},
     "dismissed_notice": None,  # id of the last dismissed announcement
+    "corners": {"rounded", "medium", "small", "sharp"},
+    "pills": {"round", "soft", "square"},
 }
 
 HEX = re.compile(r"^#[0-9a-fA-F]{6}$")

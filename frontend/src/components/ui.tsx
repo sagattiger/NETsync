@@ -69,9 +69,10 @@ export function Empty({ children, art }: { children: ReactNode; art?: ArtName })
   );
 }
 
-export function Bar({ pct }: { pct: number | null | undefined }) {
+export function Bar({ pct, wide = false, warn = 80, crit = 90 }: { pct: number | null | undefined; wide?: boolean; warn?: number; crit?: number }) {
+  if (wide) return <LevelBar value={pct ?? null} max={100} warn={warn} crit={crit} fmt={(v) => `${v.toFixed(1)}%`} />;
   const p = Math.max(0, Math.min(100, pct ?? 0));
-  const color = p >= 90 ? "bg-crit" : p >= 80 ? "bg-warn" : "bg-gradient-to-r from-ns-orange to-ns-amber";
+  const color = p >= crit ? "bg-crit" : p >= warn ? "bg-warn" : "bg-gradient-to-r from-ns-orange to-ns-amber";
   return (
     <div className="flex items-center gap-2.5 min-w-[9rem]">
       <div className="h-1.5 flex-1 max-w-[8rem] bg-chip rounded-full overflow-hidden">
@@ -115,3 +116,28 @@ export function Segmented<T extends string | number>({ value, options, onChange 
 export const hideSm = "hidden sm:table-cell";
 export const hideMd = "hidden md:table-cell";
 export const hideLg = "hidden lg:table-cell";
+
+/** A value on its scale with the warning and critical limits marked (Health sensors, storage, CPU threads).
+ *  The fill takes the state colour: OK, warning, critical. ``below`` = limits are minimums (e.g. fan speed). */
+export function LevelBar({ value, max, min = 0, warn, crit, below = false, fmt, state }: {
+  value: number | null; max: number; min?: number; warn?: number | null; crit?: number | null; below?: boolean;
+  fmt: (v: number) => string; state?: number;
+}) {
+  const span = Math.max(max - min, 1e-9);
+  const pos = (v: number) => `${Math.max(0, Math.min(100, ((v - min) / span) * 100))}%`;
+  const hit = (lim: number | null | undefined) => lim != null && value != null && (below ? value <= lim : value >= lim);
+  const level = state ?? (hit(crit) ? 2 : hit(warn) ? 1 : 0);
+  const fill = level >= 2 ? "bg-crit" : level === 1 ? "bg-warn" : "bg-ok";
+  const limits = [warn != null && `warn ${fmt(warn)}`, crit != null && `crit ${fmt(crit)}`].filter(Boolean).join(" · ");
+  return (
+    <div className="flex items-center gap-3 w-full min-w-[10rem]">
+      <div className="relative h-2 flex-1 bg-chip rounded-full" title={limits || undefined}>
+        <div className={`absolute inset-y-0 left-0 rounded-full ${fill}`} style={{ width: value == null ? 0 : pos(value) }} />
+        {warn != null && <span className="absolute -top-1 -bottom-1 w-0.5 rounded bg-warn" style={{ left: pos(warn) }} />}
+        {crit != null && <span className="absolute -top-1 -bottom-1 w-0.5 rounded bg-crit" style={{ left: pos(crit) }} />}
+      </div>
+      <span className="text-xs tabular-nums text-strong w-[4.5rem] text-right shrink-0">{value == null ? "–" : fmt(value)}</span>
+      <span className="text-xxs text-muted w-[7.5rem] shrink-0 hidden sm:inline truncate">{limits}</span>
+    </div>
+  );
+}

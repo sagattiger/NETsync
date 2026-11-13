@@ -174,3 +174,23 @@ def test_new_presets_are_consistent():
     assert BY_ID["load"].ruler == "cpu_count"
     assert BY_ID["temperature"].kind == "sensor" and BY_ID["disk_io"].kind == "disk"
     assert {"stack", "ruler"} <= BY_ID["cpu"].as_dict().keys()
+
+
+def test_port_address_index_parsing_and_merge():
+    import asyncio
+
+    from netsync.plugins.builtin.interfaces import parse_ip_index, port_addresses
+
+    assert parse_ip_index("1.4.10.0.0.5") == "10.0.0.5"
+    assert parse_ip_index("2.16.254.128.0.0.0.0.0.0.2.80.86.255.254.0.0.1") == "fe80::250:56ff:fe00:1"
+    assert parse_ip_index("9.x") is None
+
+    class Snmp:
+        async def walk(self, oid):
+            return {"1.3.6.1.2.1.4.34.1.3": {"1.4.10.0.0.5": 3, "2.16.32.1.13.184.0.0.0.0.0.0.0.0.0.0.0.1": 3},
+                    "1.3.6.1.2.1.4.20.1.3": {"10.0.0.5": "255.255.255.0"},
+                    "1.3.6.1.2.1.4.20.1.2": {"10.0.0.5": 3, "192.168.1.1": 4}}[oid]
+
+    out = asyncio.run(port_addresses(Snmp()))
+    assert out["3"] == {"ipv4": ["10.0.0.5/24"], "ipv6": ["2001:db8::1"]}
+    assert out["4"]["ipv4"] == ["192.168.1.1"]

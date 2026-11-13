@@ -127,6 +127,12 @@ async def store_results(
         old = svc.state
         svc.output = output
         svc.perf = {**cr.perf, **({"value": cr.value} if cr.value is not None else {})}
+        # the limits in force, so the UI can draw them next to the value (bars in Health, ports...)
+        lv = rules.levels(cr.check, device.id, group_ids, cr.name) if cr.value is not None else None
+        if lv is not None:
+            svc.perf.update({k: v for k, v in (("warn", lv.warn), ("crit", lv.crit)) if v is not None})
+            if lv.direction != "above":
+                svc.perf["direction"] = lv.direction
         svc.last_check = now
         if old != state:
             svc.state = state

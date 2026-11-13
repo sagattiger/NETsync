@@ -121,7 +121,7 @@ export function KumaImport({ onClose }: { onClose: () => void }) {
               <div>
                 <div className="font-medium text-strong mb-1">Needs setup ({plan.notifications.length})</div>
                 <div className="text-xs text-muted mb-2">Notifications are not imported (their tokens and passwords stay in Uptime Kuma). Recreate them under Setup → Notifications.</div>
-                <div className="flex flex-wrap gap-2">{plan.notifications.map((n, i) => <span key={i} className="px-2 py-0.5 rounded-full bg-chip text-xs text-fg">{n.name} <span className="text-muted">({n.type})</span></span>)}</div>
+                <div className="flex flex-wrap gap-2">{plan.notifications.map((n, i) => <span key={i} className="px-2 py-0.5 rounded-pill bg-chip text-xs text-fg">{n.name} <span className="text-muted">({n.type})</span></span>)}</div>
               </div>
             )}
           </>

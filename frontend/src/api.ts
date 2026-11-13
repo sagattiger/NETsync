@@ -47,6 +47,8 @@ export interface Preferences {
   sidebar?: "expanded" | "collapsed";
   dismissed_notice?: string;
   chart?: Partial<import("./lib/chartTheme").ChartPrefs>;
+  corners?: "rounded" | "medium" | "small" | "sharp";
+  pills?: "round" | "soft" | "square";
 }
 
 export interface Me {
@@ -158,6 +160,8 @@ export const prefs = {
   set: (p: Preferences) => {
     currentPrefs = p;
     document.documentElement.setAttribute("data-density", p.table_density ?? "comfortable");
+    document.documentElement.setAttribute("data-corners", p.corners ?? "rounded");
+    document.documentElement.setAttribute("data-pills", p.pills ?? "round");
   },
   refreshMs: (fallback: number) => (currentPrefs.refresh_interval ? Number(currentPrefs.refresh_interval) * 1000 : fallback),
 };

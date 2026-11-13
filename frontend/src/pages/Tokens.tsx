@@ -111,7 +111,7 @@ export default function Tokens() {
                     <td className={`text-xs text-fg2 ${hideMd}`}>{fmtDateTime(t.created_at)}<div className="text-muted">{t.created_by}</div></td>
                     <td className={`text-xs text-fg2 ${hideSm}`}>{t.last_used_at ? fmtAgo(t.last_used_at) : "never"}</td>
                     <td className={`text-xs text-fg2 ${hideMd}`}>{t.expires_at ? fmtDateTime(t.expires_at) : "never"}</td>
-                    <td><span className={`text-xxs font-semibold uppercase px-2 py-0.5 rounded-full ${STATUS[t.status]}`}>{t.status}</span></td>
+                    <td><span className={`text-xxs font-semibold uppercase px-2 py-0.5 rounded-pill ${STATUS[t.status]}`}>{t.status}</span></td>
                     <td className="text-right">
                       {!t.revoked && <button className="btn btn-ghost px-2 py-1 text-crit hover:bg-crit/10" onClick={() => revoke(t)}>Revoke</button>}
                     </td>

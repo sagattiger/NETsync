@@ -141,9 +141,9 @@ export default function Profile() {
             <div className="text-xl font-semibold text-strong tracking-tight">{me.full_name || me.username}</div>
             <div className="text-sm text-muted">@{me.username}{me.job_title ? ` · ${me.job_title}` : ""}</div>
             <div className="flex flex-wrap gap-1.5 mt-2.5">
-              <span className="text-xxs font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full bg-accent/15 text-accent">{me.role}</span>
+              <span className="text-xxs font-semibold uppercase tracking-wide px-2 py-0.5 rounded-pill bg-accent/15 text-accent">{me.role}</span>
               {(me.role === "admin" ? ["all devices"] : me.groups).map((g) => (
-                <span key={g} className="text-xxs px-2 py-0.5 rounded-full bg-chip text-fg2">{g}</span>
+                <span key={g} className="text-xxs px-2 py-0.5 rounded-pill bg-chip text-fg2">{g}</span>
               ))}
             </div>
             {avatarErr && <div className="text-xs text-crit mt-2">{avatarErr}</div>}

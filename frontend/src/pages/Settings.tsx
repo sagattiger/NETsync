@@ -6,13 +6,14 @@ import { api, Me, Series } from "../api";
 import { Icon } from "../components/Icon";
 import { Page, PageHeader } from "../components/Layout";
 import { TimeChart } from "../components/MetricChart";
-import { Card } from "../components/ui";
+import { Card, LevelBar, StateBadge } from "../components/ui";
 import { CHART_DEFAULTS, ChartPrefs, PALETTES, PaletteName, seriesPalette } from "../lib/chartTheme";
 
 interface SettingsTab { to: string; label: string; icon: string; admin?: boolean; active: (path: string, search: string) => boolean }
 
 export const SETTINGS_TABS: SettingsTab[] = [
   { to: "/settings/charts", label: "Charts", icon: "palette", active: (p) => p === "/settings" || p === "/settings/charts" },
+  { to: "/settings/appearance", label: "Appearance", icon: "sliders", active: (p) => p === "/settings/appearance" },
   { to: "/setup/rules", label: "Threshold rules", icon: "sliders", active: (p) => p === "/setup/rules" },
   { to: "/setup/users", label: "Users & groups", icon: "users", admin: true, active: (p) => p === "/setup/users" },
   { to: "/setup/terminal", label: "Terminal access", icon: "lock", admin: true, active: (p) => p === "/setup/terminal" },
@@ -168,6 +169,62 @@ export function ChartSettings() {
         <Card title="Preview" flush={false}>
           <TimeChart data={data} metrics={[{ name: "a", label: "Series 1" }, { name: "b", label: "Series 2" }, { name: "c", label: "Series 3" }]}
             unit="%" height={260} range="24h" />
+        </Card>
+      </div>
+    </Page>
+  );
+}
+
+// --------------------------------------------------------------------------- Appearance tab
+
+type Corners = "rounded" | "medium" | "small" | "sharp";
+type Pills = "round" | "soft" | "square";
+
+export function AppearanceSettings() {
+  const qc = useQueryClient();
+  const me = useMeQuery().data;
+  const [status, setStatus] = useState("");
+  const corners: Corners = me?.preferences.corners ?? "rounded";
+  const pills: Pills = me?.preferences.pills ?? "round";
+
+  const change = (patch: { corners?: Corners; pills?: Pills }) => {
+    if (!me) return;
+    qc.setQueryData(["me"], { ...me, preferences: { ...me.preferences, ...patch } });  // applied by the layout at once
+    setStatus("Saving…");
+    api<Me>("/auth/me", { method: "PATCH", body: { preferences: patch } })
+      .then((m) => { qc.setQueryData(["me"], m); setStatus("Saved"); })
+      .catch((e) => setStatus(`Not saved: ${e.message}`));
+  };
+
+  return (
+    <Page>
+      <PageHeader title="Appearance" sub="Shape of cards, buttons, inputs and badges. Saved to your profile."
+        actions={<>
+          <span className="text-xs text-muted">{status}</span>
+          <button className="btn" onClick={() => change({ corners: "rounded", pills: "round" })}>Reset to defaults</button>
+        </>} />
+      <div className="grid xl:grid-cols-2 gap-4 items-start">
+        <Card title="Shape" flush={false}>
+          <Row label="Corners" help="Cards, buttons, inputs, menus">
+            <Choice value={corners} options={[["rounded", "Rounded"], ["medium", "Medium"], ["small", "Small"], ["sharp", "Sharp"]]}
+              onChange={(c) => change({ corners: c })} />
+          </Row>
+          <Row label="Badges and pills" help="Status and count badges">
+            <Choice value={pills} options={[["round", "Round"], ["soft", "Soft"], ["square", "Square"]]} onChange={(p) => change({ pills: p })} />
+          </Row>
+          <div className="text-xs text-muted pt-3">Table spacing, theme and time format are on your <Link to="/profile" className="text-accent underline">profile</Link>.</div>
+        </Card>
+        <Card title="Preview" flush={false}>
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-2 items-center">
+              <StateBadge state={0} small label="21.0 °C" /><StateBadge state={1} small label="72.0 °C" /><StateBadge state={2} small label="88.0 °C" />
+              <span className="pill text-xxs px-2 py-0.5 bg-chip border-line text-fg2">× 24 threads</span>
+            </div>
+            <div className="flex flex-wrap gap-2"><button className="btn btn-primary">Primary</button><button className="btn">Button</button>
+              <input className="input h-8 w-40" placeholder="Input" /></div>
+            <div className="card p-3 text-sm">A card</div>
+            <LevelBar value={53} max={100} warn={70} crit={85} fmt={(v) => `${v.toFixed(1)} °C`} />
+          </div>
         </Card>
       </div>
     </Page>

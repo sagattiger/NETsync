@@ -2,22 +2,22 @@ import { BackLink } from "../components/Tabs";
 import { Fragment, ReactNode, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, Component, Device, fmtAgo, fmtBps, fmtUptime, Me, PluginInfo, prefs, Service, SyslogMsg } from "../api";
+import { api, Component, Device, fmtAgo, fmtUptime, Me, PluginInfo, prefs, Service, SyslogMsg } from "../api";
 import { Icon } from "../components/Icon";
 import { MetricChart } from "../components/MetricChart";
 import ServiceTable from "../components/ServiceTable";
 import { osLabel, VendorLogo, VirtBadge } from "../components/VendorLogo";
-import { Bar, Card, Empty, hideLg, hideMd, hideSm, Segmented, StateBadge, StateDot, stateText } from "../components/ui";
+import { Bar, Card, Empty, Segmented, StateBadge, StateDot, stateText } from "../components/ui";
 import { SyslogTable } from "./Syslog";
 import EventsTab from "./device/EventsTab";
 import NotesTab from "./device/NotesTab";
 import NetstatTab from "./device/NetstatTab";
 import HealthTab, { cpuLine, HealthSub } from "./device/HealthTab";
 import GraphsTab from "./device/GraphsTab";
+import PortsTab from "./device/PortsTab";
 import { TerminalView } from "../components/TerminalView";
 import { MEMORY_COLORS } from "./device/charts";
-import { AddToDashboard } from "../components/AddToDashboard";
-import { FORMATS, usePresets } from "../presets";
+import { FORMATS } from "../presets";
 
 const RANGES: [string, string][] = [["1h", "1h"], ["6h", "6h"], ["24h", "24h"], ["7d", "7d"], ["30d", "30d"], ["1y", "1y"]];
 
@@ -114,7 +114,7 @@ export default function DevicePage() {
                 <h1 className="text-xl font-semibold text-strong tracking-tight truncate">{device.hostname}</h1>
                 <StateBadge state={device.status} />
                 <VirtBadge virtualization={device.virtualization} />
-                {device.disabled && <span className="text-xxs px-2 py-0.5 rounded-full bg-chip text-fg2">Disabled</span>}
+                {device.disabled && <span className="text-xxs px-2 py-0.5 rounded-pill bg-chip text-fg2">Disabled</span>}
               </div>
               <div className="text-xs text-muted mt-1 line-clamp-2 md:line-clamp-1">{device.sys_descr}</div>
             </div>
@@ -288,84 +288,6 @@ function OverviewTab({ device, components, services, range }: { device: Device; 
         </Card>
       </div>
     </div>
-  );
-}
-
-const PORT_GRAPHS = ["port_packets", "port_nucast", "port_pkt_size", "port_util"];
-
-function PortsTab({ deviceId, ports, range }: { deviceId: number; ports: Component[]; range: string }) {
-  const [open, setOpen] = useState<number | null>(null);
-  const { byId } = usePresets();
-  const [filter, setFilter] = useState("");
-  const rows = ports.filter((p) => !filter || `${p.name} ${p.descr ?? ""}`.toLowerCase().includes(filter.toLowerCase()));
-  if (!ports.length) return <Card><Empty>No ports discovered</Empty></Card>;
-  return (
-    <Card title={`Ports · ${ports.length}`} actions={
-      <input className="input py-1 text-xs w-36 sm:w-48" placeholder="Filter…" value={filter} onChange={(e) => setFilter(e.target.value)} />
-    }>
-      <table className="tbl">
-        <thead><tr>
-          <th>Port</th><th className={hideMd}>Description</th><th className={hideLg}>Speed</th>
-          <th className="text-right">In</th><th className="text-right">Out</th><th className={hideSm}>Utilization</th><th className={hideLg}>MAC</th>
-        </tr></thead>
-        <tbody>
-          {rows.map((p) => {
-            const v = p.values;
-            const status = v.admin === 2 ? 3 : v.oper === 1 ? 0 : 2;
-            return (
-              <Fragment key={p.id}>
-                <tr className="cursor-pointer" onClick={() => setOpen(open === p.id ? null : p.id)}>
-                  <td className="whitespace-nowrap">
-                    <div className="flex items-center gap-2.5">
-                      <span className={`w-2 h-2 rounded-full ${v.admin === 2 ? "bg-faint" : status === 0 ? "bg-ok" : "bg-crit"}`}
-                        title={v.admin === 2 ? "admin down" : status === 0 ? "up" : "down"} />
-                      <span className="font-medium text-strong">{p.name}</span>
-                      <Icon name="chevron" className={`w-3.5 h-3.5 text-muted transition-transform ${open === p.id ? "rotate-90" : ""}`} />
-                    </div>
-                    {p.descr && <div className="md:hidden text-xs text-muted mt-0.5 pl-[18px]">{p.descr}</div>}
-                  </td>
-                  <td className={`text-fg2 ${hideMd}`}>{p.descr ?? ""}</td>
-                  <td className={`text-xs whitespace-nowrap text-fg2 ${hideLg}`}>{p.attrs.speed ? fmtBps(p.attrs.speed) : "-"}</td>
-                  <td className="text-right tabular-nums text-xs whitespace-nowrap">{fmtBps(v.in_bps)}</td>
-                  <td className="text-right tabular-nums text-xs whitespace-nowrap">{fmtBps(v.out_bps)}</td>
-                  <td className={hideSm}>{v.util != null ? <Bar pct={v.util} /> : <span className="text-muted">-</span>}</td>
-                  <td className={`text-xs text-muted font-mono ${hideLg}`}>{p.attrs.mac ?? ""}</td>
-                </tr>
-                {open === p.id && (
-                  <tr><td colSpan={7} className="bg-inset/40">
-                    <div className="flex justify-end -mb-2">
-                      <AddToDashboard deviceId={deviceId} preset="port_traffic" componentId={p.id} />
-                    </div>
-                    <div className="grid lg:grid-cols-2 gap-6 py-2">
-                      <div>
-                        <div className="text-xs text-muted mb-1">Traffic</div>
-                        <MetricChart deviceId={deviceId} componentId={p.id} range={range} format={fmtBps}
-                          metrics={[{ name: "in_bps", label: "in" }, { name: "out_bps", label: "out" }]} />
-                      </div>
-                      <div>
-                        <div className="text-xs text-muted mb-1">Errors & discards per second</div>
-                        <MetricChart deviceId={deviceId} componentId={p.id} range={range} area={false} format={(x) => x.toFixed(2)}
-                          metrics={[{ name: "in_errors" }, { name: "out_errors" }, { name: "in_discards" }, { name: "out_discards" }]} />
-                      </div>
-                      {PORT_GRAPHS.map((gid) => {
-                        const g = byId(gid);
-                        return g && (
-                          <div key={gid}>
-                            <div className="text-xs text-muted mb-1">{g.label}</div>
-                            <MetricChart deviceId={deviceId} componentId={p.id} range={range} area={g.area} format={g.format}
-                              metrics={g.metrics} ruler={gid === "port_util" ? 100 : null} rulerLabel="link" />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </td></tr>
-                )}
-              </Fragment>
-            );
-          })}
-        </tbody>
-      </table>
-    </Card>
   );
 }
 

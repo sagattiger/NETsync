@@ -31,7 +31,7 @@ function Tool({ to, onClick, icon, label, color, badge }: { to?: string; onClick
       <span className="relative w-14 h-14 rounded-2xl bg-surface border border-line flex items-center justify-center group-hover:-translate-y-0.5 group-hover:border-edge transition-all"
         style={{ color }}>
         <Icon name={icon} className="w-6 h-6" strokeWidth={2} />
-        {!!badge && <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 rounded-full bg-crit text-white text-xxs font-bold flex items-center justify-center">{badge}</span>}
+        {!!badge && <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 rounded-pill bg-crit text-white text-xxs font-bold flex items-center justify-center">{badge}</span>}
       </span>
       <span className="text-sm font-medium text-strong">{label}</span>
     </>

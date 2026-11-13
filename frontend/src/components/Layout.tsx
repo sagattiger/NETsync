@@ -79,7 +79,7 @@ function NavEntry({ item, collapsed, onNavigate }: { item: NavItem; collapsed: b
       {!!item.badge && (
         collapsed
           ? <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-crit ring-2 ring-sidebar" />
-          : <span className="text-xxs font-semibold tabular-nums px-1.5 rounded-full bg-crit/15 text-crit">{item.badge}</span>
+          : <span className="text-xxs font-semibold tabular-nums px-1.5 rounded-pill bg-crit/15 text-crit">{item.badge}</span>
       )}
     </NavLink>
   );

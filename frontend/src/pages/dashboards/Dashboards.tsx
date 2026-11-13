@@ -93,9 +93,9 @@ export default function Dashboards() {
                   </span>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 mt-4 text-xxs text-muted">
-                  <span className="px-2 py-0.5 rounded-full bg-chip text-fg2">{d.widgets.length} widget{d.widgets.length === 1 ? "" : "s"}</span>
-                  {d.public && <span className="px-2 py-0.5 rounded-full bg-ok/15 text-ok inline-flex items-center gap-1"><Icon name="globe" className="w-3 h-3" />public</span>}
-                  {d.shared && <span className="px-2 py-0.5 rounded-full bg-accent/15 text-accent">shared</span>}
+                  <span className="px-2 py-0.5 rounded-pill bg-chip text-fg2">{d.widgets.length} widget{d.widgets.length === 1 ? "" : "s"}</span>
+                  {d.public && <span className="px-2 py-0.5 rounded-pill bg-ok/15 text-ok inline-flex items-center gap-1"><Icon name="globe" className="w-3 h-3" />public</span>}
+                  {d.shared && <span className="px-2 py-0.5 rounded-pill bg-accent/15 text-accent">shared</span>}
                   <span>by {d.owner} · updated {fmtAgo(d.updated_at)}</span>
                 </div>
               </Link>
