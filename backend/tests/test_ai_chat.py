@@ -98,7 +98,7 @@ def fake(monkeypatch):
 
     class T:
         def __init__(self, name):
-            self.name, self.description, self.input_schema = name, "d", {"type": "object", "properties": {}}
+            self.name, self.description, self.input_schema, self.risk = name, "d", {"type": "object", "properties": {}}, "read"
 
     async def visible(_actor):
         return [T("netsync__alert_history"), T("netsync__call_result")]
@@ -209,3 +209,25 @@ def test_last_round_offers_no_tools_and_errors_are_reported(monkeypatch, fake):
     evs = [turn.queue.get_nowait() for _ in range(3)]
     assert evs[0] == {"type": "error", "error": "Cannot reach Ollama"} and evs[1]["type"] == "done" and evs[2] is None
     assert FakeSession.stored[-1].content.startswith("⚠ Cannot reach Ollama")
+
+
+def test_mentions_call_the_ai_only_by_its_exact_name():
+    from netsync.plugins.builtin.ai.service import mentioned
+
+    cfg = {"mention_name": "netwatcher"}
+    assert mentioned("Hey @netwatcher, can you review it", cfg) and mentioned("@NetWatcher?", cfg)
+    assert not mentioned("mail@netwatcher.com", cfg) and not mentioned("netwatcher", cfg)
+    assert not mentioned("@netwatchers", cfg)
+    assert mentioned("@bob please", {"mention_name": "@bob"})
+
+
+def test_reply_tool_loop_uses_read_tools_only(monkeypatch, fake):
+    async def stream(cfg, messages, tools=None, model=None):
+        if messages[-1]["role"] == "tool":
+            yield {"message": {"content": "It happened 3 times."}}
+        else:
+            yield {"message": {"tool_calls": [{"function": {"name": "netsync__alert_history", "arguments": {"device": "a"}}}]}}
+
+    monkeypatch.setattr(chat.ollama, "chat_stream", stream)
+    out = asyncio.run(chat.answer_with_tools({"model": "m"}, Actor("user", "alice"), [{"role": "user", "content": "q"}]))
+    assert out == "It happened 3 times." and fake[0][0] == "netsync__alert_history"

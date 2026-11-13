@@ -45,7 +45,8 @@ async def status(user: CurrentUser, session: Session):
     enabled, cfg = await plugin_settings.get_settings(session, plugin())
     on = enabled and bool(cfg.get("base_url")) and bool(cfg.get("model"))
     return {"enabled": on, "model": cfg.get("model") or None, "chat": on and bool(cfg.get("chat_enabled", True)),
-            "chat_model": cfg.get("chat_model") or cfg.get("model") or None}
+            "chat_model": cfg.get("chat_model") or cfg.get("model") or None,
+            "mention": (cfg.get("mention_name") or "netwatcher").strip().lstrip("@") if on else None}
 
 
 class ConnIn(BaseModel):

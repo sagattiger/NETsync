@@ -10,7 +10,7 @@ import { useChat } from "./AIChat";
 export function useAI() {
   return useQuery({
     queryKey: ["ai-status"],
-    queryFn: () => api<{ enabled: boolean; model: string | null; chat?: boolean; chat_model?: string | null }>("/plugins/ai/status"),
+    queryFn: () => api<{ enabled: boolean; model: string | null; chat?: boolean; chat_model?: string | null; mention?: string | null }>("/plugins/ai/status"),
     staleTime: 60_000,
     retry: false,
   }).data;

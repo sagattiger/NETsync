@@ -361,3 +361,71 @@ async def events(turn: Turn, keepalive: float = 15) -> AsyncIterator[dict]:
         if ev is None:
             return
         yield ev
+
+
+# --------------------------------------------------------------------------- @mentions in event threads
+
+async def answer_with_tools(cfg: dict, actor: Actor, messages: list[dict]) -> str:
+    """The same tool loop as the chat, without streaming or saving: returns the final answer."""
+    tools = [t for t in await hub.visible_tools(actor) if t.risk == "read"]
+    specs = [tool_spec(t) for t in tools if t.name != "netsync__call_result"]
+    known = {t.name: t for t in tools}
+    model = cfg.get("chat_model") or cfg.get("model")
+    seen: set[str] = set()
+    for round_ in range(MAX_ROUNDS):
+        think = ollama.ThinkFilter()
+        text, calls = "", []
+        async for chunk in ollama.chat_stream(cfg, messages, specs if round_ < MAX_ROUNDS - 1 else None, model=model):
+            m = chunk.get("message") or {}
+            calls.extend(m.get("tool_calls") or [])
+            text += think.feed(m.get("content") or "")
+        text += think.flush()
+        if not calls:
+            return text.strip()
+        messages.append({"role": "assistant", "content": text, "tool_calls": calls})
+        for c in calls:
+            fn = c.get("function") or {}
+            name, args = str(fn.get("name") or ""), parse_args(fn.get("arguments"))
+            key = name + json.dumps(args, sort_keys=True, default=str)
+            if name not in known:
+                out = {"status": "error", "error": f"unknown tool {name}"}
+            elif key in seen:
+                out = {"status": "error", "error": "already called with these arguments; answer from the result above"}
+            else:
+                seen.add(key)
+                try:
+                    out = await hub.call(name, args, actor, "chat", reason="@mention in an event thread")
+                except ToolError as e:
+                    out = {"status": "error", "error": str(e)}
+            messages.append({"role": "tool", "tool_name": name, "content": compact(for_model(out), TOOL_CHARS)})
+    return ""
+
+
+async def reply_in_thread(session, cfg: dict, job) -> str:
+    """Answer an @mention in an event's comment thread: the event, the thread so far, and the question."""
+    from netsync.models import EventComment, User
+    from netsync.plugins.builtin.ai import context
+    from netsync.tools.api import user_actor
+
+    user = await session.scalar(select(User).where(User.username == job.requested_by))
+    if user is None or not user.is_active:
+        raise LookupError("The user who asked no longer exists")
+    _, event_text = await context.event_prompt(session, job)
+    thread = list(await session.scalars(select(EventComment).where(
+        EventComment.device_id == job.device_id, EventComment.service_id == job.service_id,
+        EventComment.event_time == job.event_time).order_by(EventComment.created_at)))
+    question = next((c for c in thread if c.id == job.comment_id), None)
+    if question is None:
+        raise LookupError("The comment was deleted")
+    name = (cfg.get("mention_name") or "netwatcher").strip().lstrip("@")
+    lines = [f"- {'AI' if c.ai else c.author}: {c.body.strip()[:800]}" for c in thread if c.id != question.id][-8:]
+    system = system_prompt(cfg, datetime.now(UTC)) + (
+        f"\nYou are @{name}, replying in the comment thread of a monitoring alert. Answer the last comment directly, "
+        "in a few sentences. Use the tools for numbers (history, logs, graphs). Don't repeat the whole analysis.")
+    user_msg = (f"{event_text}\n\n## Comments so far\n" + ("\n".join(lines) or "(none)")
+                + f"\n\n## {question.author} asks you\n{question.body.strip()}")
+    answer = await answer_with_tools(cfg, user_actor(user), [{"role": "system", "content": system},
+                                                             {"role": "user", "content": user_msg}])
+    if not answer:
+        raise LookupError("The model gave no answer")
+    return f"@{question.author} {answer}"

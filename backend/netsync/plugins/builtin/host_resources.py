@@ -52,6 +52,27 @@ def human_bytes(n: float) -> str:
     return f"{n:.1f} PB"
 
 
+async def linux_memory(snmp) -> dict[str, float] | None:
+    """RAM from UCD-SNMP-MIB in bytes, with mem_used = total - free - buffers - cache (None without the MIB)."""
+    from netsync.plugins.builtin.ucd import MEM, MEMORY, as_float, memory_bytes
+
+    want = ("mem_total", "mem_free", "mem_buffers", "mem_cached")
+    oids = {}
+    for name in want:
+        x, legacy = MEMORY[name]
+        oids[name], oids[name + "#32"] = f"{MEM}.{x}.0", f"{MEM}.{legacy}.0"
+    try:
+        got = await snmp.get(*oids.values())
+    except Exception:  # noqa: BLE001 - agents without UCD
+        return None
+    kb = {n: as_float(got.get(oids[n])) if as_float(got.get(oids[n])) is not None else as_float(got.get(oids[n + "#32"]))
+          for n in want}
+    if not kb.get("mem_total") or kb.get("mem_free") is None:
+        return None
+    mem = memory_bytes(kb)
+    return mem if mem.get("mem_total") and "mem_used" in mem else None
+
+
 class HostResourcesModule(Module):
     name = "host_resources"
     kinds = ("processor", "storage", "mempool")
@@ -116,12 +137,20 @@ class HostResourcesModule(Module):
         storages = ctx.components("storage") + ctx.components("mempool")
         if storages:
             rows = await ctx.snmp.table({"size": STORAGE_COLS["size"], "used": STORAGE_COLS["used"]})
+            # hrStorage counts the page cache and buffers as used RAM; Linux hands them back whenever a program
+            # needs memory, so the memory check uses what free(1) calls used (UCD-SNMP-MIB) when it can
+            real = await linux_memory(ctx.snmp) if ctx.components("mempool") else None
             for comp in storages:
                 r = rows.get(comp.index)
                 if not r or not r.get("size"):
                     continue
                 units = comp.attrs.get("units", 1)
                 size, used = r["size"] * units, r.get("used", 0) * units
+                extra = ""
+                if comp.kind == "mempool" and real:
+                    size, used = real["mem_total"], real["mem_used"]
+                    cache = real.get("mem_buffers", 0) + real.get("mem_cached", 0)
+                    extra = f"; {human_bytes(cache)} cache and buffers not counted" if cache else ""
                 pct = used / size * 100
                 result.values[(comp.kind, comp.index)] = {"size": size, "used": used, "pct": pct}
                 result.metrics += [
@@ -132,6 +161,6 @@ class HostResourcesModule(Module):
                 name = "Memory" if comp.kind == "mempool" else f"Filesystem {comp.name}"
                 result.checks.append(
                     CheckResult(check, name, value=pct, unit="%", kind=comp.kind, index=comp.index,
-                                output=f"{pct:.1f}% used ({human_bytes(used)} of {human_bytes(size)})")
+                                output=f"{pct:.1f}% used ({human_bytes(used)} of {human_bytes(size)}{extra})")
                 )
         return result

@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, DeviceEvent, EventComment, fmtDateTime, Me, PinnedEvent } from "../api";
-import { AskAIButton } from "./AskAI";
+import { AskAIButton, useAI } from "./AskAI";
 import { Avatar } from "./Avatar";
 import { Icon } from "./Icon";
 import { Markdown } from "./Markdown";
@@ -89,6 +89,7 @@ export function CommentSticker({ event }: { event: DeviceEvent }) {
 /** Full comment thread with add / pin / delete, shown when an event row is expanded. */
 export function CommentThread({ deviceId, event }: { deviceId: number; event: DeviceEvent }) {
   const qc = useQueryClient();
+  const ai = useAI();
   const me = useMe();
   const [body, setBody] = useState("");
   const [pin, setPin] = useState(false);
@@ -143,10 +144,15 @@ export function CommentThread({ deviceId, event }: { deviceId: number; event: De
         <Avatar name={me?.full_name || me?.username} url={me?.avatar_url} size={28} />
         <div className="flex-1 space-y-2">
           <textarea className="input w-full min-h-[4.5rem] resize-y" value={body} onChange={(e) => setBody(e.target.value)}
-            placeholder={event.comments.length ? "Reply…" : "Add a comment, e.g. “Known issue, we will get it fixed by October 31st.”"}
+            placeholder={(event.comments.length ? "Reply…" : "Add a comment, e.g. “Known issue, we will get it fixed by October 31st.”")
+              + (ai?.mention ? ` Mention @${ai.mention} to ask the AI.` : "")}
             onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") add(); }} />
           <div className="flex flex-wrap items-center gap-3">
             <button className="btn btn-primary" onClick={add} disabled={!body.trim()}>Comment</button>
+            {ai?.mention && (
+              <button type="button" className="text-xs text-accent hover:underline" title="The AI answers in this thread, using alert history, syslog and graphs"
+                onClick={() => setBody((b) => (b.includes(`@${ai.mention}`) ? b : `@${ai.mention} ${b}`))}>@{ai.mention}</button>
+            )}
             {canPin && (
               <label className="flex items-center gap-2 text-xs text-fg2 cursor-pointer select-none">
                 <input type="checkbox" className="accent-accent" checked={pin} onChange={(e) => setPin(e.target.checked)} />

@@ -86,6 +86,12 @@ async def on_syslog(rows) -> None:
                                  syslog_time=row["time"], auto=True, requested_by=AI_AUTHOR)
 
 
+def mentioned(body: str, cfg: dict) -> bool:
+    """Does the comment call the AI by its name (default @netwatcher)?"""
+    name = re.escape((cfg.get("mention_name") or "netwatcher").strip().lstrip("@"))
+    return bool(name) and re.search(rf"(^|[^\w@.])@{name}(?![\w])", body or "", re.I) is not None
+
+
 # --------------------------------------------------------------------------- worker
 
 FIRST_SECTION = re.compile(r"^\s*(?:#+\s*)?\*{0,2}What happened", re.I | re.M)
@@ -143,13 +149,18 @@ async def run_job(job_id: int) -> None:
         await s.commit()
         started = time.monotonic()
         try:
-            if job.kind == "event":
+            if job.kind == "reply":
+                from netsync.plugins.builtin.ai import chat
+
+                answer = await chat.reply_in_thread(s, cfg, job)
+            elif job.kind == "event":
                 _, prompt = await context.event_prompt(s, job)
+                answer = trim_preamble(await ollama.chat(cfg, context.system_prompt(cfg), prompt))
             else:
                 _, prompt = await context.syslog_prompt(s, job)
-            answer = trim_preamble(await ollama.chat(cfg, context.system_prompt(cfg), prompt))
+                answer = trim_preamble(await ollama.chat(cfg, context.system_prompt(cfg), prompt))
             job.status, job.result = "done", answer
-            if job.kind == "event":
+            if job.kind in ("event", "reply"):
                 s.add(EventComment(device_id=job.device_id, service_id=job.service_id, event_time=job.event_time,
                                    body=answer, author=AI_AUTHOR, author_id=None, ai=True))
         except (ollama.OllamaError, LookupError) as e:
@@ -172,7 +183,7 @@ async def run_job(job_id: int) -> None:
             # rare lock clash (e.g. an API restart upgrading the schema): save again in a new session
             fields = {k: getattr(job, k) for k in ("status", "result", "error", "model", "duration", "finished_at")}
             comment = None
-            if job.kind == "event" and job.status == "done":
+            if job.kind in ("event", "reply") and job.status == "done":
                 comment = {"device_id": job.device_id, "service_id": job.service_id, "event_time": job.event_time,
                            "body": job.result, "author": AI_AUTHOR, "author_id": None, "ai": True}
             device_id = job.device_id

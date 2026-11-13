@@ -38,6 +38,8 @@ SETTINGS = [
 
     {"key": "chat_enabled", "label": "AI chat in the sidebar", "type": "bool", "section": "Chat",
      "help": "The AI coworker: answers questions about alerts, logs and graphs using the read-only NETsync tools."},
+    {"key": "mention_name", "label": "Name to mention in comments", "type": "text", "section": "Chat",
+     "help": "Writing @netwatcher (or the name you choose) in an event comment makes the AI reply in that thread."},
     {"key": "chat_model", "label": "Chat model (optional)", "type": "model", "section": "Chat",
      "help": "Leave empty to use the model above. Pick one that supports tool calling (qwen3.5, qwen2.5, llama3.2)."},
 
@@ -63,6 +65,7 @@ DEFAULTS = {
     "hide_thinking": True,
     "chat_enabled": True,
     "chat_model": "",
+    "mention_name": "netwatcher",
     "temperature": 0.2,
     "num_ctx": 8192,
     "timeout_seconds": 180,

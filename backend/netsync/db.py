@@ -106,6 +106,9 @@ ADDED_COLUMNS = {
     "remote_plugins": [
         "store JSON",
     ],
+    "ai_jobs": [
+        "comment_id INTEGER",
+    ],
     "terminal_sessions": [
         "via VARCHAR(8) NOT NULL DEFAULT 'web'",
     ],

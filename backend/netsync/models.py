@@ -295,7 +295,8 @@ class AIJob(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    kind: Mapped[str] = mapped_column(String(16))  # event | syslog
+    kind: Mapped[str] = mapped_column(String(16))  # event | syslog | reply (an @mention in an event thread)
+    comment_id: Mapped[int | None] = mapped_column(Integer)  # reply: the comment that mentioned the AI
     device_id: Mapped[int | None] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"), index=True)
     service_id: Mapped[int | None] = mapped_column(Integer)
     event_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

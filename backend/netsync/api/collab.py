@@ -108,7 +108,20 @@ async def add_comment(device_id: int, body: CommentIn, user: CurrentUser, sessio
                      body=body.body.strip(), pinned=body.pinned, author_id=user.id, author=user.username)
     session.add(c)
     await session.commit()
+    await ask_ai_if_mentioned(session, c, user)
     return comment_out(c, await author_avatars(session, [c]))
+
+
+async def ask_ai_if_mentioned(session, c: EventComment, user: User) -> None:
+    """"@netwatcher ..." in a comment: the AI answers in the same thread (as the commenter, with their rights)."""
+    from netsync.plugins import settings as plugin_settings
+    from netsync.plugins.builtin.ai.service import create_job, mentioned, plugin
+
+    enabled, cfg = await plugin_settings.get_settings(session, plugin())
+    if not enabled or not cfg.get("base_url") or not cfg.get("model") or not mentioned(c.body, cfg):
+        return
+    await create_job(session, kind="reply", device_id=c.device_id, service_id=c.service_id, event_time=c.event_time,
+                     comment_id=c.id, auto=False, requested_by=user.username)
 
 
 async def _own_comment(session, user: User, comment_id: int) -> EventComment:

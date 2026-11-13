@@ -194,3 +194,25 @@ def test_port_address_index_parsing_and_merge():
     out = asyncio.run(port_addresses(Snmp()))
     assert out["3"] == {"ipv4": ["10.0.0.5/24"], "ipv6": ["2001:db8::1"]}
     assert out["4"]["ipv4"] == ["192.168.1.1"]
+
+
+def test_memory_check_counts_cache_as_free():
+    import asyncio
+
+    from netsync.plugins.builtin.host_resources import linux_memory
+
+    class Snmp:
+        async def get(self, *oids):
+            vals = {"1.3.6.1.4.1.2021.4.20.0": 524288, "1.3.6.1.4.1.2021.4.21.0": 10240,  # total 512 MB, free 10 MB
+                    "1.3.6.1.4.1.2021.4.25.0": 20480, "1.3.6.1.4.1.2021.4.26.0": 300000}
+            return {o: vals.get(o) for o in oids}
+
+    mem = asyncio.run(linux_memory(Snmp()))
+    assert mem["mem_total"] == 512 * 1024 * 1024
+    assert round(mem["mem_used"] / mem["mem_total"] * 100) == 37  # not 98 %: 300 MB is page cache
+
+    class NoUcd:
+        async def get(self, *oids):
+            return dict.fromkeys(oids)
+
+    assert asyncio.run(linux_memory(NoUcd())) is None
