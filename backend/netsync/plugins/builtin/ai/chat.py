@@ -425,12 +425,23 @@ async def reply_in_thread(session, cfg: dict, job) -> str:
         "Don't repeat the whole analysis and don't invent numbers.")
     from netsync.models import Service, State
 
+    from netsync.models import Device, StateChange
+
+    # a small model latches onto whatever number it reads first: give it a few labelled facts, current state first
+    # (the full analysis context in event_text is too long for that)
+    del event_text
     svc = await session.get(Service, job.service_id)
-    now_line = (f"RIGHT NOW the service '{svc.name}' is {State(svc.state).name}: {svc.output}. "
-                "Older numbers below are from when the alert started.") if svc else ""
-    user_msg = (f"## Current state\n{now_line}\n\n{event_text}\n\n## Comments so far\n" + ("\n".join(lines) or "(none)")
-                + f"\n\n## {question.author} asks you\n{question.body.strip()}\n\n"
-                "Reply to this comment: say whether it is right, based on the current state and the tools.")
+    device = await session.get(Device, job.device_id)
+    ev = await session.scalar(select(StateChange).where(StateChange.service_id == job.service_id,
+                                                        StateChange.time == job.event_time))
+    facts = [f"- Device: {device.hostname if device else '?'}", f"- Service: {svc.name if svc else '?'}"]
+    if svc:
+        facts.append(f"- NOW: {State(svc.state).name}, {svc.output}")
+    if ev:
+        facts.append(f"- When the alert started ({ev.time:%Y-%m-%d %H:%M} UTC): {State(ev.new_state).name}, {ev.output}")
+    user_msg = ("## Facts\n" + "\n".join(facts) + "\n\n## Comments so far\n" + ("\n".join(lines) or "(none)")
+                + f"\n\n## {question.author} writes\n{question.body.strip()}\n\n"
+                "Reply to that comment. Base it on the NOW line; use the tools if you need history or logs.")
     answer = await answer_with_tools(cfg, user_actor(user), [{"role": "system", "content": system},
                                                              {"role": "user", "content": user_msg}])
     if not answer:
