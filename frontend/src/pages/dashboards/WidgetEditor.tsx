@@ -260,7 +260,7 @@ export default function WidgetEditor({ initial, isPublic, onSave, onClose }: {
           </div>
         )}
 
-        {w.type === "rings" ? (
+        {STANDALONE.has(w.type) ? null : w.type === "rings" ? (
           <div className="space-y-2">
             <label className="label">Rings (percentages)</label>
             {(w.items ?? []).map((it, i) => (

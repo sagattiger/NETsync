@@ -35,12 +35,22 @@ const BUILDING = "path://M3 22V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v5h5a1 1 0 0 1 1 
 const GREEN = "#22c55e", YELLOW = "#f5b83d", RED = "#ef4444", BLUE = "#3b82f6";
 
 let loading: Promise<void> | null = null;
+
+/** Rings that cross the 180° meridian draw a line across the whole map: drop those pieces (eastern Chukotka, Fiji). */
+function dropWrapped(f: any): any {
+  const wraps = (ring: number[][]) => ring.some((p, i) => i > 0 && Math.abs(p[0] - ring[i - 1][0]) > 180);
+  const g = f.geometry;
+  if (!g) return f;
+  if (g.type === "Polygon" && wraps(g.coordinates[0])) return { ...f, geometry: { type: "MultiPolygon", coordinates: [] } };
+  if (g.type === "MultiPolygon") return { ...f, geometry: { ...g, coordinates: g.coordinates.filter((poly: number[][][]) => !wraps(poly[0])) } };
+  return f;
+}
 /** Register the "world" map once (50m country shapes, ~0.7 MB, loaded on first use). */
 export function loadWorld(): Promise<void> {
   loading ??= Promise.all([import("world-atlas/countries-50m.json"), import("topojson-client")]).then(([topo, tc]) => {
     const t = (topo as any).default ?? topo;
     const geo = tc.feature(t, t.objects.countries) as any;
-    geo.features = geo.features.filter((f: any) => f.properties?.name !== "Antarctica");
+    geo.features = geo.features.filter((f: any) => f.properties?.name !== "Antarctica").map(dropWrapped);
     echarts.registerMap("world", geo);
   });
   return loading;
