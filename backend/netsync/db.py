@@ -94,6 +94,7 @@ ADDED_COLUMNS = {
         "last_push_at TIMESTAMPTZ",
     ],
     "dashboards": [
+        "home BOOLEAN NOT NULL DEFAULT false",
         "public BOOLEAN NOT NULL DEFAULT false",
         "public_name VARCHAR(128)",
     ],
@@ -117,6 +118,9 @@ ADDED_COLUMNS = {
         "scopes JSON NOT NULL DEFAULT '{}'",  # mcp: {"tools": ["netsync__*"], "write": false}
     ],
     "devices": [
+        "site_id INTEGER REFERENCES sites(id) ON DELETE SET NULL",
+        "lat DOUBLE PRECISION",
+        "lon DOUBLE PRECISION",
         "ip_addresses JSON NOT NULL DEFAULT '[]'",
         "virtualization VARCHAR(16)",
         "kernel VARCHAR(64)",

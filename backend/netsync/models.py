@@ -122,6 +122,21 @@ class DeviceGroup(Base):
 
 # --------------------------------------------------------------------------- inventory
 
+class Site(Base):
+    """A place devices live: a site (office, branch) or a data center, with its position on the map."""
+
+    __tablename__ = "sites"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True)
+    kind: Mapped[str] = mapped_column(String(16), default="site")  # site | datacenter
+    lat: Mapped[float | None] = mapped_column(Float)
+    lon: Mapped[float | None] = mapped_column(Float)
+    address: Mapped[str | None] = mapped_column(String(255))
+    description: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = utcnow_col()
+
+
 class Device(Base):
     __tablename__ = "devices"
 
@@ -153,6 +168,10 @@ class Device(Base):
     ip_addresses: Mapped[list] = mapped_column(JSON, default=list)
     virtualization: Mapped[str | None] = mapped_column(String(16))  # lxc, vm, or None
     kernel: Mapped[str | None] = mapped_column(String(64))
+    # position on the world map: the site's, or the device's own when it has no site
+    site_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id", ondelete="SET NULL"))
+    lat: Mapped[float | None] = mapped_column(Float)
+    lon: Mapped[float | None] = mapped_column(Float)
 
     status: Mapped[int] = mapped_column(SmallInteger, default=State.UNKNOWN)
     status_reason: Mapped[str | None] = mapped_column(Text)
@@ -409,6 +428,7 @@ class Dashboard(Base):
     public: Mapped[bool] = mapped_column(Boolean, default=False)
     public_name: Mapped[str | None] = mapped_column(String(128))
     widgets: Mapped[list] = mapped_column(JSON, default=list)
+    home: Mapped[bool] = mapped_column(Boolean, default=False)  # the owner's Home page (not listed with dashboards)
     created_at: Mapped[datetime] = utcnow_col()
     updated_at: Mapped[datetime] = utcnow_col()
 

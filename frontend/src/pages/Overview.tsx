@@ -8,15 +8,14 @@ import { PinnedEvents } from "../components/EventComments";
 import { Icon } from "../components/Icon";
 import ServiceTable from "../components/ServiceTable";
 import { osLabel, VendorLogo } from "../components/VendorLogo";
-import { Card, Empty, StateBadge, stateText } from "../components/ui";
+import { Empty, StateBadge, stateText } from "../components/ui";
+import DashboardView from "./dashboards/DashboardView";
 
 interface OverviewData { devices: Record<string, number>; services: Record<string, number>; unhandled: number }
 interface Insight {
   job_id: number; device_id: number; hostname: string; service: string; state: number;
   event_time: string; finished_at: string; auto: boolean; excerpt: string;
 }
-
-const STRIP_KEY = "netsync_home_strip";
 
 function greeting(name?: string | null) {
   const h = new Date().getHours();
@@ -40,10 +39,8 @@ function Tool({ to, onClick, icon, label, color, badge }: { to?: string; onClick
   return to ? <Link to={to} className={cls}>{body}</Link> : <button onClick={onClick} className={cls}>{body}</button>;
 }
 
-function Strip() {
-  const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(STRIP_KEY) === "hidden"; } catch { return false; } });
+export function StripWidget() {
   const ai = useAI();
-  if (hidden) return null;
   const host = window.location.hostname;
   const items: [string, string, string, boolean?][] = [
     ["list", `Syslog → ${host}:514`, "/syslog"],
@@ -62,21 +59,18 @@ function Strip() {
           ? <a key={label} href={href} target="_blank" rel="noopener noreferrer" className={cls}>{inner}</a>
           : <Link key={label} to={href} className={cls}>{inner}</Link>;
       })}
-      <button className="text-muted hover:text-strong" aria-label="Hide"
-        onClick={() => { setHidden(true); try { localStorage.setItem(STRIP_KEY, "hidden"); } catch { /* ignore */ } }}>
-        <Icon name="x" className="w-4 h-4" />
-      </button>
     </div>
   );
 }
 
 const DOT = ["#5b8def", "#a78bfa", "#3dd68c", "#f5a524", "#ff57ae", "#2dd4bf"];
 
-function DashboardsPanel({ dashboards }: { dashboards: Dashboard[] }) {
+export function DashboardsWidget() {
+  const { data: dashboards = [] } = useQuery({ queryKey: ["dashboards"], queryFn: () => api<Dashboard[]>("/dashboards") });
   return (
-    <section className="card p-4 flex flex-col min-h-[16rem]">
+    <section className="p-4 flex flex-col min-h-[14rem]">
       <div className="flex items-center justify-between mb-3">
-        <Link to="/dashboards" className="text-sm font-medium text-strong flex items-center gap-1 hover:text-accent">Dashboards <Icon name="chevron" className="w-3.5 h-3.5" /></Link>
+        <Link to="/dashboards" className="text-xs font-medium text-fg2 flex items-center gap-1 hover:text-accent">All dashboards <Icon name="chevron" className="w-3.5 h-3.5" /></Link>
         <Link to="/dashboards?new=1" className="w-7 h-7 rounded-lg bg-inset border border-line flex items-center justify-center text-fg2 hover:text-strong" title="New dashboard">
           <Icon name="plus" className="w-3.5 h-3.5" />
         </Link>
@@ -111,7 +105,12 @@ function Illustration() {
   );
 }
 
-function GlancePanel({ ov, devices }: { ov?: OverviewData; devices: Device[] }) {
+export function GlanceWidget() {
+  const refresh = prefs.refreshMs(30_000);
+  const { data: ov } = useQuery({ queryKey: ["overview"], queryFn: () => api<OverviewData>("/overview"), refetchInterval: refresh });
+  const { data: devices = [] } = useQuery({ queryKey: ["devices"], queryFn: () => api<Device[]>("/devices"), refetchInterval: refresh });
+  const { data: dashboards } = useQuery({ queryKey: ["dashboards"], queryFn: () => api<Dashboard[]>("/dashboards") });
+  if (dashboards && !dashboards.length && !devices.length) return <CreatePanel />;
   const s = ov?.services ?? {};
   const down = devices.filter((d) => d.status === 2).length;
   const tiles: [string, ReactNode, number | undefined][] = [
@@ -120,8 +119,7 @@ function GlancePanel({ ov, devices }: { ov?: OverviewData; devices: Device[] }) 
     ["Critical", s.CRIT ?? 0, (s.CRIT ?? 0) ? 2 : undefined], ["Unhandled", ov?.unhandled ?? 0, (ov?.unhandled ?? 0) ? 2 : undefined],
   ];
   return (
-    <section className="card p-5 flex flex-col">
-      <div className="text-sm font-medium text-strong mb-4">Network at a glance</div>
+    <section className="p-4 flex flex-col">
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 flex-1">
         {tiles.map(([label, value, tone]) => (
           <div key={label} className="rounded-xl bg-inset/60 border border-line px-4 py-3">
@@ -137,7 +135,7 @@ function GlancePanel({ ov, devices }: { ov?: OverviewData; devices: Device[] }) 
 function CreatePanel() {
   const nav = useNavigate();
   return (
-    <section className="card p-5 flex flex-col items-center justify-center text-center gap-3 min-h-[16rem]">
+    <section className="p-5 flex flex-col items-center justify-center text-center gap-3 min-h-[14rem]">
       <Illustration />
       <div>
         <div className="text-base font-medium text-strong">Create a dashboard</div>
@@ -263,73 +261,65 @@ function Carousel({ insights, problems, devices }: { insights: Insight[]; proble
   );
 }
 
-// --------------------------------------------------------------------------- page
+// --------------------------------------------------------------------------- Home widgets
 
-export default function Overview() {
+/** Greeting, summary, search and the tool tiles. */
+export function HeroWidget() {
   const palette = useCommandPalette();
   const ai = useAI();
   const refresh = prefs.refreshMs(30_000);
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/auth/me") });
-  const { data: ov } = useQuery({ queryKey: ["overview"], queryFn: () => api<OverviewData>("/overview"), refetchInterval: refresh });
   const { data: problems = [] } = useQuery({
     queryKey: ["problems", "unhandled"], queryFn: () => api<Service[]>("/problems?include_acked=false"), refetchInterval: refresh,
   });
   const { data: devices = [] } = useQuery({ queryKey: ["devices"], queryFn: () => api<Device[]>("/devices"), refetchInterval: refresh });
-  const { data: dashboards = [] } = useQuery({ queryKey: ["dashboards"], queryFn: () => api<Dashboard[]>("/dashboards") });
-  const { data: insights = [] } = useQuery({
-    queryKey: ["ai-insights"], queryFn: () => api<Insight[]>("/plugins/ai/insights?limit=12"), enabled: !!ai?.enabled, refetchInterval: 60_000,
-  });
-
   const open = problems.filter((p) => !p.resolved);
   const down = devices.filter((d) => d.status === 2).length;
   const summary = !devices.length ? "Add your first device to start monitoring."
     : open.length ? `${open.length} problem${open.length === 1 ? " needs" : "s need"} attention${down ? ` · ${down} device${down === 1 ? "" : "s"} down` : ""}`
     : `All ${devices.length} devices are healthy.`;
-
   return (
-    <div className="px-4 sm:px-8 pb-12">
-      {/* hero */}
-      <div className="pt-6 sm:pt-10 pb-8 flex flex-col items-center text-center">
-        <h1 className="text-3xl sm:text-4xl font-bold text-strong tracking-tight">{greeting(me?.full_name || me?.username)}</h1>
-        <p className={`mt-2 text-sm ${open.length ? "text-fg2" : "text-muted"}`}>{summary}</p>
-        <button onClick={() => palette.open()}
-          className="mt-7 w-full max-w-3xl h-14 px-5 rounded-2xl bg-surface border border-edge hover:border-faint flex items-center gap-3 text-left transition-colors">
-          <Icon name="search" className="w-5 h-5 text-muted" />
-          <span className="flex-1 text-base text-muted">Search devices or jump to a page…</span>
-          <kbd className="hidden sm:inline text-xs text-muted">Ctrl K</kbd>
-        </button>
-
-        <div className="mt-10 flex flex-wrap justify-center gap-x-4 gap-y-6">
-          <Tool to="/devices" icon="server" label="Devices" color="#5b8def" />
-          <Tool to="/problems" icon="alert" label="Problems" color="rgb(var(--crit))" badge={open.length} />
-          <Tool to="/dashboards" icon="palette" label="Dashboards" color="#a78bfa" />
-          <Tool to="/syslog" icon="list" label="Syslog" color="#2dd4bf" />
-          {ai?.enabled !== undefined && <Tool to={me?.role === "admin" ? "/setup/plugins?configure=ai" : "/problems"} icon="sparkles" label="AI assistant" color="rgb(var(--accent))" />}
-          {me?.role !== "viewer" && <Tool to="/devices?add=1" icon="plus" label="Add device" color="#3dd68c" />}
-          <Tool onClick={() => palette.open()} icon="grid" label="All tools" color="rgb(var(--fg))" />
-        </div>
-      </div>
-
-      <div className="space-y-5 max-w-[90rem] mx-auto">
-        <Strip />
-
-        <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-5">
-          <DashboardsPanel dashboards={dashboards} />
-          {dashboards.length ? <GlancePanel ov={ov} devices={devices} /> : <CreatePanel />}
-        </div>
-
-        <PinnedEvents showDevice />
-
-        <Card title={`Unhandled problems · ${open.length}`} actions={
-          <Link to="/problems" className="text-xs font-medium text-fg2 hover:text-strong flex items-center gap-1">All problems <Icon name="chevron" className="w-3 h-3" /></Link>
-        }>
-          {problems.length ? <ServiceTable services={problems} showHost problems /> : <Empty art="empty-problems">Everything is OK.</Empty>}
-        </Card>
-
-        <div className="pt-4">
-          <Carousel insights={insights} problems={problems} devices={devices} />
-        </div>
+    <div className="pt-4 sm:pt-6 pb-4 flex flex-col items-center text-center">
+      <h1 className="text-3xl sm:text-4xl font-bold text-strong tracking-tight">{greeting(me?.full_name || me?.username)}</h1>
+      <p className={`mt-2 text-sm ${open.length ? "text-fg2" : "text-muted"}`}>{summary}</p>
+      <button onClick={() => palette.open()}
+        className="mt-7 w-full max-w-3xl h-14 px-5 rounded-2xl bg-surface border border-edge hover:border-faint flex items-center gap-3 text-left transition-colors">
+        <Icon name="search" className="w-5 h-5 text-muted" />
+        <span className="flex-1 text-base text-muted">Search devices or jump to a page…</span>
+        <kbd className="hidden sm:inline text-xs text-muted">Ctrl K</kbd>
+      </button>
+      <div className="mt-10 flex flex-wrap justify-center gap-x-4 gap-y-6">
+        <Tool to="/devices" icon="server" label="Devices" color="#5b8def" />
+        <Tool to="/problems" icon="alert" label="Problems" color="rgb(var(--crit))" badge={open.length} />
+        <Tool to="/dashboards" icon="palette" label="Dashboards" color="#a78bfa" />
+        <Tool to="/syslog" icon="list" label="Syslog" color="#2dd4bf" />
+        {ai?.enabled !== undefined && <Tool to={me?.role === "admin" ? "/setup/plugins?configure=ai" : "/problems"} icon="sparkles" label="AI assistant" color="rgb(var(--accent))" />}
+        {me?.role !== "viewer" && <Tool to="/devices?add=1" icon="plus" label="Add device" color="#3dd68c" />}
+        <Tool onClick={() => palette.open()} icon="grid" label="All tools" color="rgb(var(--fg))" />
       </div>
     </div>
   );
+}
+
+/** AI insights / open problems / devices as cards. */
+export function InsightsWidget() {
+  const ai = useAI();
+  const refresh = prefs.refreshMs(30_000);
+  const { data: problems = [] } = useQuery({
+    queryKey: ["problems", "unhandled"], queryFn: () => api<Service[]>("/problems?include_acked=false"), refetchInterval: refresh,
+  });
+  const { data: devices = [] } = useQuery({ queryKey: ["devices"], queryFn: () => api<Device[]>("/devices"), refetchInterval: refresh });
+  const { data: insights = [] } = useQuery({
+    queryKey: ["ai-insights"], queryFn: () => api<Insight[]>("/plugins/ai/insights?limit=12"), enabled: !!ai?.enabled, refetchInterval: 60_000,
+  });
+  return <Carousel insights={insights} problems={problems} devices={devices} />;
+}
+
+export { PinnedEvents, ServiceTable };
+
+/** Home: the user's own dashboard of widgets (Home page widgets plus every dashboard widget). */
+export default function Overview() {
+  const { data: home } = useQuery({ queryKey: ["dashboard", "home"], queryFn: () => api<Dashboard>("/dashboards/home") });
+  if (!home) return <Empty>Loading…</Empty>;
+  return <DashboardView home={home} />;
 }

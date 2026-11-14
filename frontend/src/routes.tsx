@@ -18,6 +18,7 @@ import Store from "./pages/Store";
 import TerminalPage from "./pages/TerminalPage";
 import TerminalSetup from "./pages/TerminalSetup";
 import { AppearanceSettings, ChartSettings, SettingsShell } from "./pages/Settings";
+import Sites from "./pages/Sites";
 import Probes from "./pages/Probes";
 import ProbePage from "./pages/ProbePage";
 import Dashboards from "./pages/dashboards/Dashboards";
@@ -51,6 +52,7 @@ export const pageRoutes = (
     <Route path="/settings" element={<SettingsShell><ChartSettings /></SettingsShell>} />
     <Route path="/settings/charts" element={<SettingsShell><ChartSettings /></SettingsShell>} />
     <Route path="/settings/appearance" element={<SettingsShell><AppearanceSettings /></SettingsShell>} />
+    <Route path="/settings/sites" element={<SettingsShell><Sites /></SettingsShell>} />
     <Route path="/profile" element={<Profile />} />
     <Route path="/dashboards" element={<Dashboards />} />
     <Route path="/dashboards/:id" element={<DashboardView />} />

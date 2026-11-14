@@ -22,7 +22,7 @@ DI_LOGO = re.compile(r"^di:[a-z0-9]+(?:-[a-z0-9]+)*(?:\.(?:svg|png|webp))?$")
 OPTIONAL = ("probe_id", "colors", "labels", "logo", "cols", "height", "compact",
             # UI kit widgets (kpi, gauge, rings, donut, bars) and the graph style
             "style", "metric", "stat", "window", "caption", "min", "max", "warn", "crit", "items", "count",
-            "limit", "probe_ids")
+            "limit", "probe_ids", "center", "zoom", "map_style", "hide_sites")
 WIDGET_TYPES = ("graph", "device", "problems", "services", "uptime", "kpi", "gauge", "rings", "donut", "bars")
 SIZE_COLS = {"s": 4, "m": 6, "l": 12}
 
@@ -67,7 +67,9 @@ class RingItem(BaseModel):
 
 class Widget(BaseModel):
     id: str = Field(max_length=64)
-    type: Literal["graph", "device", "problems", "services", "uptime", "kpi", "gauge", "rings", "donut", "bars"]
+    type: Literal["graph", "device", "problems", "services", "uptime", "kpi", "gauge", "rings", "donut", "bars",
+                  # Home page widgets
+                  "hero", "strip", "map", "dashboards", "glance", "pinned", "insights"]
     title: str = Field("", max_length=128)
     size: Literal["s", "m", "l"] = "m"
     device_id: int | None = None
@@ -80,7 +82,12 @@ class Widget(BaseModel):
     labels: dict[str, str] | None = None  # series key -> short label, e.g. {"in": "Rx"}
     logo: str | None = None  # "di:google" or https://...
     cols: Literal[3, 4, 6, 8, 12] | None = None  # width on a 12-column grid; missing -> from size
-    height: Literal["compact", "normal", "tall"] | None = None
+    height: Literal["compact", "normal", "tall", "xl"] | None = None
+    # map: where it looks, how it looks
+    center: list[float] | None = Field(None, min_length=2, max_length=2)  # [lon, lat]
+    zoom: float | None = Field(None, ge=0.5, le=40)
+    map_style: Literal["night", "light", "auto"] | None = None
+    hide_sites: bool | None = None  # map: no site / data center markers
     compact: bool | None = None  # logo + title + current value + small chart only
     # --- UI kit widgets; unset = defaults
     style: Literal["area", "line", "spike", "range"] | None = None  # graph: glow area (default), line, spike, min-max
@@ -167,7 +174,7 @@ def out(d: Dashboard, user: User) -> dict:
     return {
         "id": d.id, "name": d.name, "description": d.description, "owner": d.owner, "owner_id": d.owner_id,
         "shared": d.shared, "public": bool(d.public), "public_name": d.public_name, "widgets": d.widgets,
-        "created_at": d.created_at, "updated_at": d.updated_at,
+        "created_at": d.created_at, "updated_at": d.updated_at, "home": bool(d.home),
         "can_edit": d.owner_id == user.id or user.role == Role.ADMIN,
     }
 
@@ -195,9 +202,48 @@ def _apply_public(d: Dashboard, body: DashboardIn, user: User) -> None:
         d.public_name = name
 
 
+HOME_WIDGETS = [
+    {"id": "hero", "type": "hero", "title": "", "size": "l", "cols": 12},
+    {"id": "strip", "type": "strip", "title": "", "size": "l", "cols": 12},
+    {"id": "map", "type": "map", "title": "Network map", "size": "l", "cols": 12, "height": "tall"},
+    {"id": "dash", "type": "dashboards", "title": "Dashboards", "size": "s", "cols": 4},
+    {"id": "glance", "type": "glance", "title": "At a glance", "size": "m", "cols": 8},
+    {"id": "pinned", "type": "pinned", "title": "Pinned events", "size": "l", "cols": 12},
+    {"id": "problems", "type": "problems", "title": "Unhandled problems", "size": "l", "cols": 12},
+    {"id": "insights", "type": "insights", "title": "AI insights", "size": "l", "cols": 12},
+]
+for _w in HOME_WIDGETS:
+    _w.update(device_id=None, component_id=None, preset=None)
+
+
+async def home_of(session, user: User) -> Dashboard:
+    d = await session.scalar(select(Dashboard).where(Dashboard.owner_id == user.id, Dashboard.home.is_(True)).limit(1))
+    if d is None:
+        d = Dashboard(name="Home", owner_id=user.id, owner=user.username, shared=False, public=False, home=True,
+                      widgets=[dict(w) for w in HOME_WIDGETS])
+        session.add(d)
+        await session.commit()
+    return d
+
+
+@router.get("/home")
+async def get_home(user: CurrentUser, session: Session):
+    """The user's Home page: a dashboard of its own, created with the default widgets the first time."""
+    return out(await home_of(session, user), user)
+
+
+@router.post("/home/reset")
+async def reset_home(user: CurrentUser, session: Session):
+    d = await home_of(session, user)
+    d.widgets = [dict(w) for w in HOME_WIDGETS]
+    d.updated_at = datetime.now(UTC)
+    await session.commit()
+    return out(d, user)
+
+
 @router.get("")
 async def list_dashboards(user: CurrentUser, session: Session):
-    q = select(Dashboard).order_by(Dashboard.name)
+    q = select(Dashboard).where(Dashboard.home.is_not(True)).order_by(Dashboard.name)
     if user.role != Role.ADMIN:
         q = q.where(or_(Dashboard.owner_id == user.id, Dashboard.shared.is_(True)))
     return [out(d, user) for d in await session.scalars(q)]

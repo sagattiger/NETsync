@@ -14,6 +14,7 @@ interface SettingsTab { to: string; label: string; icon: string; admin?: boolean
 export const SETTINGS_TABS: SettingsTab[] = [
   { to: "/settings/charts", label: "Charts", icon: "palette", active: (p) => p === "/settings" || p === "/settings/charts" },
   { to: "/settings/appearance", label: "Appearance", icon: "sliders", active: (p) => p === "/settings/appearance" },
+  { to: "/settings/sites", label: "Sites", icon: "globe", active: (p) => p === "/settings/sites" },
   { to: "/setup/rules", label: "Threshold rules", icon: "sliders", active: (p) => p === "/setup/rules" },
   { to: "/setup/users", label: "Users & groups", icon: "users", admin: true, active: (p) => p === "/setup/users" },
   { to: "/setup/terminal", label: "Terminal access", icon: "lock", admin: true, active: (p) => p === "/setup/terminal" },

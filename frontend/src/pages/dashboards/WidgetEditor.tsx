@@ -6,6 +6,7 @@ import { Modal, Segmented } from "../../components/ui";
 import { Preset, usePresets } from "../../presets";
 import { CHART_STYLES } from "../../lib/chartTheme";
 import { autoTitle, useComponents, useDevices, useProbes } from "./WidgetView";
+import { REGIONS } from "../../components/WorldMap";
 
 const TYPES: [WidgetType, string, string][] = [
   ["graph", "Graph", "Interface traffic, CPU, latency, probes…"],
@@ -18,7 +19,16 @@ const TYPES: [WidgetType, string, string][] = [
   ["rings", "Rings", "1–4 percentages side by side"],
   ["donut", "Donut", "Services or problems by state"],
   ["bars", "Top bars", "Top interfaces or probes by value"],
+  ["map", "World map", "Devices and sites on a map, by state"],
+  ["hero", "Welcome", "Greeting, search and shortcuts"],
+  ["strip", "Shortcuts strip", "Syslog, API, AI, plugins, GitHub"],
+  ["glance", "At a glance", "Devices, services and problems in numbers"],
+  ["dashboards", "Dashboards list", "Your dashboards"],
+  ["pinned", "Pinned events", "Events pinned by your team"],
+  ["insights", "AI insights", "AI analyses, open problems, devices"],
 ];
+/** Widgets that need no device, metric or probe. */
+const STANDALONE = new Set(["map", "hero", "strip", "glance", "dashboards", "pinned", "insights"]);
 
 /** Presets a widget type can read. */
 function presetFilter(type: WidgetType): (p: Preset) => boolean {
@@ -155,7 +165,7 @@ export default function WidgetEditor({ initial, isPublic, onSave, onClose }: {
       ...(type === "rings" && !(w.items ?? []).length ? { items: [{ preset: presets.find(ok)?.id ?? "cpu" }] } : {}) });
   }
 
-  const needsDevice = !["problems", "donut", "rings"].includes(w.type) && !isProbe && !probeBars;
+  const needsDevice = !["problems", "donut", "rings"].includes(w.type) && !STANDALONE.has(w.type) && !isProbe && !probeBars;
   const needsComponent = withComponent && !isProbe && !!preset?.kind;
   const series = w.type === "graph" && preset ? preset.metrics.map((m) => m.label ?? m.name) : [];
   const metricKeys = (w.type === "kpi" || w.type === "gauge" || w.type === "bars") && !uptimeKpi && preset ? preset.metrics.map((m) => m.label ?? m.name) : [];
@@ -187,7 +197,9 @@ export default function WidgetEditor({ initial, isPublic, onSave, onClose }: {
     if (w.type !== "graph") { out.labels = null; out.style = null; }
     if (w.type !== "graph" && w.type !== "uptime" && w.type !== "kpi") { out.colors = null; }
     if (w.type !== "graph" && w.type !== "uptime") { out.compact = null; }
-    if (w.type === "uptime" || uptimeKpi || ["rings", "donut", "problems", "services", "device"].includes(w.type)) out.preset = null;
+    if (w.type === "uptime" || uptimeKpi || ["rings", "donut", "problems", "services", "device"].includes(w.type) || STANDALONE.has(w.type)) out.preset = null;
+    if (STANDALONE.has(w.type)) { out.device_id = null; out.component_id = null; out.probe_id = null; }
+    if (w.type !== "map") { out.center = null; out.zoom = null; out.map_style = null; out.hide_sites = null; }
     if (w.type !== "kpi") { out.stat = null; out.window = null; out.caption = null; }
     if (!["kpi", "gauge", "bars"].includes(w.type) || uptimeKpi) out.metric = null;
     if (w.type !== "gauge") { out.min = null; out.max = null; out.warn = null; out.crit = null; }
@@ -364,6 +376,29 @@ export default function WidgetEditor({ initial, isPublic, onSave, onClose }: {
           </div>
         )}
 
+        {w.type === "map" && (
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label className="label">Area</label>
+              <select className="input w-full" value={Object.entries(REGIONS).find(([, r]) => r.center[0] === w.center?.[0] && r.center[1] === w.center?.[1])?.[0] ?? (w.center ? "custom" : "world")}
+                onChange={(e) => { const r = REGIONS[e.target.value]; if (r) set({ center: e.target.value === "world" ? null : r.center, zoom: e.target.value === "world" ? null : r.zoom }); }}>
+                {Object.entries(REGIONS).map(([k, r]) => <option key={k} value={k}>{r.label}</option>)}
+                {w.center && !Object.values(REGIONS).some((r) => r.center[0] === w.center?.[0] && r.center[1] === w.center?.[1]) && <option value="custom">Custom</option>}
+              </select>
+              <div className="text-xs text-muted mt-1">You can still zoom and drag the map.</div>
+            </div>
+            <div>
+              <label className="label">Look</label>
+              <Segmented value={w.map_style ?? "auto"} onChange={(v) => set({ map_style: v === "auto" ? null : v })}
+                options={[["auto", "Follow theme"], ["night", "Night"], ["light", "Light"]]} />
+            </div>
+            <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+              <input type="checkbox" className="accent-accent" checked={!w.hide_sites} onChange={(e) => set({ hide_sites: e.target.checked ? null : true })} />
+              Show sites and data centers
+            </label>
+          </div>
+        )}
+
         <div className="grid sm:grid-cols-[1fr_auto] gap-4">
           <div>
             <label className="label">Title (optional)</label>
@@ -416,7 +451,7 @@ export default function WidgetEditor({ initial, isPublic, onSave, onClose }: {
                 <div>
                   <label className="label">Height</label>
                   <Segmented value={w.height ?? "normal"} onChange={(height) => set({ height: height === "normal" ? null : height })}
-                    options={[["compact", "Compact"], ["normal", "Normal"], ["tall", "Tall"]]} />
+                    options={[["compact", "Compact"], ["normal", "Normal"], ["tall", "Tall"], ...(w.type === "map" ? [["xl", "Extra tall"] as [string, string]] : [])] as any} />
                 </div>
                 {w.type === "graph" && (
                   <div>

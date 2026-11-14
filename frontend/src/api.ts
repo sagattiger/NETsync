@@ -10,6 +10,7 @@ export interface Device {
   sys_location: string | null; sys_contact: string | null; uptime: number | null;
   ip_addresses?: string[]; vendor: string | null; os: string | null; hardware: string | null; version: string | null;
   serial: string | null; device_type: string | null; virtualization: string | null; kernel: string | null;
+  site_id?: number | null; lat?: number | null; lon?: number | null;
   status: number; status_reason: string | null; disabled: boolean;
   last_polled: string | null; last_discovered: string | null; poll_duration: number | null;
   groups: Group[];
@@ -71,7 +72,8 @@ export interface DeviceEvent {
 
 export interface PinnedEvent extends DeviceEvent { device_id: number; hostname: string; pinned_at: string }
 
-export type WidgetType = "graph" | "device" | "problems" | "services" | "uptime" | "kpi" | "gauge" | "rings" | "donut" | "bars";
+export type WidgetType = "graph" | "device" | "problems" | "services" | "uptime" | "kpi" | "gauge" | "rings" | "donut" | "bars"
+  | "hero" | "strip" | "map" | "dashboards" | "glance" | "pinned" | "insights";
 /** One ring of a rings widget (a device/component or probe metric, shown as 0–100 %). */
 export interface RingItem {
   label?: string | null; device_id?: number | null; component_id?: number | null; probe_id?: number | null;
@@ -87,7 +89,12 @@ export interface Widget {
   labels?: Record<string, string> | null;
   logo?: string | null; // "di:<slug>" (Dashboard Icons) or https://
   cols?: WidgetCols | null;
-  height?: "compact" | "normal" | "tall" | null;
+  height?: "compact" | "normal" | "tall" | "xl" | null;
+  // map
+  center?: [number, number] | null;
+  zoom?: number | null;
+  map_style?: "night" | "light" | "auto" | null;
+  hide_sites?: boolean | null;
   compact?: boolean | null;
   // UI kit widgets
   style?: "area" | "line" | "spike" | "range" | null; // graph

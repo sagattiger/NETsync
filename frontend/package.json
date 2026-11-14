@@ -20,11 +20,14 @@
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "react-router-dom": "6.27.0",
-    "simple-icons": "16.30.0"
+    "simple-icons": "16.30.0",
+    "topojson-client": "^3.1.0",
+    "world-atlas": "^2.0.2"
   },
   "devDependencies": {
     "@types/react": "18.3.11",
     "@types/react-dom": "18.3.1",
+    "@types/topojson-client": "^3.1.5",
     "@vitejs/plugin-react": "4.3.2",
     "autoprefixer": "10.4.20",
     "postcss": "8.4.47",

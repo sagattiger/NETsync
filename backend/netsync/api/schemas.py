@@ -37,6 +37,9 @@ class DeviceUpdate(BaseModel):
     node_id: int | None = None
     disabled: bool | None = None
     group_ids: list[int] | None = None
+    site_id: int | None = None
+    lat: float | None = Field(None, ge=-90, le=90)
+    lon: float | None = Field(None, ge=-180, le=180)
 
 
 class DeviceOut(ORM):
@@ -62,6 +65,9 @@ class DeviceOut(ORM):
     device_type: str | None
     virtualization: str | None = None
     kernel: str | None = None
+    site_id: int | None = None
+    lat: float | None = None
+    lon: float | None = None
     ip_addresses: list[str] = []
     status: int
     status_reason: str | None

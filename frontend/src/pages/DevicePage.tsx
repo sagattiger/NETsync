@@ -337,6 +337,14 @@ function SettingsTab({ device, isAdmin }: { device: Device; isAdmin: boolean }) 
           {msg && <span className="text-ok text-xs">{msg}</span>}
         </div>
         <div className="text-xs text-muted">Thresholds are managed centrally in <Link className="link" to="/setup/rules">Threshold rules</Link>.</div>
+        <div className="border-t border-line pt-4">
+          <label className="label">Position on the world map</label>
+          <div className="text-sm text-fg2">
+            {device.site_id ? "At a site (it takes the site's position)" : device.lat != null && device.lon != null
+              ? <span className="font-mono">{device.lat.toFixed(5)}, {device.lon.toFixed(5)}</span> : "Not set"}
+          </div>
+          <Link className="link text-xs" to="/settings/sites">Set the site or the position in Settings → Sites</Link>
+        </div>
       </div>
     </Card>
   );

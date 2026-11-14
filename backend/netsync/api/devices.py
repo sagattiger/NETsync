@@ -14,7 +14,7 @@ from netsync.api.schemas import (
     DeviceUpdate,
     ServiceOut,
 )
-from netsync.models import Component, Device, DeviceGroup, Role, Service, State, StateChange
+from netsync.models import Component, Device, DeviceGroup, Role, Service, Site, State, StateChange
 from netsync.poller.worker import enqueue_job
 
 router = APIRouter(prefix="/devices", tags=["devices"])
@@ -82,6 +82,8 @@ async def update_device(device_id: int, body: DeviceUpdate, session: Session, us
     data = body.model_dump(exclude_unset=True)
     if (group_ids := data.pop("group_ids", None)) is not None:
         await _set_groups(session, device, group_ids)
+    if data.get("site_id") is not None and await session.get(Site, data["site_id"]) is None:
+        raise HTTPException(400, "Site not found")
     for k, v in data.items():
         setattr(device, k, v)
     await session.commit()

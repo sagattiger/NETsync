@@ -1,4 +1,7 @@
 import { createContext, useContext } from "react";
+import { DashboardsWidget, GlanceWidget, HeroWidget, InsightsWidget, StripWidget } from "../Overview";
+import { PinnedEvents } from "../../components/EventComments";
+import { WorldMap } from "../../components/WorldMap";
 import { Link } from "react-router-dom";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { api, Component, Device, fmtUptime, Heartbeat, logoSrc, prefs, Probe, RingItem, Series, Service, Widget } from "../../api";
@@ -56,6 +59,9 @@ export function autoTitle(w: Widget, devices: Device[], components: Component[],
   presetById: (id: string | null | undefined) => Preset | undefined, probes: Probe[] = []): string {
   const host = devices.find((d) => d.id === w.device_id)?.hostname;
   const probe = probes.find((p) => p.id === w.probe_id);
+  const HOME_TITLES: Record<string, string> = { hero: "Welcome", strip: "Shortcuts", map: "Network map", dashboards: "Dashboards",
+    glance: "At a glance", pinned: "Pinned events", insights: "AI insights" };
+  if (HOME_TITLES[w.type]) return HOME_TITLES[w.type];
   if (w.type === "uptime") return probe?.name ?? "Uptime";
   if (w.type === "kpi" || w.type === "gauge") {
     if (w.stat === "uptime") return probe ? `Uptime · ${probe.name}` : "Uptime";
@@ -116,11 +122,12 @@ function ServicesWidget({ deviceId, problemsOnly }: { deviceId: number | null; p
 }
 
 const HEIGHTS = { compact: 140, normal: 0, tall: 380 };
+const MAP_HEIGHTS = { compact: 300, normal: 420, tall: 560, xl: 720 };
 
 /** Chart height for a widget: "normal" keeps today's look (taller for full-width widgets). */
 export function chartHeight(w: Widget): number {
   if (w.height === "compact") return w.compact ? 64 : HEIGHTS.compact;
-  if (w.height === "tall") return w.compact ? 160 : HEIGHTS.tall;
+  if (w.height === "tall" || w.height === "xl") return w.compact ? 160 : HEIGHTS.tall;
   if (w.compact) return 90;
   return (w.cols ?? 0) >= 12 || (!w.cols && w.size === "l") ? 260 : 200;
 }
@@ -328,6 +335,15 @@ export function WidgetBody({ w, range }: { w: Widget; range: string }) {
   const probes = useProbes();
   const device = devices.find((d) => d.id === w.device_id);
 
+  if (w.type === "hero") return <HeroWidget />;
+  if (w.type === "strip") return <StripWidget />;
+  if (w.type === "dashboards") return <DashboardsWidget />;
+  if (w.type === "glance") return <GlanceWidget />;
+  if (w.type === "pinned") return <PinnedEvents showDevice />;
+  if (w.type === "insights") return <InsightsWidget />;
+  if (w.type === "map") {
+    return <WorldMap height={MAP_HEIGHTS[w.height ?? "normal"]} center={w.center} zoom={w.zoom} style={w.map_style} hideSites={w.hide_sites} />;
+  }
   if (w.type === "uptime") return w.probe_id ? <UptimeWidget w={w} probe={probes.find((p) => p.id === w.probe_id)} /> : <Empty>Pick a probe</Empty>;
   if (w.type === "kpi") return <KpiWidget w={w} range={range} probe={probes.find((p) => p.id === w.probe_id)} />;
   if (w.type === "gauge") return <GaugeWidget w={w} range={range} />;
