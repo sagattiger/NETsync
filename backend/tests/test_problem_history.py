@@ -11,17 +11,17 @@ def at(minutes):
     return T0 + timedelta(minutes=minutes)
 
 
-def test_series_counts_open_new_and_resolved():
-    changes = [(at(5), 0, 2), (at(7), 0, 1), (at(8), 1, 2), (at(20), 2, 0), (at(50), 0, 3)]
-    s = problem_series(1, changes, T0, at(59), 900)  # 15-minute buckets, one problem already open
+def test_series_follows_each_service():
+    # service 1 already CRIT; 2 and 3 open, 2 escalates (not new), 1 recovers, 4 opens late
+    changes = [(at(5), 2, 2), (at(7), 3, 1), (at(8), 3, 2), (at(20), 1, 0), (at(50), 4, 3)]
+    s = problem_series({1: 2}, changes, T0, at(59), 900)
     assert [b["open"] for b in s] == [3, 2, 2, 3]
     assert [b["new"] for b in s] == [2, 0, 0, 1] and [b["resolved"] for b in s] == [0, 1, 0, 0]
-    assert s[0]["peak"] == 3 and s[1]["peak"] == 3  # still 3 open when the second bucket starts; WARN -> CRIT is not new
 
 
-def test_series_never_goes_negative_and_fills_empty_buckets():
-    s = problem_series(0, [(at(1), 2, 0)], T0, at(29), 600)
-    assert [b["open"] for b in s] == [0, 0, 0] and s[0]["resolved"] == 1
+def test_new_services_settling_to_ok_are_not_resolutions():
+    s = problem_series({}, [(at(1), 9, 0), (at(2), 8, 0)], T0, at(29), 600)
+    assert [b["open"] for b in s] == [0, 0, 0] and sum(b["resolved"] for b in s) == 0
 
 
 def test_general_settings_validation():

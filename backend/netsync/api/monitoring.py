@@ -300,28 +300,34 @@ HISTORY_BUCKETS = {"1h": 60, "6h": 300, "24h": 900, "7d": 3600, "30d": 6 * 3600,
 HISTORY_SPAN = {"1h": 3600, "6h": 6 * 3600, "24h": 86400, "7d": 7 * 86400, "30d": 30 * 86400, "1y": 365 * 86400}
 
 
-def problem_series(baseline: int, changes: list[tuple[datetime, int, int]], start: datetime, end: datetime,
-                   step: int) -> list[dict]:
+def problem_series(start_states: dict[int, int], changes: list[tuple[datetime, int, int]], start: datetime,
+                   end: datetime, step: int) -> list[dict]:
     """Open problems at the end of each bucket, plus problems opened and resolved in it.
 
-    A problem opens on OK -> WARN/CRIT/UNKNOWN and closes on a change back to OK; changes between problem states
-    don't count. ``changes`` are (time, old_state, new_state) sorted by time."""
+    Each service's state is followed from ``start_states`` (its state when the window starts; OK when it had no
+    change before) through ``changes`` = (time, service_id, new_state) sorted by time. A problem opens when a service
+    goes from OK to WARN/CRIT/UNKNOWN and is resolved when it goes back to OK; WARN <-> CRIT is not a new one, and a
+    brand-new service settling from UNKNOWN to OK is not a resolution."""
+    state = dict(start_states)
+    open_now = sum(1 for v in state.values() if v != State.OK)
     out = []
     n = max(1, int((end - start).total_seconds() // step) + 1)
-    i, open_now = 0, baseline
+    i = 0
     for b in range(n):
         b_start = start + timedelta(seconds=b * step)
         b_end = b_start + timedelta(seconds=step)
         new = resolved = 0
         peak = open_now
         while i < len(changes) and changes[i][0] < b_end:
-            _, old, new_state = changes[i]
-            if old == State.OK and new_state != State.OK:
+            _, sid, new_state = changes[i]
+            was = state.get(sid, State.OK)
+            if was == State.OK and new_state != State.OK:
                 new += 1
                 open_now += 1
-            elif old != State.OK and new_state == State.OK:
+            elif was != State.OK and new_state == State.OK:
                 resolved += 1
-                open_now = max(0, open_now - 1)
+                open_now -= 1
+            state[sid] = new_state
             peak = max(peak, open_now)
             i += 1
         out.append({"t": b_start.isoformat(), "open": open_now, "peak": peak, "new": new, "resolved": resolved})
@@ -345,11 +351,11 @@ async def problem_history(user: CurrentUser, session: Session, range: str = "24h
     last = (select(StateChange.service_id, StateChange.new_state)
             .where(StateChange.service_id.in_(ids), StateChange.time < start)
             .distinct(StateChange.service_id).order_by(StateChange.service_id, StateChange.time.desc())).subquery()
-    baseline = await session.scalar(select(func.count()).select_from(last).where(last.c.new_state != State.OK)) or 0
-    changes = [(t, o, n) for t, o, n in await session.execute(
-        select(StateChange.time, StateChange.old_state, StateChange.new_state)
+    start_states = dict((await session.execute(select(last.c.service_id, last.c.new_state))).all())
+    changes = [(t, sid, n) for t, sid, n in await session.execute(
+        select(StateChange.time, StateChange.service_id, StateChange.new_state)
         .where(StateChange.service_id.in_(ids), StateChange.time >= start).order_by(StateChange.time))]
-    series = problem_series(baseline, changes, start, now, step)
+    series = problem_series(start_states, changes, start, now, step)
 
     active_q = select(func.count()).select_from(Service).where(Service.id.in_(ids), Service.state > State.OK)
     return {
