@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { Route } from "react-router-dom";
+import { Navigate, Route } from "react-router-dom";
 import Overview from "./pages/Overview";
 import Problems from "./pages/Problems";
 import Devices from "./pages/Devices";
@@ -11,8 +11,6 @@ import Users from "./pages/Users";
 import Plugins from "./pages/Plugins";
 import Profile from "./pages/Profile";
 import About from "./pages/About";
-import Tokens from "./pages/Tokens";
-import Housekeeping from "./pages/Housekeeping";
 import AiTools from "./pages/AiTools";
 import Store from "./pages/Store";
 import TerminalPage from "./pages/TerminalPage";
@@ -43,8 +41,8 @@ export const pageRoutes = (
     <Route path="/setup/notifications" element={<Notifications />} />
     <Route path="/setup/users" element={<SettingsShell><Users /></SettingsShell>} />
     <Route path="/setup/plugins" element={<SettingsShell><Plugins /></SettingsShell>} />
-    <Route path="/setup/tokens" element={<SettingsShell><Tokens /></SettingsShell>} />
-    <Route path="/setup/housekeeping" element={<SettingsShell><Housekeeping /></SettingsShell>} />
+    <Route path="/setup/tokens" element={<Navigate to="/settings/general/api-tokens" replace />} />
+    <Route path="/setup/housekeeping" element={<Navigate to="/settings/general/housekeeping" replace />} />
     <Route path="/setup/ai-tools" element={<SettingsShell><AiTools /></SettingsShell>} />
     <Route path="/setup/store" element={<Store />} />
     <Route path="/setup/terminal" element={<SettingsShell><TerminalSetup /></SettingsShell>} />
@@ -52,6 +50,7 @@ export const pageRoutes = (
     <Route path="/settings" element={<SettingsShell><ChartSettings /></SettingsShell>} />
     <Route path="/settings/charts" element={<SettingsShell><ChartSettings /></SettingsShell>} />
     <Route path="/settings/general" element={<SettingsShell><GeneralSettings /></SettingsShell>} />
+    <Route path="/settings/general/:tab" element={<SettingsShell><GeneralSettings /></SettingsShell>} />
     <Route path="/settings/appearance" element={<SettingsShell><AppearanceSettings /></SettingsShell>} />
     <Route path="/settings/sites" element={<SettingsShell><Sites /></SettingsShell>} />
     <Route path="/profile" element={<Profile />} />

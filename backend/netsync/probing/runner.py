@@ -80,7 +80,6 @@ async def run_check(spec: ProbeSpec) -> Result | None:
 async def record(session, probe: Probe, device: Device, result: Result, now: datetime | None = None) -> list:
     """Apply one check result: heartbeat, metrics, services, probe state. Returns alert events to dispatch."""
     from netsync.alerting import in_downtime
-    from netsync.config import get_settings
     from netsync.poller.pipeline import store_results
 
     now = now or datetime.now(UTC)
@@ -121,7 +120,9 @@ async def record(session, probe: Probe, device: Device, result: Result, now: dat
         svc = await session.scalar(select(Service).where(Service.device_id == device.id,
                                                          Service.name == STATUS_SERVICE))
         if svc:
-            url = get_settings().public_url.rstrip("/")
+            from netsync import general
+
+            url = general.public_url()
             events.append((svc.id, AlertEvent(device.id, device.hostname, STATUS_SERVICE, State.CRIT, State.CRIT,
                                               f"still down after {fails} checks: {msg}", now, f"{url}/probes/{probe.id}")))
     return events

@@ -28,6 +28,9 @@ HR_TYPE = "1.3.6.1.2.1.25.2.1"
 TYPE_RAM = f"{HR_TYPE}.2"
 TYPE_FIXED_DISK = f"{HR_TYPE}.4"
 TYPE_NETWORK_DISK = f"{HR_TYPE}.10"
+# hrStorageType → the kind Settings → General → Storage discovery can ignore
+STORAGE_TYPES = {f"{HR_TYPE}.4": "fixed", f"{HR_TYPE}.10": "network", f"{HR_TYPE}.5": "removable",
+                 f"{HR_TYPE}.6": "removable", f"{HR_TYPE}.7": "optical"}
 
 # Pseudo filesystems that just add noise.
 SKIP_MOUNTS = ("/proc", "/sys", "/dev", "/run", "/snap")
@@ -104,14 +107,15 @@ class HostResourcesModule(Module):
                 continue
             if r.get("type") == TYPE_RAM:
                 specs.append(ComponentSpec("mempool", index, "Memory", attrs={"units": r.get("units", 1)}))
-            elif r.get("type") in (TYPE_FIXED_DISK, TYPE_NETWORK_DISK) and not descr.startswith(SKIP_MOUNTS):
+            elif r.get("type") in STORAGE_TYPES and not descr.startswith(SKIP_MOUNTS):
                 # Bind mounts (chroot jails, container volumes) report the exact same size/used
                 # as the filesystem they come from - monitor that filesystem only once.
                 fs_key = (r["size"] * r.get("units", 1), r.get("used", 0) * r.get("units", 1))
                 if fs_key in seen_fs:
                     continue
                 seen_fs.add(fs_key)
-                specs.append(ComponentSpec("storage", index, descr, attrs={"units": r.get("units", 1)}))
+                specs.append(ComponentSpec("storage", index, descr, attrs={"units": r.get("units", 1),
+                                                                            "storage_type": STORAGE_TYPES[r["type"]]}))
         return specs
 
     async def poll(self, ctx: DeviceContext):

@@ -14,7 +14,7 @@ from netsync.api.deps import CurrentUser, Session, device_scope, require
 from netsync.metrics_query import RANGES, bucketed_series
 from netsync.models import Device, DeviceGroup, Probe, ProbeBeat, Role, Service, State, User
 from netsync.probes import COUNT_RANGE, INTERVAL_RANGE, METRICS, PROBE_DEVICE_TYPE, device_hostname
-from netsync.config import get_settings
+from netsync import general
 from netsync.probing.base import REGISTRY, ProbeSpec, get_checker
 from netsync.probing.checkers.push import hash_push_token, new_push_token
 from netsync.probing.kuma import map_backup, validation_error
@@ -153,7 +153,7 @@ def _new_push_token(p: Probe) -> dict:
     """Store only the hash; the token itself is returned once."""
     token = new_push_token()
     p.push_token_hash = hash_push_token(token)
-    return {"push_token": token, "push_url": f"{get_settings().public_url.rstrip('/')}/api/push/{token}"}
+    return {"push_token": token, "push_url": f"{general.public_url()}/api/push/{token}"}
 
 
 def _apply(p: Probe, body: ProbeIn) -> None:

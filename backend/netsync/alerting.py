@@ -54,12 +54,15 @@ async def dispatch(events: list[tuple[int, AlertEvent]]) -> None:
     channels = registry.channels
     async with SessionLocal() as s:
         rules = list(await s.scalars(select(NotificationRule).where(NotificationRule.enabled.is_(True))))
+        from netsync import general
+
+        cfg = await general.get()  # Settings → General → Alerting
         for service_id, ev in events:
             await publish("state_change", ev.__dict__)
-            if await in_downtime(s, ev.device_id, service_id, ev.time):
+            if cfg.get("alert_skip_downtime", True) and await in_downtime(s, ev.device_id, service_id, ev.time):
                 continue
             svc = await s.get(Service, service_id)
-            if svc and svc.acknowledged and ev.new_state != State.OK:
+            if cfg.get("alert_skip_acknowledged", True) and svc and svc.acknowledged and ev.new_state != State.OK:
                 continue
             device = await s.get(Device, ev.device_id)
             group_ids = {g.id for g in device.groups} if device else set()

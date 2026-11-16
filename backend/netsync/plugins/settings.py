@@ -55,6 +55,13 @@ def coerce(plugin: Plugin, incoming: dict[str, Any], current: dict[str, Any]) ->
             if "min" in f and value < f["min"] or "max" in f and value > f["max"]:
                 raise ValueError(f"{f['label']} must be between {f.get('min')} and {f.get('max')}")
             value = int(value) if value.is_integer() and not f.get("float") else value
+        elif kind == "multi":
+            allowed = {str(o[0]) for o in f.get("options", [])}
+            items = value if isinstance(value, list) else []
+            bad = [v for v in items if str(v) not in allowed]
+            if bad:
+                raise ValueError(f"Invalid value for {f['label']}: {bad[0]}")
+            value = [str(v) for v in items]
         elif kind == "select":
             allowed = [str(o[0]) for o in f.get("options", [])]
             if str(value) not in allowed:

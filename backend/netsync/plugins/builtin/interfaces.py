@@ -143,7 +143,12 @@ class InterfacesModule(Module):
         rows = await ctx.snmp.table(DISCOVER_COLS)
         from netsync import general
 
-        addresses = await port_addresses(ctx.snmp) if (await general.get()).get("discover_ip_addresses", True) else {}
+        cfg = await general.get()
+        addresses = await port_addresses(ctx.snmp) if cfg.get("discover_ip_addresses", True) else {}
+        for fam in addresses.values():  # Settings → General → Discovery → IP address types to ignore
+            for key in ("ipv4", "ipv6"):
+                fam[key] = [a for a in fam[key] if general.keep_address(a, cfg)]
+        up_only = cfg.get("ports_monitor_up_only", True)
         specs = []
         for index, r in rows.items():
             if r.get("type") in SKIP_TYPES:
@@ -165,7 +170,7 @@ class InterfacesModule(Module):
                         "ipv4": (addresses.get(str(index)) or {}).get("ipv4", []),
                         "ipv6": (addresses.get(str(index)) or {}).get("ipv6", []),
                         # Like CheckMK: only ports that are up at discovery get a service.
-                        "monitor": r.get("oper") == 1,
+                        "monitor": r.get("oper") == 1 or not up_only,
                     },
                 )
             )

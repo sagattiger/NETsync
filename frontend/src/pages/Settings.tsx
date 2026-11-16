@@ -1,11 +1,13 @@
 /** Settings: the setup pages behind one gear in the sidebar, as tabs, plus the chart look (per user). */
 import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, Me, PluginSettings, Series } from "../api";
 import { Field } from "../components/PluginSettingsModal";
 import { Icon } from "../components/Icon";
 import { Page, PageHeader } from "../components/Layout";
+import Housekeeping from "./Housekeeping";
+import Tokens from "./Tokens";
 import { TimeChart } from "../components/MetricChart";
 import { Card, LevelBar, StateBadge } from "../components/ui";
 import { CHART_DEFAULTS, ChartPrefs, PALETTES, PaletteName, seriesPalette } from "../lib/chartTheme";
@@ -13,7 +15,7 @@ import { CHART_DEFAULTS, ChartPrefs, PALETTES, PaletteName, seriesPalette } from
 interface SettingsTab { to: string; label: string; icon: string; admin?: boolean; active: (path: string, search: string) => boolean }
 
 export const SETTINGS_TABS: SettingsTab[] = [
-  { to: "/settings/general", label: "General", icon: "gear", admin: true, active: (p) => p === "/settings/general" },
+  { to: "/settings/general/branding", label: "General", icon: "gear", admin: true, active: (p) => p.startsWith("/settings/general") },
   { to: "/settings/charts", label: "Charts", icon: "palette", active: (p) => p === "/settings" || p === "/settings/charts" },
   { to: "/settings/appearance", label: "Appearance", icon: "sliders", active: (p) => p === "/settings/appearance" },
   { to: "/settings/sites", label: "Sites", icon: "globe", active: (p) => p === "/settings/sites" },
@@ -21,8 +23,6 @@ export const SETTINGS_TABS: SettingsTab[] = [
   { to: "/setup/users", label: "Users & groups", icon: "users", admin: true, active: (p) => p === "/setup/users" },
   { to: "/setup/terminal", label: "Terminal access", icon: "lock", admin: true, active: (p) => p === "/setup/terminal" },
   { to: "/setup/ai-tools", label: "AI tools & MCP", icon: "terminal", active: (p) => p === "/setup/ai-tools" },
-  { to: "/setup/tokens", label: "API tokens", icon: "lock", admin: true, active: (p) => p === "/setup/tokens" },
-  { to: "/setup/housekeeping", label: "Housekeeping", icon: "list", admin: true, active: (p) => p === "/setup/housekeeping" },
   { to: "/setup/plugins", label: "Plugins & nodes", icon: "puzzle", active: (p) => p === "/setup/plugins" },
 ];
 
@@ -235,17 +235,102 @@ export function AppearanceSettings() {
 
 // --------------------------------------------------------------------------- General tab (admins)
 
-interface Autodiscovery { finished?: string; seconds?: number; scanned?: number; answered?: number; added?: { id: number; hostname: string; ip: string }[]; error?: string; running?: boolean }
+interface Autodiscovery {
+  finished?: string; seconds?: number; scanned?: number; pinged?: number | null; answered?: number; running?: boolean; error?: string;
+  added?: { id: number; hostname: string; ip: string }[]; skipped?: { ip: string; hostname?: string; reason: string }[];
+}
+
+/** Sub-tabs of Settings → General: the first six are the "general" settings, the last two are their own pages. */
+const GENERAL_TABS: { slug: string; label: string; icon: string; tab?: string; sub?: string }[] = [
+  { slug: "branding", label: "Branding", icon: "palette", tab: "Branding", sub: "Logo, colour, name and the default time format." },
+  { slug: "discovery", label: "Discovery", icon: "search", tab: "Discovery", sub: "What discovery collects, what it ignores, and finding new devices." },
+  { slug: "entities", label: "Entities", icon: "list", tab: "Entities", sub: "How ports, disks, sensors and the rest are kept once found." },
+  { slug: "alerting", label: "Alerting", icon: "bell", tab: "Alerting", sub: "When notifications are held back. Who gets them is set in Notifications." },
+  { slug: "authentication", label: "Authentication", icon: "lock", tab: "Authentication", sub: "Sign-in sessions and protection against password guessing." },
+  { slug: "network", label: "Network", icon: "globe", tab: "Network", sub: "SNMP timing and the address NETsync is reached at." },
+  { slug: "housekeeping", label: "Housekeeping", icon: "list" },
+  { slug: "api-tokens", label: "API tokens", icon: "lock" },
+];
+
+function AutodiscoveryStatus({ onMsg }: { onMsg: (m: { ok: boolean; text: string }) => void }) {
+  const qc = useQueryClient();
+  const { data: scan } = useQuery({ queryKey: ["autodiscovery"], queryFn: () => api<Autodiscovery>("/plugins/general/autodiscovery"), refetchInterval: 10_000 });
+  async function scanNow() {
+    try {
+      const r = await api<{ ok: boolean; message: string }>("/plugins/general/autodiscovery/run", { method: "POST" });
+      onMsg({ ok: r.ok, text: r.message });
+      qc.invalidateQueries({ queryKey: ["autodiscovery"] });
+    } catch (e: any) { onMsg({ ok: false, text: e.message }); }
+  }
+  return (
+    <div className="border-t border-line pt-3 space-y-2">
+      <div className="flex items-center gap-2">
+        <button className="btn" onClick={scanNow}><Icon name="refresh" className="w-3.5 h-3.5" /> Scan now</button>
+        <span className="text-xs text-muted">Uses the saved settings: save your changes first.</span>
+      </div>
+      <div className="text-xs text-fg2 space-y-1">
+        {scan?.running ? "Scanning…" : scan?.error ? <span className="text-crit">Last scan failed: {scan.error}</span>
+          : scan?.finished ? (
+            <>
+              <div>Last scan {new Date(scan.finished).toLocaleString()}: {scan.scanned} addresses in {scan.seconds}s
+                {scan.pinged != null && <>, {scan.pinged} answered ping</>}, {scan.answered} answered SNMP, {scan.added?.length ?? 0} added
+                {scan.added?.length ? <>: {scan.added.map((d) => d.hostname).join(", ")}</> : null}</div>
+              {!!scan.skipped?.length && <div className="text-muted">Skipped: {scan.skipped.map((d) => `${d.hostname ?? d.ip} (${d.reason})`).join(", ")}</div>}
+            </>
+          ) : "No scan yet."}
+      </div>
+    </div>
+  );
+}
+
+function IpTypeTry() {
+  const [addr, setAddr] = useState("");
+  const [kind, setKind] = useState("");
+  async function check() {
+    if (!addr.trim()) return;
+    try { setKind((await api<{ type: string }>("/plugins/general/ip-type", { method: "POST", body: { address: addr.trim() } })).type); }
+    catch (e: any) { setKind(e.message); }
+  }
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <input className="input w-56 font-mono text-xs" placeholder="Try an address, e.g. fe80::1" value={addr}
+        onChange={(e) => { setAddr(e.target.value); setKind(""); }} onKeyDown={(e) => e.key === "Enter" && check()} />
+      <button type="button" className="btn text-xs" onClick={check}>Type?</button>
+      {kind && <span className="text-strong">{kind}</span>}
+    </div>
+  );
+}
 
 export function GeneralSettings() {
+  const { tab: slug = "branding" } = useParams();
+  const current = GENERAL_TABS.find((t) => t.slug === slug) ?? GENERAL_TABS[0];
+  return (
+    <>
+      <div className="px-4 sm:px-8 pt-3">
+        <div className="flex flex-wrap gap-1">
+          {GENERAL_TABS.map((t) => (
+            <Link key={t.slug} to={`/settings/general/${t.slug}`}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors ${t.slug === current.slug ? "bg-accent/15 text-strong font-medium" : "text-muted hover:text-fg hover:bg-inset"}`}>
+              <Icon name={t.icon} className="w-3.5 h-3.5" />{t.label}
+            </Link>
+          ))}
+        </div>
+      </div>
+      {current.slug === "housekeeping" ? <Housekeeping /> : current.slug === "api-tokens" ? <Tokens /> : <GeneralForm key={current.slug} tab={current.tab!} label={current.label} sub={current.sub!} />}
+    </>
+  );
+}
+
+function GeneralForm({ tab, label, sub }: { tab: string; label: string; sub: string }) {
   const qc = useQueryClient();
   const { data: settings } = useQuery({ queryKey: ["plugin-settings", "general"], queryFn: () => api<PluginSettings>("/plugins/general/settings") });
-  const { data: scan } = useQuery({ queryKey: ["autodiscovery"], queryFn: () => api<Autodiscovery>("/plugins/general/autodiscovery"), refetchInterval: 10_000 });
   const [config, setConfig] = useState<Record<string, any>>({});
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (settings) setConfig(settings.config); }, [settings]);
-  const sections = settings ? [...new Set(settings.fields.map((f) => f.section ?? "Settings"))] : [];
+  const fields = (settings?.fields ?? []).filter((f) => (f.tab ?? "Branding") === tab);
+  const sections = [...new Set(fields.map((f) => f.section ?? "Settings"))];
+  const dirty = !!settings && fields.some((f) => JSON.stringify(config[f.key]) !== JSON.stringify(settings.config[f.key]));
 
   async function save() {
     setBusy(true); setMsg(null);
@@ -253,45 +338,28 @@ export function GeneralSettings() {
       const saved = await api<PluginSettings>("/plugins/general/settings", { method: "PUT", body: { enabled: true, config } });
       qc.setQueryData(["plugin-settings", "general"], saved);
       qc.invalidateQueries({ queryKey: ["branding"] });
-      setMsg({ ok: true, text: "Saved. Discovery changes apply at each device's next discovery." });
+      setMsg({ ok: true, text: tab === "Discovery" || tab === "Entities" ? "Saved. Applies at each device's next discovery." : "Saved." });
     } catch (e: any) { setMsg({ ok: false, text: e.message }); }
     setBusy(false);
-  }
-  async function scanNow() {
-    setMsg(null);
-    try {
-      const r = await api<{ ok: boolean; message: string }>("/plugins/general/autodiscovery/run", { method: "POST" });
-      setMsg({ ok: r.ok, text: r.message });
-      qc.invalidateQueries({ queryKey: ["autodiscovery"] });
-    } catch (e: any) { setMsg({ ok: false, text: e.message }); }
   }
 
   return (
     <Page>
-      <PageHeader title="General" sub="Branding, defaults for everyone, what discovery collects, and finding new devices."
-        actions={<button className="btn btn-primary" onClick={save} disabled={busy || !settings}>{busy ? "Saving…" : "Save"}</button>} />
+      <PageHeader title={label} sub={sub}
+        actions={<button className="btn btn-primary" onClick={save} disabled={busy || !settings || !dirty}>{busy ? "Saving…" : dirty ? "Save" : "Saved"}</button>} />
       {msg && <div className={`text-sm ${msg.ok ? "text-ok" : "text-crit"}`}>{msg.text}</div>}
       <div className="grid xl:grid-cols-2 gap-4 items-start">
         {sections.map((sec) => (
           <Card key={sec} title={sec} flush={false}>
             <div className="space-y-4">
-              {settings!.fields.filter((f) => (f.section ?? "Settings") === sec).map((f) => (
+              {fields.filter((f) => (f.section ?? "Settings") === sec).map((f) => (
                 <Field key={f.key} f={f} plugin="general" config={config} set={(k, v) => setConfig((c) => ({ ...c, [k]: v }))} />
               ))}
-              {sec === "Discovery" && <p className="text-xs text-muted">Switching one off stops collecting it; what was found before is removed at the next two discoveries.</p>}
-              {sec === "Autodiscovery" && (
-                <div className="border-t border-line pt-3 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <button className="btn" onClick={scanNow}><Icon name="refresh" className="w-3.5 h-3.5" /> Scan now</button>
-                    <span className="text-xs text-muted">Saves nothing: save your changes first.</span>
-                  </div>
-                  <div className="text-xs text-fg2">
-                    {scan?.running ? "Scanning…" : scan?.error ? <span className="text-crit">Last scan failed: {scan.error}</span>
-                      : scan?.finished ? <>Last scan {new Date(scan.finished).toLocaleString()}: {scan.scanned} addresses in {scan.seconds}s, {scan.answered} answered, {scan.added?.length ?? 0} added
-                        {scan.added?.length ? <>: {scan.added.map((d) => d.hostname).join(", ")}</> : null}</> : "No scan yet."}
-                  </div>
-                </div>
-              )}
+              {sec === "What discovery collects" && <p className="text-xs text-muted">Switching one off stops collecting it. Ignored or switched-off entities already found are removed after the number of discoveries set in Entities.</p>}
+              {sec === "IP address discovery" && <IpTypeTry />}
+              {sec === "Device autodiscovery" && <AutodiscoveryStatus onMsg={setMsg} />}
+              {sec === "Notifications" && <p className="text-xs text-muted">Channels, recipients and the minimum state are set per rule in <Link className="text-accent hover:underline" to="/setup/notifications">Notifications</Link>.</p>}
+              {sec === "Sign-in protection" && <p className="text-xs text-muted">Counts failures per user name and address, so one person guessing doesn't lock everyone else out.</p>}
             </div>
           </Card>
         ))}

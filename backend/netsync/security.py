@@ -20,9 +20,9 @@ def verify_password(password: str, hashed: str) -> bool:
         return False
 
 
-def create_token(user_id: int) -> str:
+def create_token(user_id: int, minutes: float | None = None) -> str:
     s = get_settings()
-    exp = datetime.now(UTC) + timedelta(minutes=s.token_ttl_minutes)
+    exp = datetime.now(UTC) + timedelta(minutes=minutes or s.token_ttl_minutes)
     return jwt.encode({"sub": str(user_id), "exp": exp}, s.secret_key, algorithm="HS256")
 
 

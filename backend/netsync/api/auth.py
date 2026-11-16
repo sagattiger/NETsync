@@ -4,7 +4,7 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.orm import undefer
@@ -120,13 +120,22 @@ def me_out(user: User) -> MeOut:
 
 
 @router.post("/login")
-async def login(body: LoginIn, session: Session):
+async def login(body: LoginIn, session: Session, request: Request):
+    from netsync import general  # Settings → General → Authentication
+
+    # nginx appends the real client address last
+    ip = (request.headers.get("x-forwarded-for") or "").split(",")[-1].strip() or (request.client.host if request.client else "")
+    if minutes := await general.login_locked(body.username, ip):
+        raise HTTPException(429, f"Too many failed sign-ins. Try again in {minutes} minute{'s' if minutes != 1 else ''}.")
     user = await session.scalar(select(User).where(User.username == body.username))
     if not user or not user.is_active or not verify_password(body.password, user.password_hash):
+        await general.login_failed(body.username, ip)
         raise HTTPException(401, "Invalid username or password")
+    await general.login_ok(body.username, ip)
     user.last_login = datetime.now(UTC)
     await session.commit()
-    return {"token": create_token(user.id)}
+    hours = (await general.get()).get("session_hours")
+    return {"token": create_token(user.id, float(hours) * 60 if hours else None)}
 
 
 @router.get("/me", response_model=MeOut)

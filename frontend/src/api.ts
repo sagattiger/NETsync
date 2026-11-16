@@ -269,8 +269,8 @@ export type AskTarget =
   | { kind: "syslog"; syslog_id: number; syslog_time: string };
 
 export interface SettingField {
-  key: string; label: string; type: "text" | "secret" | "number" | "bool" | "select" | "textarea" | "model" | "color" | "image";
-  help?: string; section?: string; options?: [string, string][]; min?: number; max?: number; float?: boolean;
+  key: string; label: string; type: "text" | "secret" | "number" | "bool" | "select" | "textarea" | "model" | "color" | "image" | "multi";
+  help?: string; section?: string; tab?: string; placeholder?: string; options?: [string, string][]; min?: number; max?: number; float?: boolean;
 }
 export interface PluginSettings {
   name: string; label: string; enabled: boolean; fields: SettingField[];

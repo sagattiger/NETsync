@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from netsync.config import get_settings
 from netsync.models import Component, Device, Metric, Service, State, StateChange, device_group_members
 from netsync.plugins.base import AlertEvent, CheckResult, DeviceContext, MetricSample
 from netsync.plugins.registry import registry
@@ -19,12 +18,12 @@ log = logging.getLogger(__name__)
 MISSES_BEFORE_DELETE = 2  # discoveries in a row a component must be missing before it is marked removed
 
 
-def count_miss(comp) -> bool:
+def count_miss(comp, limit: int = MISSES_BEFORE_DELETE) -> bool:
     """Record that discovery didn't find ``comp``; True once it has been missing MISSES_BEFORE_DELETE times in a row
     (a component that is found again gets fresh attrs, which resets the count)."""
     misses = int((comp.attrs or {}).get("missing", 0)) + 1
     comp.attrs = {**(comp.attrs or {}), "missing": misses}
-    return misses >= MISSES_BEFORE_DELETE
+    return misses >= limit
 
 
 async def load_components(session: AsyncSession, device: Device) -> list[Component]:
@@ -40,6 +39,8 @@ async def discover_device(session: AsyncSession, device: Device) -> None:
     from netsync import general
 
     skip = await general.disabled_kinds()  # Settings → General → Discovery
+    rules_cfg = await general.get()
+    miss_limit = int(rules_cfg.get("entity_missing_discoveries") or MISSES_BEFORE_DELETE)
 
     for module in registry.modules:
         if not module.applies_to(device):
@@ -57,8 +58,8 @@ async def discover_device(session: AsyncSession, device: Device) -> None:
 
         seen = set()
         for spec in specs:
-            if spec.kind in skip:
-                continue  # switched off: not added, and existing ones are removed like any missing component
+            if spec.kind in skip or general.ignored(spec, rules_cfg):
+                continue  # switched off or ignored: not added, and existing ones are removed like any missing component
             key = (spec.kind, spec.index)
             seen.add(key)
             comp = by_key.get(key)
@@ -78,7 +79,7 @@ async def discover_device(session: AsyncSession, device: Device) -> None:
             if key[0] in module.kinds and key not in seen and not comp.deleted:
                 # One short or empty answer (agent just restarted, a timeout) must not wipe components:
                 # only mark one removed when it is missing in two discoveries in a row.
-                if not count_miss(comp):
+                if not count_miss(comp, miss_limit):
                     continue
                 comp.deleted = True
                 await session.execute(delete(Service).where(Service.component_id == comp.id))
@@ -119,7 +120,9 @@ async def store_results(
         s.name: s for s in await session.scalars(select(Service).where(Service.device_id == device.id))
     }
     events: list[tuple[int, AlertEvent]] = []
-    url = get_settings().public_url.rstrip("/")
+    from netsync import general
+
+    url = general.public_url()
     for cr in checks:
         state, output = rules.evaluate(cr, device.id, group_ids)
         svc = services.get(cr.name)

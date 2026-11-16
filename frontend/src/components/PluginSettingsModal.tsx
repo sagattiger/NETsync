@@ -67,6 +67,25 @@ function ImageInput({ value, onChange }: { value: string; onChange: (v: string) 
   );
 }
 
+/** Toggle chips for a list of choices (ifTypes, IP address types…). */
+function MultiPick({ options, value, onChange }: { options: [string, string][]; value: string[]; onChange: (v: string[]) => void }) {
+  const on = new Set(value);
+  const toggle = (k: string) => onChange(on.has(k) ? value.filter((x) => x !== k) : [...value, k]);
+  return (
+    <div>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map(([k, label]) => (
+          <button key={k} type="button" onClick={() => toggle(k)} aria-pressed={on.has(k)}
+            className={`px-2 py-0.5 rounded-pill border text-xs transition-colors ${on.has(k) ? "bg-accent/15 border-accent/60 text-strong" : "border-line text-muted hover:text-fg hover:border-edge"}`}>
+            {on.has(k) && <span className="mr-1">✓</span>}{label}
+          </button>
+        ))}
+      </div>
+      <div className="text-xxs text-muted mt-1.5">{value.length} selected{value.length ? <> · <button type="button" className="underline" onClick={() => onChange([])}>clear</button></> : null}</div>
+    </div>
+  );
+}
+
 export function Field({ f, plugin, config, set }: { f: SettingField; plugin: string; config: Record<string, any>; set: (k: string, v: any) => void }) {
   const v = config[f.key];
   if (f.type === "bool") {
@@ -95,13 +114,16 @@ export function Field({ f, plugin, config, set }: { f: SettingField; plugin: str
         <select className="input w-full" value={String(v ?? "")} onChange={(e) => set(f.key, e.target.value)}>
           {f.options?.map(([val, label]) => <option key={val} value={val}>{label}</option>)}
         </select>
+      ) : f.type === "multi" ? (
+        <MultiPick options={f.options ?? []} value={Array.isArray(v) ? v : []} onChange={(val) => set(f.key, val)} />
       ) : f.type === "textarea" ? (
-        <textarea className="input w-full min-h-[5rem]" value={v ?? ""} onChange={(e) => set(f.key, e.target.value)} />
+        <textarea className="input w-full min-h-[5rem] font-mono text-xs" value={v ?? ""} placeholder={f.placeholder ? `Example: ${f.placeholder}` : undefined}
+          rows={Math.min(10, Math.max(3, String(v ?? "").split("\n").length + 1))} spellCheck={false} onChange={(e) => set(f.key, e.target.value)} />
       ) : f.type === "model" ? (
         <ModelPicker plugin={plugin} config={config} value={v ?? ""} onChange={(val) => set(f.key, val)} />
       ) : (
         <input className="input w-full" type={f.type === "secret" ? "password" : f.type === "number" ? "number" : "text"}
-          step={f.float ? "0.1" : undefined} min={f.min} max={f.max} value={v ?? ""} autoComplete="off"
+          step={f.float ? "0.1" : undefined} min={f.min} max={f.max} value={v ?? ""} autoComplete="off" placeholder={f.placeholder}
           onChange={(e) => set(f.key, e.target.value)} />
       )}
       {f.help && <div className="text-xs text-muted mt-1">{f.help}</div>}

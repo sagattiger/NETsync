@@ -106,8 +106,11 @@ class SnmpClient:
         s = get_settings()
         self.host = host
         self.port = port
-        self.timeout = timeout if timeout is not None else s.snmp_timeout
-        self.retries = retries if retries is not None else s.snmp_retries
+        from netsync import general  # Settings → General → Network (falls back to the server settings)
+
+        g = general.current()
+        self.timeout = timeout if timeout is not None else float(g.get("snmp_timeout") or s.snmp_timeout)
+        self.retries = retries if retries is not None else int(g.get("snmp_retries", s.snmp_retries))
         if version == "3":
             v3 = v3 or {}
             self.auth = UsmUserData(
