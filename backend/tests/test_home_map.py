@@ -9,7 +9,7 @@ from netsync.api.sites import SiteIn
 
 def test_default_home_layout_is_valid():
     d = DashboardIn(name="Home", widgets=HOME_WIDGETS)
-    assert [w.type for w in d.widgets][:3] == ["hero", "strip", "map"]
+    assert [w.type for w in d.widgets][:4] == ["hero", "strip", "problem_counts", "map"]
 
 
 def test_map_widget_options_round_trip():

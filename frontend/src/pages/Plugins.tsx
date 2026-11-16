@@ -29,7 +29,7 @@ export default function Plugins() {
       <PageHeader title="Plugins & nodes" sub="Installed extensions and polling nodes" />
       <Page>
         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
-          {data.map((p) => (
+          {data.filter((p) => p.name !== "general").map((p) => (
             <Card key={p.name} className={p.name === "ai" ? "border-accent/40" : ""}>
               <div className="p-4 space-y-2.5 h-full flex flex-col">
                 <div className="flex justify-between items-start gap-2">

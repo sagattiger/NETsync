@@ -292,3 +292,71 @@ async def test_notification(rule_id: int, session: Session):
     except Exception as e:
         raise HTTPException(502, f"Sending failed: {e}") from e
     return {"ok": True}
+
+
+# --------------------------------------------------------------------------- problem history
+
+HISTORY_BUCKETS = {"1h": 60, "6h": 300, "24h": 900, "7d": 3600, "30d": 6 * 3600, "1y": 86400}
+HISTORY_SPAN = {"1h": 3600, "6h": 6 * 3600, "24h": 86400, "7d": 7 * 86400, "30d": 30 * 86400, "1y": 365 * 86400}
+
+
+def problem_series(baseline: int, changes: list[tuple[datetime, int, int]], start: datetime, end: datetime,
+                   step: int) -> list[dict]:
+    """Open problems at the end of each bucket, plus problems opened and resolved in it.
+
+    A problem opens on OK -> WARN/CRIT/UNKNOWN and closes on a change back to OK; changes between problem states
+    don't count. ``changes`` are (time, old_state, new_state) sorted by time."""
+    out = []
+    n = max(1, int((end - start).total_seconds() // step) + 1)
+    i, open_now = 0, baseline
+    for b in range(n):
+        b_start = start + timedelta(seconds=b * step)
+        b_end = b_start + timedelta(seconds=step)
+        new = resolved = 0
+        peak = open_now
+        while i < len(changes) and changes[i][0] < b_end:
+            _, old, new_state = changes[i]
+            if old == State.OK and new_state != State.OK:
+                new += 1
+                open_now += 1
+            elif old != State.OK and new_state == State.OK:
+                resolved += 1
+                open_now = max(0, open_now - 1)
+            peak = max(peak, open_now)
+            i += 1
+        out.append({"t": b_start.isoformat(), "open": open_now, "peak": peak, "new": new, "resolved": resolved})
+    return out
+
+
+@router.get("/problems/history")
+async def problem_history(user: CurrentUser, session: Session, range: str = "24h", device_id: int | None = None):
+    """How many problems were open over time (1h-1y), with counters for the Problems page and Home."""
+    if range not in HISTORY_SPAN:
+        raise HTTPException(400, f"range must be one of {', '.join(HISTORY_SPAN)}")
+    now = datetime.now(UTC)
+    step = HISTORY_BUCKETS[range]
+    start = datetime.fromtimestamp((now.timestamp() - HISTORY_SPAN[range]) // step * step, UTC)
+    scope = device_scope(select(Service.id).join(Device, Device.id == Service.device_id), user)
+    if device_id:
+        scope = scope.where(Service.device_id == device_id)
+    ids = select(scope.subquery().c.id)
+
+    # open at the start: services whose last change before the window left them in a problem state
+    last = (select(StateChange.service_id, StateChange.new_state)
+            .where(StateChange.service_id.in_(ids), StateChange.time < start)
+            .distinct(StateChange.service_id).order_by(StateChange.service_id, StateChange.time.desc())).subquery()
+    baseline = await session.scalar(select(func.count()).select_from(last).where(last.c.new_state != State.OK)) or 0
+    changes = [(t, o, n) for t, o, n in await session.execute(
+        select(StateChange.time, StateChange.old_state, StateChange.new_state)
+        .where(StateChange.service_id.in_(ids), StateChange.time >= start).order_by(StateChange.time))]
+    series = problem_series(baseline, changes, start, now, step)
+
+    active_q = select(func.count()).select_from(Service).where(Service.id.in_(ids), Service.state > State.OK)
+    return {
+        "range": range, "step": step, "series": series,
+        "active": await session.scalar(active_q) or 0,
+        "unhandled": await session.scalar(active_q.where(Service.acknowledged.is_(False))) or 0,
+        "critical": await session.scalar(active_q.where(Service.state == State.CRIT)) or 0,
+        "new": sum(b["new"] for b in series),
+        "resolved": sum(b["resolved"] for b in series),
+    }

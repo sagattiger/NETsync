@@ -85,7 +85,8 @@ function AddRule({ channels, groups, onClose }: { channels: Channel[]; groups: G
         {ch?.fields.map((f) => (
           <div key={f.key}><label className="label">{f.label}</label>
             <input className="input w-full" type={f.type === "secret" ? "password" : "text"} value={config[f.key] ?? ""}
-              onChange={(e) => setConfig({ ...config, [f.key]: e.target.value })} /></div>
+              onChange={(e) => setConfig({ ...config, [f.key]: e.target.value })} />
+            {(f as any).help && <div className="text-xs text-muted mt-1">{(f as any).help}</div>}</div>
         ))}
         <div className="grid grid-cols-2 gap-3">
           <div><label className="label">Notify from state</label>

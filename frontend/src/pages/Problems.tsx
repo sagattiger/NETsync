@@ -1,3 +1,4 @@
+import ProblemHistory from "../components/ProblemHistory";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, Service } from "../api";
@@ -29,6 +30,7 @@ export default function Problems() {
         }
       />
       <Page>
+        <ProblemHistory />
         <Card><ServiceTable services={rows} showHost problems /></Card>
       </Page>
     </>

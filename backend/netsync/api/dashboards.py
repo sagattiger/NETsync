@@ -69,7 +69,7 @@ class Widget(BaseModel):
     id: str = Field(max_length=64)
     type: Literal["graph", "device", "problems", "services", "uptime", "kpi", "gauge", "rings", "donut", "bars",
                   # Home page widgets
-                  "hero", "strip", "map", "dashboards", "glance", "pinned", "insights"]
+                  "hero", "strip", "map", "dashboards", "glance", "pinned", "insights", "problem_counts"]
     title: str = Field("", max_length=128)
     size: Literal["s", "m", "l"] = "m"
     device_id: int | None = None
@@ -205,6 +205,7 @@ def _apply_public(d: Dashboard, body: DashboardIn, user: User) -> None:
 HOME_WIDGETS = [
     {"id": "hero", "type": "hero", "title": "", "size": "l", "cols": 12},
     {"id": "strip", "type": "strip", "title": "", "size": "l", "cols": 12},
+    {"id": "pcounts", "type": "problem_counts", "title": "Problems", "size": "l", "cols": 12},
     {"id": "map", "type": "map", "title": "Network map", "size": "l", "cols": 12, "height": "tall"},
     {"id": "dash", "type": "dashboards", "title": "Dashboards", "size": "s", "cols": 4},
     {"id": "glance", "type": "glance", "title": "At a glance", "size": "m", "cols": 8},

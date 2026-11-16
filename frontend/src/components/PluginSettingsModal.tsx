@@ -43,6 +43,30 @@ function ModelPicker({ plugin, config, value, onChange }: { plugin: string; conf
   );
 }
 
+/** An image chosen from disk, kept as a data URL (small logos and icons). */
+function ImageInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [err, setErr] = useState("");
+  const pick = (file: File | undefined) => {
+    setErr("");
+    if (!file) return;
+    if (!/^image\/(png|svg\+xml|jpeg|webp|x-icon|vnd\.microsoft\.icon)$/.test(file.type)) { setErr("Use a PNG, SVG, JPG, WebP or ICO image"); return; }
+    if (file.size > 300_000) { setErr("Up to 300 KB"); return; }
+    const r = new FileReader();
+    r.onload = () => onChange(String(r.result));
+    r.readAsDataURL(file);
+  };
+  return (
+    <div className="flex items-center gap-3">
+      <div className="w-12 h-12 rounded-lg border border-line bg-inset flex items-center justify-center overflow-hidden shrink-0">
+        {value ? <img src={value} alt="" className="max-w-full max-h-full object-contain" /> : <span className="text-xxs text-muted">default</span>}
+      </div>
+      <label className="btn cursor-pointer">Choose…<input type="file" accept="image/png,image/svg+xml,image/jpeg,image/webp,image/x-icon" className="hidden" onChange={(e) => pick(e.target.files?.[0])} /></label>
+      {value && <button type="button" className="btn btn-ghost text-xs" onClick={() => onChange("")}>Use default</button>}
+      {err && <span className="text-xs text-crit">{err}</span>}
+    </div>
+  );
+}
+
 export function Field({ f, plugin, config, set }: { f: SettingField; plugin: string; config: Record<string, any>; set: (k: string, v: any) => void }) {
   const v = config[f.key];
   if (f.type === "bool") {
@@ -59,7 +83,15 @@ export function Field({ f, plugin, config, set }: { f: SettingField; plugin: str
   return (
     <div>
       <label className="label">{f.label}</label>
-      {f.type === "select" ? (
+      {f.type === "color" ? (
+        <div className="flex items-center gap-2">
+          <input type="color" className="w-10 h-9 rounded-md border border-line bg-transparent cursor-pointer" value={v || "#ff58ae"} onChange={(e) => set(f.key, e.target.value)} />
+          <input className="input w-32 font-mono" value={v ?? ""} placeholder="default" onChange={(e) => set(f.key, e.target.value.trim())} />
+          {v && <button type="button" className="btn btn-ghost text-xs" onClick={() => set(f.key, "")}>Default</button>}
+        </div>
+      ) : f.type === "image" ? (
+        <ImageInput value={v ?? ""} onChange={(val) => set(f.key, val)} />
+      ) : f.type === "select" ? (
         <select className="input w-full" value={String(v ?? "")} onChange={(e) => set(f.key, e.target.value)}>
           {f.options?.map(([val, label]) => <option key={val} value={val}>{label}</option>)}
         </select>

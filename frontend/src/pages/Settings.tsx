@@ -2,7 +2,8 @@
 import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, Me, Series } from "../api";
+import { api, Me, PluginSettings, Series } from "../api";
+import { Field } from "../components/PluginSettingsModal";
 import { Icon } from "../components/Icon";
 import { Page, PageHeader } from "../components/Layout";
 import { TimeChart } from "../components/MetricChart";
@@ -12,17 +13,17 @@ import { CHART_DEFAULTS, ChartPrefs, PALETTES, PaletteName, seriesPalette } from
 interface SettingsTab { to: string; label: string; icon: string; admin?: boolean; active: (path: string, search: string) => boolean }
 
 export const SETTINGS_TABS: SettingsTab[] = [
+  { to: "/settings/general", label: "General", icon: "gear", admin: true, active: (p) => p === "/settings/general" },
   { to: "/settings/charts", label: "Charts", icon: "palette", active: (p) => p === "/settings" || p === "/settings/charts" },
   { to: "/settings/appearance", label: "Appearance", icon: "sliders", active: (p) => p === "/settings/appearance" },
   { to: "/settings/sites", label: "Sites", icon: "globe", active: (p) => p === "/settings/sites" },
   { to: "/setup/rules", label: "Threshold rules", icon: "sliders", active: (p) => p === "/setup/rules" },
   { to: "/setup/users", label: "Users & groups", icon: "users", admin: true, active: (p) => p === "/setup/users" },
   { to: "/setup/terminal", label: "Terminal access", icon: "lock", admin: true, active: (p) => p === "/setup/terminal" },
-  { to: "/setup/plugins?configure=ai", label: "AI assistant", icon: "sparkles", admin: true, active: (p, s) => p === "/setup/plugins" && s.includes("configure=ai") },
   { to: "/setup/ai-tools", label: "AI tools & MCP", icon: "terminal", active: (p) => p === "/setup/ai-tools" },
   { to: "/setup/tokens", label: "API tokens", icon: "lock", admin: true, active: (p) => p === "/setup/tokens" },
   { to: "/setup/housekeeping", label: "Housekeeping", icon: "list", admin: true, active: (p) => p === "/setup/housekeeping" },
-  { to: "/setup/plugins", label: "Plugins & nodes", icon: "puzzle", active: (p, s) => p === "/setup/plugins" && !s.includes("configure=ai") },
+  { to: "/setup/plugins", label: "Plugins & nodes", icon: "puzzle", active: (p) => p === "/setup/plugins" },
 ];
 
 export const isSettingsPath = (path: string) =>
@@ -227,6 +228,73 @@ export function AppearanceSettings() {
             <LevelBar value={53} max={100} warn={70} crit={85} fmt={(v) => `${v.toFixed(1)} °C`} />
           </div>
         </Card>
+      </div>
+    </Page>
+  );
+}
+
+// --------------------------------------------------------------------------- General tab (admins)
+
+interface Autodiscovery { finished?: string; seconds?: number; scanned?: number; answered?: number; added?: { id: number; hostname: string; ip: string }[]; error?: string; running?: boolean }
+
+export function GeneralSettings() {
+  const qc = useQueryClient();
+  const { data: settings } = useQuery({ queryKey: ["plugin-settings", "general"], queryFn: () => api<PluginSettings>("/plugins/general/settings") });
+  const { data: scan } = useQuery({ queryKey: ["autodiscovery"], queryFn: () => api<Autodiscovery>("/plugins/general/autodiscovery"), refetchInterval: 10_000 });
+  const [config, setConfig] = useState<Record<string, any>>({});
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (settings) setConfig(settings.config); }, [settings]);
+  const sections = settings ? [...new Set(settings.fields.map((f) => f.section ?? "Settings"))] : [];
+
+  async function save() {
+    setBusy(true); setMsg(null);
+    try {
+      const saved = await api<PluginSettings>("/plugins/general/settings", { method: "PUT", body: { enabled: true, config } });
+      qc.setQueryData(["plugin-settings", "general"], saved);
+      qc.invalidateQueries({ queryKey: ["branding"] });
+      setMsg({ ok: true, text: "Saved. Discovery changes apply at each device's next discovery." });
+    } catch (e: any) { setMsg({ ok: false, text: e.message }); }
+    setBusy(false);
+  }
+  async function scanNow() {
+    setMsg(null);
+    try {
+      const r = await api<{ ok: boolean; message: string }>("/plugins/general/autodiscovery/run", { method: "POST" });
+      setMsg({ ok: r.ok, text: r.message });
+      qc.invalidateQueries({ queryKey: ["autodiscovery"] });
+    } catch (e: any) { setMsg({ ok: false, text: e.message }); }
+  }
+
+  return (
+    <Page>
+      <PageHeader title="General" sub="Branding, defaults for everyone, what discovery collects, and finding new devices."
+        actions={<button className="btn btn-primary" onClick={save} disabled={busy || !settings}>{busy ? "Saving…" : "Save"}</button>} />
+      {msg && <div className={`text-sm ${msg.ok ? "text-ok" : "text-crit"}`}>{msg.text}</div>}
+      <div className="grid xl:grid-cols-2 gap-4 items-start">
+        {sections.map((sec) => (
+          <Card key={sec} title={sec} flush={false}>
+            <div className="space-y-4">
+              {settings!.fields.filter((f) => (f.section ?? "Settings") === sec).map((f) => (
+                <Field key={f.key} f={f} plugin="general" config={config} set={(k, v) => setConfig((c) => ({ ...c, [k]: v }))} />
+              ))}
+              {sec === "Discovery" && <p className="text-xs text-muted">Switching one off stops collecting it; what was found before is removed at the next two discoveries.</p>}
+              {sec === "Autodiscovery" && (
+                <div className="border-t border-line pt-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <button className="btn" onClick={scanNow}><Icon name="refresh" className="w-3.5 h-3.5" /> Scan now</button>
+                    <span className="text-xs text-muted">Saves nothing: save your changes first.</span>
+                  </div>
+                  <div className="text-xs text-fg2">
+                    {scan?.running ? "Scanning…" : scan?.error ? <span className="text-crit">Last scan failed: {scan.error}</span>
+                      : scan?.finished ? <>Last scan {new Date(scan.finished).toLocaleString()}: {scan.scanned} addresses in {scan.seconds}s, {scan.answered} answered, {scan.added?.length ?? 0} added
+                        {scan.added?.length ? <>: {scan.added.map((d) => d.hostname).join(", ")}</> : null}</> : "No scan yet."}
+                  </div>
+                </div>
+              )}
+            </div>
+          </Card>
+        ))}
       </div>
     </Page>
   );

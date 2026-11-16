@@ -2,6 +2,7 @@ import { createContext, useContext } from "react";
 import { DashboardsWidget, GlanceWidget, HeroWidget, InsightsWidget, StripWidget } from "../Overview";
 import { PinnedEvents } from "../../components/EventComments";
 import { WorldMap } from "../../components/WorldMap";
+import { ProblemCountersWidget } from "../../components/ProblemHistory";
 import { Link } from "react-router-dom";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { api, Component, Device, fmtUptime, Heartbeat, logoSrc, prefs, Probe, RingItem, Series, Service, Widget } from "../../api";
@@ -60,7 +61,7 @@ export function autoTitle(w: Widget, devices: Device[], components: Component[],
   const host = devices.find((d) => d.id === w.device_id)?.hostname;
   const probe = probes.find((p) => p.id === w.probe_id);
   const HOME_TITLES: Record<string, string> = { hero: "Welcome", strip: "Shortcuts", map: "Network map", dashboards: "Dashboards",
-    glance: "At a glance", pinned: "Pinned events", insights: "AI insights" };
+    glance: "At a glance", pinned: "Pinned events", insights: "AI insights", problem_counts: "Problems" };
   if (HOME_TITLES[w.type]) return HOME_TITLES[w.type];
   if (w.type === "uptime") return probe?.name ?? "Uptime";
   if (w.type === "kpi" || w.type === "gauge") {
@@ -341,6 +342,7 @@ export function WidgetBody({ w, range }: { w: Widget; range: string }) {
   if (w.type === "glance") return <GlanceWidget />;
   if (w.type === "pinned") return <PinnedEvents showDevice />;
   if (w.type === "insights") return <InsightsWidget />;
+  if (w.type === "problem_counts") return <ProblemCountersWidget />;
   if (w.type === "map") {
     return <WorldMap height={MAP_HEIGHTS[w.height ?? "normal"]} center={w.center} zoom={w.zoom} style={w.map_style} hideSites={w.hide_sites} />;
   }

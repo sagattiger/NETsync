@@ -1,4 +1,4 @@
-"""Built-in notification channels: email, Telegram, generic webhook."""
+"""Built-in notification channels: email, Telegram, generic webhook, workflows (n8n and friends)."""
 
 from email.message import EmailMessage
 
@@ -89,3 +89,98 @@ class WebhookChannel(NotificationChannel):
         async with httpx.AsyncClient(timeout=10) as c:
             r = await c.post(config["url"], json=payload, headers=headers)
             r.raise_for_status()
+
+
+# --------------------------------------------------------------------------- workflows (n8n, Make, Zapier, Node-RED…)
+
+EVENT_NAMES = {True: "recovery", False: "problem"}
+
+
+async def workflow_payload(event: AlertEvent) -> dict:
+    """Everything a workflow needs to route an alert without calling NETsync back."""
+    from sqlalchemy import select
+
+    from netsync import __version__
+    from netsync.db import SessionLocal
+    from netsync.models import Device, Service, Site
+
+    device = svc = site = None
+    try:
+        async with SessionLocal() as s:
+            device = await s.get(Device, event.device_id) if event.device_id else None
+            if device:
+                svc = await s.scalar(select(Service).where(Service.device_id == device.id, Service.name == event.service))
+                site = await s.get(Site, device.site_id) if device.site_id else None
+    except Exception:  # noqa: BLE001 - send what we have
+        pass
+    recovered = event.new_state == State.OK
+    kind = EVENT_NAMES[recovered] if event.old_state == State.OK or recovered else "change"
+    state, prev = State(event.new_state).name, State(event.old_state).name
+    summary = f"{state} - {event.hostname} / {event.service}: {event.output}"
+    base = event.url.split("/devices/")[0]
+    return {
+        "event": kind,  # problem | recovery | change (WARN <-> CRIT)
+        "summary": summary,
+        "text": summary,  # Slack / Mattermost / Chatwoot style consumers read "text"
+        "state": state, "previous_state": prev, "severity": int(event.new_state),
+        "time": event.time.isoformat(),
+        "device": {
+            "id": event.device_id, "hostname": event.hostname,
+            "ip": device.ip if device else None, "os": device.os if device else None,
+            "type": device.device_type if device else None, "location": device.sys_location if device else None,
+            "site": site.name if site else None,
+            "lat": (site.lat if site and site.lat is not None else device.lat) if device else None,
+            "lon": (site.lon if site and site.lon is not None else device.lon) if device else None,
+            "groups": [g.name for g in device.groups] if device else [],
+        },
+        "service": {
+            "id": svc.id if svc else None, "name": event.service, "check": svc.check if svc else None,
+            "output": event.output, "values": svc.perf if svc else {},
+            "acknowledged": bool(svc.acknowledged) if svc else False,
+        },
+        "links": {"device": event.url, "problems": f"{base}/problems"},
+        "netsync": {"version": __version__, "url": base},
+    }
+
+
+class WorkflowChannel(NotificationChannel):
+    name = "workflow"
+    label = "Workflow (n8n, Make, Zapier, Node-RED…)"
+    config_fields = [
+        {"key": "url", "label": "Webhook URL", "type": "text", "required": True,
+         "help": "The URL of the workflow's webhook trigger, e.g. https://n8n.example.com/webhook/netsync"},
+        {"key": "auth_header", "label": "Auth header name (optional)", "type": "text",
+         "help": "e.g. Authorization or X-API-Key, for webhooks protected by header auth"},
+        {"key": "auth_value", "label": "Auth header value (optional)", "type": "secret"},
+        {"key": "signing_secret", "label": "Signing secret (optional)", "type": "secret",
+         "help": "Adds X-NETsync-Signature: sha256=<HMAC of the body> so the workflow can check the sender"},
+    ]
+
+    async def send(self, event, config):
+        import hashlib
+        import hmac
+        import json
+
+        payload = await workflow_payload(event)
+        body = json.dumps(payload, default=str).encode()
+        headers = {"Content-Type": "application/json", "User-Agent": "NETsync", "X-NETsync-Event": payload["event"]}
+        if config.get("auth_header") and config.get("auth_value"):
+            headers[config["auth_header"].strip()] = config["auth_value"]
+        if config.get("signing_secret"):
+            sig = hmac.new(config["signing_secret"].encode(), body, hashlib.sha256).hexdigest()
+            headers["X-NETsync-Signature"] = f"sha256={sig}"
+        last: Exception | None = None
+        for attempt in range(3):  # workflows restart; try a few times before giving up
+            try:
+                async with httpx.AsyncClient(timeout=15) as c:
+                    r = await c.post(config["url"], content=body, headers=headers)
+                if r.status_code < 500:
+                    r.raise_for_status()
+                    return
+                last = httpx.HTTPStatusError(f"HTTP {r.status_code}", request=r.request, response=r)
+            except (httpx.TransportError, httpx.TimeoutException) as e:
+                last = e
+            import asyncio
+
+            await asyncio.sleep(1 + attempt * 2)
+        raise last or RuntimeError("workflow did not answer")

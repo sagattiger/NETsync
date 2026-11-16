@@ -1,4 +1,4 @@
-from netsync import housekeeping, probes
+from netsync import general, housekeeping, probes
 from netsync.tools import builtin as tool_builtin
 from netsync.tools.remote import RemotePluginService
 from netsync.plugins.base import Plugin
@@ -6,7 +6,7 @@ from netsync.plugins.builtin import ai, latency
 from netsync.plugins.builtin.host_resources import HostResourcesModule
 from netsync.plugins.builtin.interfaces import InterfacesModule
 from netsync.plugins.builtin.netstats import NetstatsModule
-from netsync.plugins.builtin.notify import EmailChannel, TelegramChannel, WebhookChannel
+from netsync.plugins.builtin.notify import EmailChannel, TelegramChannel, WebhookChannel, WorkflowChannel
 from netsync.plugins.builtin.diskio import DiskIoModule
 from netsync.plugins.builtin.sensors import SensorsModule
 from netsync.plugins.builtin.syslog import SyslogService
@@ -26,8 +26,8 @@ BUILTIN_PLUGINS = [
     Plugin(
         name="notifications",
         version="0.1.0",
-        description="Email, Telegram and webhook notification channels",
-        channels=[EmailChannel(), TelegramChannel(), WebhookChannel()],
+        description="Email, Telegram, webhook and workflow (n8n, Make, Zapier…) notification channels",
+        channels=[EmailChannel(), TelegramChannel(), WebhookChannel(), WorkflowChannel()],
         builtin=True,
     ),
     Plugin(
@@ -40,6 +40,7 @@ BUILTIN_PLUGINS = [
     latency.plugin,
     probes.plugin,
     housekeeping.plugin,
+    general.plugin,
     Plugin(
         name="netsync",
         label="Tool hub (MCP)",

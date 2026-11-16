@@ -37,6 +37,9 @@ async def discover_device(session: AsyncSession, device: Device) -> None:
     existing = await load_components(session, device)
     by_key = {(c.kind, c.index): c for c in existing}
     ctx = DeviceContext(device, snmp, existing, now)
+    from netsync import general
+
+    skip = await general.disabled_kinds()  # Settings → General → Discovery
 
     for module in registry.modules:
         if not module.applies_to(device):
@@ -54,6 +57,8 @@ async def discover_device(session: AsyncSession, device: Device) -> None:
 
         seen = set()
         for spec in specs:
+            if spec.kind in skip:
+                continue  # switched off: not added, and existing ones are removed like any missing component
             key = (spec.kind, spec.index)
             seen.add(key)
             comp = by_key.get(key)

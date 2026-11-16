@@ -73,7 +73,7 @@ export interface DeviceEvent {
 export interface PinnedEvent extends DeviceEvent { device_id: number; hostname: string; pinned_at: string }
 
 export type WidgetType = "graph" | "device" | "problems" | "services" | "uptime" | "kpi" | "gauge" | "rings" | "donut" | "bars"
-  | "hero" | "strip" | "map" | "dashboards" | "glance" | "pinned" | "insights";
+  | "hero" | "strip" | "map" | "dashboards" | "glance" | "pinned" | "insights" | "problem_counts";
 /** One ring of a rings widget (a device/component or probe metric, shown as 0–100 %). */
 export interface RingItem {
   label?: string | null; device_id?: number | null; component_id?: number | null; probe_id?: number | null;
@@ -269,7 +269,7 @@ export type AskTarget =
   | { kind: "syslog"; syslog_id: number; syslog_time: string };
 
 export interface SettingField {
-  key: string; label: string; type: "text" | "secret" | "number" | "bool" | "select" | "textarea" | "model";
+  key: string; label: string; type: "text" | "secret" | "number" | "bool" | "select" | "textarea" | "model" | "color" | "image";
   help?: string; section?: string; options?: [string, string][]; min?: number; max?: number; float?: boolean;
 }
 export interface PluginSettings {

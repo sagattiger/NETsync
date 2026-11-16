@@ -1,3 +1,4 @@
+import { appName, useBranding } from "./Brand";
 /**
  * Browser-like tabs inside the app shell.
  *
@@ -290,7 +291,7 @@ const STATIC: [string, string, string][] = [
   ["/setup/notifications", "Notifications", "bell"], ["/setup/users", "Users & groups", "users"],
   ["/setup/plugins", "Plugins & nodes", "puzzle"], ["/setup/store", "Plugin store", "puzzle"],
   ["/setup/terminal", "Terminal access", "lock"], ["/terminal", "Terminal", "terminal"],
-  ["/settings", "Settings", "gear"], ["/settings/charts", "Chart settings", "palette"], ["/settings/appearance", "Appearance", "sliders"], ["/settings/sites", "Sites", "globe"], ["/setup/housekeeping", "Housekeeping", "list"],
+  ["/settings", "Settings", "gear"], ["/settings/charts", "Chart settings", "palette"], ["/settings/appearance", "Appearance", "sliders"], ["/settings/sites", "Sites", "globe"], ["/settings/general", "General settings", "gear"], ["/setup/housekeeping", "Housekeeping", "list"],
   ["/setup/ai-tools", "AI tools & MCP", "terminal"], ["/setup/tokens", "API tokens", "lock"], ["/profile", "Profile", "user"],
   ["/about", "About", "info"],
 ];
@@ -320,7 +321,8 @@ export function DocumentTitle() {
   const t = useTabs();
   const active = t?.tabs.find((x) => x.id === t.active);
   const info = useTabInfo(active ? tabPath(active) : "/");
-  useEffect(() => { document.title = `${info.title} · NETsync`; }, [info.title]);
+  const name = appName(useBranding());
+  useEffect(() => { document.title = `${info.title} · ${name}`; }, [info.title, name]);
   return null;
 }
 

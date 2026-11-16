@@ -141,7 +141,9 @@ class InterfacesModule(Module):
 
     async def discover(self, ctx: DeviceContext):
         rows = await ctx.snmp.table(DISCOVER_COLS)
-        addresses = await port_addresses(ctx.snmp)
+        from netsync import general
+
+        addresses = await port_addresses(ctx.snmp) if (await general.get()).get("discover_ip_addresses", True) else {}
         specs = []
         for index, r in rows.items():
             if r.get("type") in SKIP_TYPES:

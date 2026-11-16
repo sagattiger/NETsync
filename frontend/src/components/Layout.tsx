@@ -8,7 +8,7 @@ import { ChatPanel, ChatProvider, useChat } from "./AIChat";
 import { Avatar } from "./Avatar";
 import { CommandPaletteProvider, useCommandPalette } from "./CommandPalette";
 import { Icon } from "./Icon";
-import { LogoIcon } from "./Brand";
+import { BrandMark, LogoIcon, useApplyBranding } from "./Brand";
 import { BackLink, DocumentTitle, TabBar, TabsProvider, TabViews, useTabs } from "./Tabs";
 import { pageRoutes } from "../routes";
 import { useTerminalStatus } from "../pages/TerminalPage";
@@ -135,8 +135,7 @@ function Sidebar({ me, collapsed, onToggle, onNavigate, mobile }: {
         ) : (
           <>
             <Link to="/" onClick={onNavigate} className="flex items-center gap-2.5 min-w-0">
-              <LogoIcon className="w-8 h-8" />
-              <span className="text-lg font-semibold text-strong tracking-tight">NETsync</span>
+              <BrandMark />
             </Link>
             {onToggle && (
               <button onClick={onToggle} title="Collapse sidebar" className="p-1.5 rounded-lg text-muted hover:text-strong hover:bg-active/60">
@@ -240,6 +239,7 @@ function Notice({ me }: { me?: Me }) {
 }
 
 function Shell() {
+  const branding = useApplyBranding();
   useLiveEvents();
   const nav = useNavigate();
   const location = useLocation();
@@ -255,10 +255,10 @@ function Shell() {
   // Apply the user's saved UI settings (theme follows them across browsers).
   useEffect(() => {
     if (!me) return;
-    prefs.set(me.preferences);
+    prefs.set({ ...me.preferences, time_format: me.preferences.time_format ?? (branding?.time_format as "24h" | "12h" | undefined) });
     setChartPrefs(me.preferences.chart);
     if (me.preferences.theme) setChoice(me.preferences.theme);
-  }, [me, setChoice]);
+  }, [me, setChoice, branding?.time_format]);
 
   const tabs = useTabs();
   const logout = () => { tabs?.reset(); auth.set(null); nav("/login"); };

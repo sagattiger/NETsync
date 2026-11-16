@@ -26,9 +26,10 @@ const TYPES: [WidgetType, string, string][] = [
   ["dashboards", "Dashboards list", "Your dashboards"],
   ["pinned", "Pinned events", "Events pinned by your team"],
   ["insights", "AI insights", "AI analyses, open problems, devices"],
+  ["problem_counts", "Problem counters", "Active, unhandled, critical, new and resolved (24h)"],
 ];
 /** Widgets that need no device, metric or probe. */
-const STANDALONE = new Set(["map", "hero", "strip", "glance", "dashboards", "pinned", "insights"]);
+const STANDALONE = new Set(["map", "hero", "strip", "glance", "dashboards", "pinned", "insights", "problem_counts"]);
 
 /** Presets a widget type can read. */
 function presetFilter(type: WidgetType): (p: Preset) => boolean {
