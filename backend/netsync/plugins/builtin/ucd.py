@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 
-from netsync.plugins.base import ComponentSpec, DeviceContext, MetricSample, Module, PollResult
+from netsync.plugins.base import CheckResult, ComponentSpec, DeviceContext, MetricSample, Module, PollResult
 from netsync.snmp.client import text
 
 UCD = "1.3.6.1.4.1.2021"
@@ -147,7 +147,8 @@ class UcdModule(Module):
         r = await ctx.snmp.get(f"{MEM}.5.0", f"{SS}.50.0", f"{LOAD}.1")
         if all(v is None for v in r.values()):
             return []
-        found = await read_disks_extend(ctx.snmp)
+        # in an LXC container lsblk lists the host's disks: they belong to the Proxmox host, not here
+        found = None if getattr(ctx.device, "virtualization", None) == "lxc" else await read_disks_extend(ctx.snmp)
         attrs = {"disks": found[0], "swaps": found[1], "extend": True} if found else {"extend": False}
         return [ComponentSpec(KIND, INDEX, "System statistics", attrs=attrs)]
 
@@ -191,11 +192,23 @@ class UcdModule(Module):
                         and (d := counter_delta(counters[k], prev["raw"][k])) is not None):
                     rates[k] = d / dt
 
-        gauges = {k: as_float(raw.get(k)) for k in ("load1", "load5", "load15", "users", "processes")}
+        # an LXC container reads the host's load average (/proc/loadavg), so it is left out there;
+        # its CPU time split (/proc/stat through lxcfs) is the container's own
+        lxc = getattr(ctx.device, "virtualization", None) == "lxc"
+        gauge_names = ("users", "processes") if lxc else ("load1", "load5", "load15", "users", "processes")
+        gauges = {k: as_float(raw.get(k)) for k in gauge_names}
         gauges = {k: v for k, v in gauges.items() if v is not None}
         result = PollResult()
+        util = None
+        if not ctx.components("processor") and "cpu_idle" in shares:
+            # no per-core table (LXC containers, agents without HOST-RESOURCES): CPU use from the time split
+            util = max(0.0, 100.0 - shares["cpu_idle"] - shares.get("cpu_wait", 0.0))
+            result.metrics.append(MetricSample("cpu_util", util))
+            result.checks.append(CheckResult("cpu_util", "CPU utilization", value=util, unit="%",
+                                             output=f"{util:.1f}% CPU in use"))
         result.metrics += [MetricSample(k, v) for k, v in {**mem, **gauges, **shares, **rates}.items()]
         result.values[(KIND, INDEX)] = {"ts": now, "raw": counters, **mem, **gauges,
+                                        **({"cpu_util": util} if util is not None else {}),
                                         **{f"{k}_pct": v for k, v in shares.items()},
                                         **{f"{k}_rate": v for k, v in rates.items()}}
         return result

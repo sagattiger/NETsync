@@ -164,6 +164,22 @@ async def test_ucd_poll_rates_and_shares():
     assert res.values[("system_stats", "0")]["raw"]["cpu_user"] == 100
 
 
+
+@pytest.mark.asyncio
+async def test_ucd_poll_lxc_container_cpu_without_host_load():
+    """An LXC container reads the host's load average: left out. CPU use comes from its own time split."""
+    base = {"1.3.6.1.4.1.2021.10.1.3.1": b"2.13", "1.3.6.1.4.1.2021.11.50.0": 300, "1.3.6.1.4.1.2021.11.53.0": 900,
+            "1.3.6.1.4.1.2021.11.54.0": 0}
+    comp = SimpleNamespace(kind="system_stats", index="0", enabled=True, deleted=False,
+                           values={"ts": 1000.0, "raw": {"cpu_user": 100, "cpu_idle": 500, "cpu_wait": 0}})
+    ctx = DeviceContext(SimpleNamespace(virtualization="lxc"), FakeSnmp(base), [comp], datetime.fromtimestamp(1060, UTC))
+    res = await UcdModule().poll(ctx)
+    m = {s.name: s.value for s in res.metrics}
+    assert "load1" not in m
+    assert m["cpu_util"] == pytest.approx(33.333, abs=0.01)  # 200 busy of 600 ticks
+    assert [c.check for c in res.checks] == ["cpu_util"]
+    assert res.values[("system_stats", "0")]["cpu_util"] == pytest.approx(33.333, abs=0.01)
+
 # --------------------------------------------------------------------------- presets
 
 def test_new_presets_are_consistent():

@@ -52,3 +52,24 @@ def test_rocky():
 
 def test_unknown_packages_returns_none():
     assert detect([], UBUNTU_KERNEL, CPU) is None
+
+
+def test_proxmox_vm_detected_from_mac_with_host_cpu():
+    """Proxmox VMs pass the host CPU model through; their virtio NICs carry the Proxmox prefix bc:24:11."""
+    info = detect(["base-files_13ubuntu10.5_amd64", "ubuntu-release-upgrader-core_1:24.04.29_all"], UBUNTU_KERNEL,
+                  ["GenuineIntel: Intel(R) Xeon(R) CPU E5-2697 v2 @ 2.70GHz"], ["bc2411613496", "bc:24:11:78:67:10"])
+    assert (info.os, info.virtualization, info.hardware) == ("ubuntu", "vm", "Virtual machine")
+
+
+def test_bare_metal_with_a_vm_bridge_is_not_a_vm():
+    """A KVM host's virbr0 (52:54:00) next to its real NIC: not every addressed interface is virtual."""
+    info = detect(["base-files_12.4+deb12u12_amd64"], "Linux kvm1 6.1.0-28-amd64", CPU, ["74867afdb6d3", "525400aabbcc"])
+    assert info.virtualization is None
+
+
+def test_host_hardware_kinds():
+    from netsync.snmp.linux import host_hardware
+
+    assert host_hardware("lxc") == {"processor", "sensor", "disk"}
+    assert host_hardware("vm") == {"sensor"}
+    assert host_hardware(None) == frozenset()

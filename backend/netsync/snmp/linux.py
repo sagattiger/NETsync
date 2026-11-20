@@ -8,7 +8,13 @@ systems, "name-version-release.arch" for RPM) and derive:
   * the distribution and its version (from base-files / *-release packages)
   * a Proxmox VE host (pve-manager / proxmox-ve installed)
   * an LXC container on Proxmox (pve kernel but no pve-manager)
-  * a virtual machine when the virtual CPU is visible (QEMU/KVM/VMware/Hyper-V)
+  * a virtual machine when the virtual CPU is visible (QEMU/KVM/VMware/Hyper-V), or when every
+    interface holding an IPv4 address has a hypervisor's MAC prefix (Proxmox VMs usually pass the
+    host CPU model through, so the CPU alone doesn't show it)
+
+A guest sees part of its host's hardware through SNMP: an LXC container reads the host's hwmon
+sensors, block devices, CPU list and load average; a VM only has emulated sensors. HOST_HARDWARE
+lists the component kinds that belong to the hypervisor and are not discovered on a guest.
 """
 
 import re
@@ -32,6 +38,26 @@ RPM_RELEASES = [
 ]
 
 VM_CPU = re.compile(r"QEMU|KVM|VMware|Hyper-V|Microsoft Virtual|VirtualBox|Xen", re.I)
+# MAC prefixes hypervisors give virtual NICs: Proxmox, QEMU/KVM, VMware (3), Hyper-V, VirtualBox, Xen, Parallels
+VM_MAC = ("bc2411", "525400", "005056", "000c29", "000569", "00155d", "080027", "00163e", "001c42")
+
+# component kinds that show the hypervisor's hardware, not the guest's
+HOST_HARDWARE = {
+    "lxc": frozenset({"processor", "sensor", "disk"}),  # host CPU list, hwmon sensors, host block devices
+    "vm": frozenset({"sensor"}),  # emulated or passed-through sensors, never the VM's own
+}
+
+
+def host_hardware(virtualization: str | None) -> frozenset[str]:
+    """Component kinds not to discover on a guest of this kind."""
+    return HOST_HARDWARE.get(virtualization or "", frozenset())
+
+
+def vm_macs(macs: list[str]) -> bool:
+    """True when there are MACs and all of them carry a hypervisor prefix ('bc:24:11:..' or 'bc2411..')."""
+    norm = [re.sub(r"[^0-9a-f]", "", m.lower()) for m in macs if m]
+    norm = [m for m in norm if len(m) == 12 and m != "000000000000"]
+    return bool(norm) and all(m.startswith(VM_MAC) for m in norm)
 
 
 @dataclass
@@ -53,14 +79,15 @@ def split_package(entry: str) -> tuple[str, str]:
     return (m.group(1), m.group(2)) if m else (entry, "")
 
 
-def detect(packages: list[str], sys_descr: str, cpu_descrs: list[str]) -> LinuxInfo | None:
+def detect(packages: list[str], sys_descr: str, cpu_descrs: list[str], macs: list[str] | None = None) -> LinuxInfo | None:
+    """``macs``: MAC addresses of the interfaces that hold an IPv4 address (loopback left out)."""
     pkgs = dict(split_package(p) for p in packages if p)
     pve_kernel = "-pve" in (sys_descr or "")
 
     def virtualization() -> str | None:
         if pve_kernel and "pve-manager" not in pkgs and "proxmox-ve" not in pkgs:
             return "lxc"
-        if any(VM_CPU.search(c or "") for c in cpu_descrs):
+        if any(VM_CPU.search(c or "") for c in cpu_descrs) or vm_macs(macs or []):
             return "vm"
         return None
 

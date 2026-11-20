@@ -23,6 +23,22 @@ ENT_MODEL = "1.3.6.1.2.1.47.1.1.1.1.13.1"
 
 
 IP_AD_ENT_ADDR = "1.3.6.1.2.1.4.20.1.1"  # IP-MIB ipAddrTable
+IP_AD_ENT_IF_INDEX = "1.3.6.1.2.1.4.20.1.2"
+IF_PHYS_ADDRESS = "1.3.6.1.2.1.2.2.1.6"
+
+
+def mac_hex(value) -> str:
+    return value.hex() if isinstance(value, (bytes, bytearray)) else str(value or "")
+
+
+async def addressed_macs(snmp) -> list[str]:
+    """MACs of the interfaces that hold an IPv4 address (loopback has none and drops out)."""
+    try:
+        if_of_ip = await snmp.walk(IP_AD_ENT_IF_INDEX)
+        macs = await snmp.walk(IF_PHYS_ADDRESS)
+    except Exception:
+        return []
+    return [mac_hex(macs.get(str(i))) for ip, i in if_of_ip.items() if not str(ip).startswith("127.")]
 
 
 async def device_addresses(ctx: DeviceContext) -> list[str]:
@@ -65,7 +81,7 @@ async def refine_linux(ctx: DeviceContext) -> None:
         cpus = [text(v) for v in (await ctx.snmp.walk(linux.HR_DEVICE_DESCR)).values()]
     except Exception:
         return
-    info = linux.detect(packages, d.sys_descr or "", cpus)
+    info = linux.detect(packages, d.sys_descr or "", cpus, await addressed_macs(ctx.snmp))
     if info is None:
         return
     d.os, d.vendor, d.version, d.virtualization = info.os, info.vendor, info.version, info.virtualization

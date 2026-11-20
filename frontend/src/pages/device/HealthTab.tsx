@@ -195,11 +195,13 @@ export default function HealthTab({ deviceId, components, services, range, sub, 
   const mempool = components.find((c) => c.kind === "mempool");
   const storage = components.filter((c) => c.kind === "storage");
   const disks = components.filter((c) => c.kind === "disk");
+  // LXC containers (and agents without a per-core table): only the guest's own CPU use, from its time split
+  const guestCpu = !cpu.threads && stats?.values.cpu_util != null ? (stats.values.cpu_util as number) : null;
   const temps = sensorsOf(components, "temperature");
   const fans = sensorsOf(components, "fan");
   const items: [HealthSub, string, string][] = ([
     ["overview", "Overview", "grid"],
-    ...(cpu.threads ? [["processor", "Processor", "server"]] : []),
+    ...(cpu.threads || guestCpu != null ? [["processor", "Processor", "server"]] : []),
     ...(stats || mempool ? [["memory", "Memory", "sliders"]] : []),
     ...(storage.length ? [["storage", "Storage", "list"]] : []),
     ...(disks.length ? [["diskio", "Disk I/O", "pulse"]] : []),
@@ -224,6 +226,13 @@ export default function HealthTab({ deviceId, components, services, range, sub, 
                   {cpu.cores > 0 && <span className="pill text-xxs px-2 py-0.5 bg-chip border-line text-fg2">{cpu.cores} cores</span>}
                 </div>
                 <Bar wide pct={cpu.avg} {...limitsOf(services, null, "cpu_util")} />
+                <div className="mt-3"><MetricChart deviceId={deviceId} range={range} metrics={[{ name: "cpu_util", label: "CPU" }]} format={fmtPct} height={140} /></div>
+              </Section>
+            )}
+            {guestCpu != null && (
+              <Section title="Processor" onOpen={() => onSub("processor")}>
+                <div className="text-xs text-muted mb-3">CPU time used by this guest (the host's cores and sensors are shown on the host)</div>
+                <Bar wide pct={guestCpu} {...limitsOf(services, null, "cpu_util")} />
                 <div className="mt-3"><MetricChart deviceId={deviceId} range={range} metrics={[{ name: "cpu_util", label: "CPU" }]} format={fmtPct} height={140} /></div>
               </Section>
             )}
@@ -253,7 +262,20 @@ export default function HealthTab({ deviceId, components, services, range, sub, 
         </div>
       )}
 
-      {sub === "processor" && (
+      {sub === "processor" && guestCpu != null && (
+        <>
+          <Card title="Processor" flush={false}>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="text-base font-semibold text-strong">CPU used by this guest</span>
+              <span className="text-xs text-muted">now {fmtPct(guestCpu)}</span>
+            </div>
+            <div className="text-xs text-muted mt-1">The host's cores, temperatures and fans are monitored on the host itself.</div>
+          </Card>
+          <PresetGrid deviceId={deviceId} names={names} range={range} ids={["cpu", "cpu_detail", "cpu_extended"]} />
+        </>
+      )}
+
+      {sub === "processor" && cpu.threads > 0 && (
         <>
           <Card title="Processor" flush={false}>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">

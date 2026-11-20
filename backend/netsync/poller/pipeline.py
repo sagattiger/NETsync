@@ -12,6 +12,7 @@ from netsync.plugins.base import AlertEvent, CheckResult, DeviceContext, MetricS
 from netsync.plugins.registry import registry
 from netsync.rules.engine import get_ruleset
 from netsync.snmp.client import SnmpClient, SnmpError
+from netsync.snmp.linux import host_hardware
 
 log = logging.getLogger(__name__)
 
@@ -45,6 +46,14 @@ async def discover_device(session: AsyncSession, device: Device) -> None:
     for module in registry.modules:
         if not module.applies_to(device):
             continue
+        # The system module (first) has just set device.virtualization: a guest gets none of its host's hardware
+        guest_skip = host_hardware(device.virtualization)
+        if module.kinds and set(module.kinds) <= guest_skip:
+            for key, comp in by_key.items():
+                if key[0] in module.kinds and not comp.deleted:
+                    comp.deleted = True
+                    await session.execute(delete(Service).where(Service.component_id == comp.id))
+            continue
         try:
             specs = await module.discover(ctx)
         except SnmpError as e:
@@ -58,7 +67,7 @@ async def discover_device(session: AsyncSession, device: Device) -> None:
 
         seen = set()
         for spec in specs:
-            if spec.kind in skip or general.ignored(spec, rules_cfg):
+            if spec.kind in skip or spec.kind in guest_skip or general.ignored(spec, rules_cfg):
                 continue  # switched off or ignored: not added, and existing ones are removed like any missing component
             key = (spec.kind, spec.index)
             seen.add(key)
@@ -77,6 +86,10 @@ async def discover_device(session: AsyncSession, device: Device) -> None:
             comp.last_seen = now
         for key, comp in by_key.items():
             if key[0] in module.kinds and key not in seen and not comp.deleted:
+                if key[0] in guest_skip:  # the host's hardware on a guest: gone at once, not after two misses
+                    comp.deleted = True
+                    await session.execute(delete(Service).where(Service.component_id == comp.id))
+                    continue
                 # One short or empty answer (agent just restarted, a timeout) must not wipe components:
                 # only mark one removed when it is missing in two discoveries in a row.
                 if not count_miss(comp, miss_limit):

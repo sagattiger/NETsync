@@ -212,8 +212,9 @@ function OverviewTab({ device, components, services, range }: { device: Device; 
     queryFn: () => api<Service[]>(`/problems?device_id=${device.id}`),
     refetchInterval: prefs.refreshMs(30_000),
   });
-  const hasCpu = components.some((c) => c.kind === "processor");
   const stats = components.find((c) => c.kind === "system_stats");
+  // a container has no per-core table: its own CPU use comes from the time split (system_stats)
+  const hasCpu = components.some((c) => c.kind === "processor") || stats?.values.cpu_util != null;
   const memTotal = stats?.values.mem_total as number | undefined;
   const counts = [0, 1, 2, 3].map((st) => services.filter((s) => s.state === st).length);
 
@@ -267,7 +268,7 @@ function OverviewTab({ device, components, services, range }: { device: Device; 
           {problems.length ? <ServiceTable services={problems} problems /> : <Empty>No problems on this device</Empty>}
         </Card>
         {hasCpu && (
-          <Card title={<>Processor <span className="font-normal text-muted ml-1">{cpuLine(components)}</span></>} flush={false}>
+          <Card title={<>Processor <span className="font-normal text-muted ml-1">{cpuLine(components) ?? (device.virtualization === "lxc" ? "used by this container" : "")}</span></>} flush={false}>
             <MetricChart deviceId={device.id} range={range} unit="%" metrics={[{ name: "cpu_util", label: "CPU" }]} />
           </Card>
         )}
