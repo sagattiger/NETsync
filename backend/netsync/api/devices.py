@@ -14,7 +14,7 @@ from netsync.api.schemas import (
     DeviceUpdate,
     ServiceOut,
 )
-from netsync.models import Component, Device, DeviceGroup, Role, Service, Site, State, StateChange
+from netsync.models import Component, Device, DeviceGroup, Role, Service, Site, State, StateChange, real_device
 from netsync.poller.worker import enqueue_job
 
 router = APIRouter(prefix="/devices", tags=["devices"])
@@ -26,7 +26,7 @@ async def list_devices(user: CurrentUser, session: Session, q: str | None = None
                        probes: bool = False):
     query = device_scope(select(Device).order_by(Device.hostname), user)
     if not probes:  # probe virtual devices live on the Probes page
-        query = query.where(Device.device_type.is_distinct_from("probe"))
+        query = query.where(real_device())
     if q:
         like = f"%{q}%"
         query = query.where(Device.hostname.ilike(like) | Device.ip.ilike(like) | Device.sys_name.ilike(like))

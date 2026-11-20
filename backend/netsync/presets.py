@@ -178,6 +178,13 @@ PRESETS: tuple[Preset, ...] = (
            source="probe"),
     Preset("http_status", "HTTP status code", "Probes", None, "count", _s(("status_code", "status")), area=False,
            source="probe"),
+
+    # CrowdSec sources (plugin crowdsec): device-level series of the source's virtual device
+    Preset("crowdsec_active", "Active bans", "CrowdSec", None, "count",
+           _s(("cs_local", "local"), ("cs_community", "community")), area=False),
+    Preset("crowdsec_new", "New bans per read", "CrowdSec", None, "count", _s(("cs_new", "new bans")), area=False),
+    Preset("crowdsec_scenario", "Active bans by scenario", "CrowdSec", "cs_scenario", "count", _s(("bans", "bans")),
+           area=False),
 )
 
 BY_ID: dict[str, Preset] = {p.id: p for p in PRESETS}

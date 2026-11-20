@@ -235,14 +235,16 @@ def build_payload(d: Dashboard, range_: str, devices: dict[int, Device], service
                   components: dict[int, Component], series: dict[str, dict[str, list]],
                   probes: dict[int, Probe] | None = None, only: str | None = None,
                   ups: dict[int, dict] | None = None, beats: dict[int, list] | None = None,
-                  bars: dict[str, list[tuple[str, int, float | None]]] | None = None) -> dict[str, Any]:
+                  bars: dict[str, list[tuple[str, int, float | None]]] | None = None,
+                  crowdsec: dict[str, dict] | None = None) -> dict[str, Any]:
     """Pure: everything public about a dashboard. ``series`` maps widget id -> {metric: points}.
     ``probes`` maps probe id -> Probe (their services are in ``services``), ``ups`` probe id -> uptimes(),
     ``beats`` probe id -> [(time, state, response_ms)] oldest first.
     kpi/gauge read ``series[widget id]``, rings ``series["<widget id>:<item index>"]``; ``bars`` maps widget
     id -> [("component" | "probe", id, value)] (labels are resolved here, so no private name leaks).
+    ``crowdsec`` maps widget id -> plugins.builtin.crowdsec.summary.combined() of its sources.
     ``only``: build just that widget (the summary is still computed over the whole dashboard)."""
-    probes, ups, beats, bars = probes or {}, ups or {}, beats or {}, bars or {}
+    probes, ups, beats, bars, crowdsec = probes or {}, ups or {}, beats or {}, bars or {}, crowdsec or {}
     all_widgets = d.widgets or []
     used = dashboard_devices(all_widgets)
     probe_devs = {p.device_id for pid, p in probes.items() if pid in probe_ids(all_widgets)}
@@ -423,6 +425,11 @@ def build_payload(d: Dashboard, range_: str, devices: dict[int, Device], service
             widgets.append({**base, "title": w.get("public_title") or (preset.label if preset else "Top"),
                             "unit": preset.unit if preset else "count", "items": rows[:limit]})
 
+        elif kind == "crowdsec":
+            from netsync.plugins.builtin.crowdsec.summary import EMPTY, public_widget
+
+            widgets.append(public_widget(base, w, crowdsec.get(w.get("id")) or EMPTY))
+
     dash_devices = [devices[i] for i in used if i in devices]
     up = sum(1 for dv in dash_devices if dv.status == State.OK)
     return {
@@ -552,13 +559,18 @@ async def _build(session, d: Dashboard, range_: str, only: str | None = None) ->
             comp_id = comp.id
         series[w["id"]] = await bucketed_series(session, w["device_id"], comp_id, [m.name for m in preset.metrics], range_)
     wanted = [w for w in widgets if only is None or w.get("id") == only]
+    crowdsec: dict[str, dict] = {}
+    if any(w.get("type") == "crowdsec" for w in wanted):
+        from netsync.plugins.builtin.crowdsec.summary import for_widgets
+
+        crowdsec = await for_widgets(session, [w for w in wanted if w.get("type") == "crowdsec"])
     ups = await uptimes(session, list(probes)) if probes else {}
     beats: dict[int, list] = {}
     for pid in {w.get("probe_id") for w in wanted if w.get("type") == "uptime" and w.get("probe_id") in probes}:
         rows = await session.execute(select(ProbeBeat.time, ProbeBeat.state, ProbeBeat.response_ms)
                                      .where(ProbeBeat.probe_id == pid).order_by(ProbeBeat.time.desc()).limit(BEATS_MAX))
         beats[pid] = [(t, st, ms) for t, st, ms in rows][::-1]
-    return build_payload(d, range_, devices, services, components, series, probes, only, ups, beats, bars)
+    return build_payload(d, range_, devices, services, components, series, probes, only, ups, beats, bars, crowdsec)
 
 
 @router.get("/dashboards")

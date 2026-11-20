@@ -19,6 +19,7 @@ const TYPES: [WidgetType, string, string][] = [
   ["rings", "Rings", "1–4 percentages side by side"],
   ["donut", "Donut", "Services or problems by state"],
   ["bars", "Top bars", "Top interfaces or probes by value"],
+  ["crowdsec", "CrowdSec", "Blocked attackers: total, new bans per day, top reasons"],
   ["map", "World map", "Devices and sites on a map, by state"],
   ["hero", "Welcome", "Greeting, search and shortcuts"],
   ["strip", "Shortcuts strip", "Syslog, API, AI, plugins, GitHub"],
@@ -29,7 +30,7 @@ const TYPES: [WidgetType, string, string][] = [
   ["problem_counts", "Problem counters", "Active, unhandled, critical, new and resolved (24h)"],
 ];
 /** Widgets that need no device, metric or probe. */
-const STANDALONE = new Set(["map", "hero", "strip", "glance", "dashboards", "pinned", "insights", "problem_counts"]);
+const STANDALONE = new Set(["crowdsec", "map", "hero", "strip", "glance", "dashboards", "pinned", "insights", "problem_counts"]);
 
 /** Presets a widget type can read. */
 function presetFilter(type: WidgetType): (p: Preset) => boolean {
@@ -197,7 +198,7 @@ export default function WidgetEditor({ initial, isPublic, onSave, onClose }: {
     if (isProbe) { out.device_id = null; out.component_id = null; } else out.probe_id = null;
     if (w.type !== "graph") { out.labels = null; out.style = null; }
     if (w.type !== "graph" && w.type !== "uptime" && w.type !== "kpi") { out.colors = null; }
-    if (w.type !== "graph" && w.type !== "uptime") { out.compact = null; }
+    if (w.type !== "graph" && w.type !== "uptime" && w.type !== "crowdsec") { out.compact = null; }
     if (w.type === "uptime" || uptimeKpi || ["rings", "donut", "problems", "services", "device"].includes(w.type) || STANDALONE.has(w.type)) out.preset = null;
     if (STANDALONE.has(w.type)) { out.device_id = null; out.component_id = null; out.probe_id = null; }
     if (w.type !== "map") { out.center = null; out.zoom = null; out.map_style = null; out.hide_sites = null; }
@@ -207,7 +208,8 @@ export default function WidgetEditor({ initial, isPublic, onSave, onClose }: {
     if (w.type !== "rings") out.items = null;
     else { out.device_id = null; out.component_id = null; out.probe_id = null; }
     if (w.type !== "donut") out.count = null;
-    if (w.type !== "bars") { out.limit = null; out.probe_ids = null; }
+    if (w.type !== "crowdsec") out.crowdsec_ids = null;
+    if (w.type !== "bars") { if (w.type !== "crowdsec") out.limit = null; out.probe_ids = null; }
     else { out.component_id = null; if (probeBars) { out.device_id = null; out.probe_id = null; } else out.probe_ids = null; }
     if (w.type === "kpi" && out.colors) out.colors = out.colors.slice(0, 1);
     if (out.labels) out.labels = Object.fromEntries(Object.entries(out.labels).filter(([k, v]) => series.includes(k) && v.trim()));
@@ -360,6 +362,8 @@ export default function WidgetEditor({ initial, isPublic, onSave, onClose }: {
           </div>
         )}
 
+        {w.type === "crowdsec" && <CrowdSecOptions w={w} set={set} />}
+
         {w.type === "bars" && (
           <div>
             <label className="label">Show the top</label>
@@ -478,5 +482,37 @@ export default function WidgetEditor({ initial, isPublic, onSave, onClose }: {
         <button className="btn btn-primary" disabled={!valid} onClick={save}>{initial ? "Update" : "Add widget"}</button>
       </div>
     </Modal>
+  );
+}
+
+/** CrowdSec widget: which sources (none ticked = every enabled one) and how many reasons to list. */
+function CrowdSecOptions({ w, set }: { w: Widget; set: (p: Partial<Widget>) => void }) {
+  const { data } = useQuery({ queryKey: ["crowdsec", "overview"], queryFn: () => api<{ sources: { id: number; name: string }[] }>("/plugins/crowdsec/overview") });
+  const ids = w.crowdsec_ids ?? [];
+  const toggle = (id: number) => {
+    const next = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
+    set({ crowdsec_ids: next.length ? next : null });
+  };
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="label">Sources</label>
+        {!data?.sources.length ? <div className="text-xs text-muted">No CrowdSec source yet: add one on the CrowdSec page.</div> : (
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            {data.sources.map((s) => (
+              <label key={s.id} className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={ids.includes(s.id)} onChange={() => toggle(s.id)} />{s.name}
+              </label>
+            ))}
+          </div>
+        )}
+        <div className="text-xs text-muted mt-1">None ticked: every enabled source, added up. Public pages never show source names or addresses.</div>
+      </div>
+      <div>
+        <label className="label">Top reasons</label>
+        <Segmented value={String(w.limit ?? 5)} onChange={(n) => set({ limit: n === "5" ? null : +n })}
+          options={[["3", "3"], ["5", "5"], ["8", "8"], ["10", "10"]]} />
+      </div>
+    </div>
   );
 }

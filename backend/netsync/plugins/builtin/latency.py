@@ -12,7 +12,7 @@ from icmplib import async_multiping
 from sqlalchemy import select
 
 from netsync.db import SessionLocal
-from netsync.models import Device, State
+from netsync.models import Device, State, real_device
 from netsync.plugins.base import BackgroundService, CheckResult, MetricSample, Plugin, UITab
 
 log = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ class LatencyService(BackgroundService):
             try:
                 async with SessionLocal() as s:
                     devices = (await s.scalars(select(Device).where(
-                        Device.disabled.is_(False), Device.device_type.is_distinct_from("probe")  # probes ping themselves
+                        Device.disabled.is_(False), real_device()  # probes ping themselves
                     ))).all()
                     if devices:
                         hosts = await async_multiping(

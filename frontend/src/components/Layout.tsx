@@ -105,6 +105,7 @@ function Sidebar({ me, collapsed, onToggle, onNavigate, mobile }: {
     { to: "/problems", label: "Problems", icon: "alert", badge: problems },
     { to: "/devices", label: "Devices", icon: "server" },
     { to: "/probes", label: "Probes", icon: "pulse" },
+    { to: "/crowdsec", label: "CrowdSec", icon: "shield" },
     { to: "/syslog", label: "Syslog", icon: "list" },
     ...(terminal?.available ? [{ to: "/terminal", label: "Terminal", icon: "terminal" }] : []),
   ];

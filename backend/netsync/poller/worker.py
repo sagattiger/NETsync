@@ -16,7 +16,7 @@ from netsync import __version__
 from netsync.alerting import dispatch, redis
 from netsync.config import get_settings
 from netsync.db import SessionLocal, init_db
-from netsync.models import Device, Node
+from netsync.models import VIRTUAL_DEVICE_TYPES, Device, Node, real_device
 from netsync.plugins.registry import registry
 from netsync.poller.pipeline import discover_device, poll_device
 
@@ -55,7 +55,7 @@ class Worker:
         try:
             async with self.sem, SessionLocal() as s:
                 device = await s.get(Device, device_id)
-                if device is None or device.device_type == "probe":
+                if device is None or device.device_type in VIRTUAL_DEVICE_TYPES:
                     return
                 try:
                     if discover:
@@ -86,7 +86,7 @@ class Worker:
                     rows = (await s.execute(
                         select(Device.id, Device.last_polled, Device.last_discovered).where(
                             Device.disabled.is_(False),
-                            Device.device_type.is_distinct_from("probe"),  # probes run in ProbeService
+                            real_device(),  # probes run in ProbeService
                             or_(Device.node_id.is_(None), Device.node_id == self.node_id),
                         )
                     )).all()

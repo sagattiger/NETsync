@@ -19,6 +19,7 @@ import { AppearanceSettings, ChartSettings, GeneralSettings, SettingsShell } fro
 import Sites from "./pages/Sites";
 import Probes from "./pages/Probes";
 import ProbePage from "./pages/ProbePage";
+import CrowdSec from "./pages/CrowdSec";
 import Dashboards from "./pages/dashboards/Dashboards";
 import DashboardView from "./pages/dashboards/DashboardView";
 import { Empty } from "./components/ui";
@@ -36,6 +37,7 @@ export const pageRoutes = (
     <Route path="/devices/:id/*" element={<DevicePage />} />
     <Route path="/probes" element={<Probes />} />
     <Route path="/probes/:id" element={<ProbePage />} />
+    <Route path="/crowdsec" element={<CrowdSec />} />
     <Route path="/syslog" element={<Syslog />} />
     <Route path="/setup/rules" element={<SettingsShell><Rules /></SettingsShell>} />
     <Route path="/setup/notifications" element={<Notifications />} />

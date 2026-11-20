@@ -21,6 +21,7 @@ from netsync.models import (
     StateChange,
     SyslogMessage,
     device_group_members,
+    real_device,
     user_groups,
 )
 from netsync.presets import BY_ID
@@ -53,7 +54,7 @@ async def allowed_devices(session, ctx: ToolContext) -> set[int] | None:
 async def resolve_device(session, ctx: ToolContext, ref: str) -> Device:
     ref = (ref or "").strip()
     allowed = await allowed_devices(session, ctx)
-    q = select(Device).where(Device.device_type.is_distinct_from("probe"))
+    q = select(Device).where(real_device())
     if ref.isdigit():
         d = await session.scalar(q.where(Device.id == int(ref)))
         matches = [d] if d else []
@@ -78,7 +79,7 @@ async def resolve_device(session, ctx: ToolContext, ref: str) -> Device:
 async def find_devices(ctx: ToolContext, a: dict) -> dict:
     async with SessionLocal() as s:
         allowed = await allowed_devices(s, ctx)
-        q = select(Device).where(Device.device_type.is_distinct_from("probe")).order_by(Device.hostname)
+        q = select(Device).where(real_device()).order_by(Device.hostname)
         if a.get("query"):
             q = q.where(or_(Device.hostname.ilike(f"%{a['query']}%"), Device.os.ilike(f"%{a['query']}%"),
                             Device.device_type.ilike(f"%{a['query']}%")))

@@ -13,6 +13,7 @@ import ServiceTable from "../../components/ServiceTable";
 import { VendorLogo } from "../../components/VendorLogo";
 import { Empty, StateBadge, stateText } from "../../components/ui";
 import { Preset, usePresets } from "../../presets";
+import { CrowdSecWidget } from "../crowdsec/shared";
 
 export function useDevices() {
   return useQuery({ queryKey: ["devices"], queryFn: () => api<Device[]>("/devices"), refetchInterval: prefs.refreshMs(30_000) }).data ?? [];
@@ -72,6 +73,7 @@ export function autoTitle(w: Widget, devices: Device[], components: Component[],
     return [probe?.name ?? host, preset?.label, comp?.name, metric].filter(Boolean).join(" · ") || "Value";
   }
   if (w.type === "rings") return "Health";
+  if (w.type === "crowdsec") return "CrowdSec · threat protection";
   if (w.type === "donut") return `${w.device_id ? `${host} · ` : ""}${w.count === "problems" ? "Problems" : "Services"}`;
   if (w.type === "bars") return [host, presetById(w.preset)?.label].filter(Boolean).join(" · ") || "Top";
   if (w.type === "graph") {
@@ -352,6 +354,7 @@ export function WidgetBody({ w, range }: { w: Widget; range: string }) {
   if (w.type === "rings") return <RingsWidget w={w} range={range} />;
   if (w.type === "donut") return <DonutWidget w={w} />;
   if (w.type === "bars") return <BarsWidget w={w} range={range} />;
+  if (w.type === "crowdsec") return <CrowdSecWidget ids={w.crowdsec_ids} limit={w.limit} compact={!!w.compact} />;
   if (w.type === "graph") {
     const preset = presetById(w.preset);
     const isProbe = preset?.source === "probe";

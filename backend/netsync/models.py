@@ -596,3 +596,36 @@ class TerminalSession(Base):
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     bytes_in: Mapped[int | None] = mapped_column(BigInteger)
     bytes_out: Mapped[int | None] = mapped_column(BigInteger)
+
+
+VIRTUAL_DEVICE_TYPES = ("probe", "crowdsec")  # devices that are never SNMP polled, pinged or listed as devices
+
+
+def real_device():
+    """SQL condition: a real (SNMP) device, not a probe's or a CrowdSec source's virtual device."""
+    from sqlalchemy import or_
+
+    return or_(Device.device_type.is_(None), Device.device_type.notin_(VIRTUAL_DEVICE_TYPES))
+
+
+class CrowdSecSource(Base):
+    """A CrowdSec Local API read with a bouncer key (plugin netsync/plugins/builtin/crowdsec).
+
+    Like a probe it owns a virtual device (device_type="crowdsec") so its metrics, the "LAPI" and "New bans" services,
+    rules, problems, alerts, downtimes and housekeeping reuse the device machinery. Deleting it deletes that device."""
+
+    __tablename__ = "crowdsec_sources"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    device_id: Mapped[int] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"), unique=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True)
+    url: Mapped[str] = mapped_column(String(512))  # LAPI base URL, e.g. http://crowdsec:8080 (internal, never public)
+    key_enc: Mapped[str | None] = mapped_column(Text)  # Fernet-encrypted bouncer key; never returned by the API
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = utcnow_col()
+    last_run: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_ok: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(String(200))  # generic, key scrubbed
+    last_ms: Mapped[float | None] = mapped_column(Float)
+    # tracking (max_id, since, new_total) and the latest totals: aggregates and masked recent bans only
+    state: Mapped[dict] = mapped_column(JSON, default=dict)

@@ -217,6 +217,30 @@ Field notes:
       "items": [{ "label": "ether1", "value": 84000000.0 }, { "label": "sfp1", "value": 63000000.0 }] }
     ```
   - None of these contain hostnames, IPs, probe targets or URLs, device/component/probe ids, or check output.
+- **CrowdSec widgets** (`"type": "crowdsec"`, from the CrowdSec plugin, see [CROWDSEC.md](CROWDSEC.md)): how many
+  attackers CrowdSec blocks, added up over the widget's sources. Aggregates only.
+
+  ```json
+  { "id": "cs1", "type": "crowdsec", "size": "m", "cols": 6, "title": "Threat protection",
+    "state": "OK", "status": "ok", "updated_at": "2026-11-19T14:05:00Z", "since": "2026-11-12T09:00:00Z",
+    "active": 128, "community": 14872, "total": 14990, "new_24h": 131, "new_7d": 782,
+    "days": [["2026-11-13", 112], ["2026-11-14", 98], ["2026-11-15", null], ["2026-11-16", 87],
+             ["2026-11-17", 120], ["2026-11-18", 164], ["2026-11-19", 58]],
+    "scenarios": [{ "key": "crowdsecurity/http-probing", "value": 41 }, { "key": "crowdsecurity/ssh-bf", "value": 23 }] }
+  ```
+
+  - `active`: addresses banned right now by our own CrowdSec; `community`: on the CrowdSec community blocklist and
+    subscribed lists; `total`: distinct addresses in either. They count addresses, not requests.
+  - `new_24h`, `new_7d`: new local bans in the last 24 hours / 7 days (`null` before the first data).
+  - `days`: new local bans per day for the last 7 days, oldest first, in the plugin's time zone. `null` means no data
+    that day (not tracking yet, or CrowdSec unreachable all day), which is different from `0`.
+  - `scenarios`: the top reasons (1–10, default 5) for the current local bans, by scenario key. Show a friendly name
+    for keys you know and the part after `/` for the rest.
+  - `status`: `ok`; `stale` when no source was read successfully for 3 read intervals (show "data unavailable" and
+    `updated_at`); `none` before the first successful read. `state` is the worst state of the sources' services
+    (`CRIT` when a LAPI is unreachable).
+  - Never included: IP addresses (not even masked), source names, LAPI addresses, keys or error texts. Countries are
+    not available (CrowdSec decisions have none).
 - `summary` also counts the services of probes used by the dashboard; `devices` counts real devices only.
 - `services` items: every service of the widget's device, worst first. The check output text is not included.
 - `problems` items: non-OK services of the widget's device, or of **every device used by this dashboard**
@@ -267,6 +291,7 @@ adds its graph or an uptime row; in the widget editor pick a graph under *Probes
 - `backend/tests/test_ui_kit_widgets.py`: the kpi, gauge, rings, donut and bars widgets and the graph `style`:
   validation (types, limits, gauge min < max), thresholds, ring clamping, bar sorting and limits, labels, and
   that no hostname, IP, target or id appears in their payloads.
+- `backend/tests/test_crowdsec.py`: the CrowdSec plugin with fake LAPI answers and the `crowdsec` widget's allow-list.
 - `backend/tests/test_probes_widgets.py`: probe target validation, probe check results, widget colour /
   label / logo / cols validation, the Dashboard Icons index, probe and appearance fields in the public payload
   (and never the probe target), the single-widget build, and that old widgets serialize unchanged.

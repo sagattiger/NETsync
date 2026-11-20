@@ -22,8 +22,9 @@ DI_LOGO = re.compile(r"^di:[a-z0-9]+(?:-[a-z0-9]+)*(?:\.(?:svg|png|webp))?$")
 OPTIONAL = ("probe_id", "colors", "labels", "logo", "cols", "height", "compact",
             # UI kit widgets (kpi, gauge, rings, donut, bars) and the graph style
             "style", "metric", "stat", "window", "caption", "min", "max", "warn", "crit", "items", "count",
-            "limit", "probe_ids", "center", "zoom", "map_style", "hide_sites")
-WIDGET_TYPES = ("graph", "device", "problems", "services", "uptime", "kpi", "gauge", "rings", "donut", "bars")
+            "limit", "probe_ids", "crowdsec_ids", "center", "zoom", "map_style", "hide_sites")
+WIDGET_TYPES = ("graph", "device", "problems", "services", "uptime", "kpi", "gauge", "rings", "donut", "bars",
+                "crowdsec")
 SIZE_COLS = {"s": 4, "m": 6, "l": 12}
 
 
@@ -68,6 +69,7 @@ class RingItem(BaseModel):
 class Widget(BaseModel):
     id: str = Field(max_length=64)
     type: Literal["graph", "device", "problems", "services", "uptime", "kpi", "gauge", "rings", "donut", "bars",
+                  "crowdsec",  # bans from the CrowdSec plugin's sources
                   # Home page widgets
                   "hero", "strip", "map", "dashboards", "glance", "pinned", "insights", "problem_counts"]
     title: str = Field("", max_length=128)
@@ -103,6 +105,7 @@ class Widget(BaseModel):
     count: Literal["services", "problems"] | None = None  # donut: services by state (default) or open problems
     limit: int | None = Field(None, ge=1, le=10)  # bars: top N (default 5)
     probe_ids: list[int] | None = Field(None, max_length=10)  # bars of probe metrics
+    crowdsec_ids: list[int] | None = Field(None, max_length=10)  # crowdsec: these sources (default: all enabled)
 
     @model_validator(mode="after")
     def _ranges(self):

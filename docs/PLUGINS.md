@@ -65,6 +65,13 @@ worker containers.
 3. When a service changes state, NETsync writes a `state_changes` row, pushes a live event to the UI, and sends
    notifications unless the device is in downtime or the problem is acknowledged.
 
+## Built-in plugins with their own pages
+
+Built-in plugins can also own a table, a page and a dashboard widget. The CrowdSec plugin
+(`netsync/plugins/builtin/crowdsec`, [CROWDSEC.md](CROWDSEC.md)) is the example: a background service reads its sources,
+stores metrics and services on a virtual device per source (`device_type = "crowdsec"`, see
+`models.VIRTUAL_DEVICE_TYPES`) and serves a `crowdsec` dashboard widget through the public API's allow-list.
+
 ## Notes
 
 - `ctx.previous(kind, index)` returns what you stored in `PollResult.values` on the last poll. Use it

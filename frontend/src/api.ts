@@ -72,7 +72,7 @@ export interface DeviceEvent {
 
 export interface PinnedEvent extends DeviceEvent { device_id: number; hostname: string; pinned_at: string }
 
-export type WidgetType = "graph" | "device" | "problems" | "services" | "uptime" | "kpi" | "gauge" | "rings" | "donut" | "bars"
+export type WidgetType = "graph" | "device" | "problems" | "services" | "uptime" | "kpi" | "gauge" | "rings" | "donut" | "bars" | "crowdsec"
   | "hero" | "strip" | "map" | "dashboards" | "glance" | "pinned" | "insights" | "problem_counts";
 /** One ring of a rings widget (a device/component or probe metric, shown as 0–100 %). */
 export interface RingItem {
@@ -107,6 +107,7 @@ export interface Widget {
   count?: "services" | "problems" | null; // donut
   limit?: number | null; // bars: top N
   probe_ids?: number[] | null; // bars of probes
+  crowdsec_ids?: number[] | null; // crowdsec: these sources (empty = all enabled)
 }
 export type WidgetCols = 3 | 4 | 6 | 8 | 12;
 export const SIZE_COLS: Record<Widget["size"], WidgetCols> = { s: 4, m: 6, l: 12 };

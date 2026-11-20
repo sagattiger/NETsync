@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case, func, select
 
 from netsync.api.deps import CurrentUser, Session, device_scope, require
-from netsync.models import Device, Role, Service, Site, State
+from netsync.models import Device, Role, Service, Site, State, real_device
 
 router = APIRouter(tags=["sites"])
 
@@ -93,7 +93,7 @@ async def world_map(user: CurrentUser, session: Session):
     ).where(Service.acknowledged.is_(False)).group_by(Service.device_id).subquery()
     q = device_scope(select(Device, counts.c.warn, counts.c.crit, counts.c.unknown)
                      .outerjoin(counts, counts.c.device_id == Device.id)
-                     .where(Device.device_type.is_distinct_from("probe")), user)
+                     .where(real_device()), user)
     devices, unplaced = [], 0
     for d, warn, crit, unknown in await session.execute(q):
         site = sites.get(d.site_id) if d.site_id else None
