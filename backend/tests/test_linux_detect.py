@@ -61,6 +61,13 @@ def test_proxmox_vm_detected_from_mac_with_host_cpu():
     assert (info.os, info.virtualization, info.hardware) == ("ubuntu", "vm", "Virtual machine")
 
 
+def test_vm_running_docker_is_still_a_vm():
+    """Docker bridges and veths have random, locally administered MACs: they don't hide the virtio NIC."""
+    macs = ["e6d0b53e2689", "0af9fc3c36e1", "16951d166010", "bc2411d010d0", "bc241133f61e"]
+    assert detect(["base-files_13ubuntu10.5_amd64"], UBUNTU_KERNEL, CPU, macs).virtualization == "vm"
+    assert detect(["base-files_13ubuntu10.5_amd64"], UBUNTU_KERNEL, CPU, ["0af9fc3c36e1"]).virtualization is None
+
+
 def test_bare_metal_with_a_vm_bridge_is_not_a_vm():
     """A KVM host's virbr0 (52:54:00) next to its real NIC: not every addressed interface is virtual."""
     info = detect(["base-files_12.4+deb12u12_amd64"], "Linux kvm1 6.1.0-28-amd64", CPU, ["74867afdb6d3", "525400aabbcc"])

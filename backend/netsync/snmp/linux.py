@@ -54,9 +54,13 @@ def host_hardware(virtualization: str | None) -> frozenset[str]:
 
 
 def vm_macs(macs: list[str]) -> bool:
-    """True when there are MACs and all of them carry a hypervisor prefix ('bc:24:11:..' or 'bc2411..')."""
+    """True when every real NIC carries a hypervisor prefix ('bc:24:11:..' or 'bc2411..').
+
+    Locally administered MACs (Docker and other bridges, veth, VPN taps) say nothing about the
+    hardware and are left out, unless they are a hypervisor's own (QEMU's 52:54:00 is one)."""
     norm = [re.sub(r"[^0-9a-f]", "", m.lower()) for m in macs if m]
     norm = [m for m in norm if len(m) == 12 and m != "000000000000"]
+    norm = [m for m in norm if m.startswith(VM_MAC) or not int(m[:2], 16) & 0x02]
     return bool(norm) and all(m.startswith(VM_MAC) for m in norm)
 
 
