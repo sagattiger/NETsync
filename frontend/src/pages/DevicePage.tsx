@@ -22,6 +22,22 @@ import { FORMATS } from "../presets";
 
 const RANGES: [string, string][] = [["1h", "1h"], ["6h", "6h"], ["24h", "24h"], ["7d", "7d"], ["30d", "30d"], ["1y", "1y"]];
 
+/** "pve001 · CT 100": the Proxmox host running this guest, linked, with how it was found. */
+function HypervisorLink({ device, short }: { device: Device; short?: boolean }) {
+  const { data: devices = [] } = useQuery({ queryKey: ["devices"], queryFn: () => api<Device[]>("/devices") });
+  const host = devices.find((d) => d.id === device.hypervisor_id)?.hostname ?? `#${device.hypervisor_id}`;
+  return (
+    <>
+      <Link className="link" to={`/devices/${device.hypervisor_id}`}>{short ? host.split(".")[0] : host}</Link>
+      {device.guest_id != null && <span className="text-muted text-xs"> · {device.virtualization === "lxc" ? "CT" : "VM"} {device.guest_id}</span>}
+      {!short && <span className="text-muted text-xs"> · {device.hypervisor_source === "manual" ? "set by hand" : "found automatically"}</span>}
+    </>
+  );
+}
+
+// rows of the Device card that are left out when empty (most devices have no application or Proxmox host)
+const OPTIONAL_ROWS = new Set(["Application", "Application URL", "Listen port", "Runs on"]);
+
 const hasApp = (d: Device) => !!(d.app_logo || d.app_name || d.app_url || d.app_port);
 
 /** The device's main application: its logo (Dashboard Icons or https), name, link and port. */
@@ -72,7 +88,6 @@ export default function DevicePage() {
   const { data: device } = useQuery({ queryKey: ["device", id], queryFn: () => api<Device>(`/devices/${id}`), refetchInterval: 30_000 });
   const { data: components = [] } = useQuery({ queryKey: ["components", id], queryFn: () => api<Component[]>(`/devices/${id}/components`), refetchInterval: 60_000 });
   const { data: services = [] } = useQuery({ queryKey: ["services", id], queryFn: () => api<Service[]>(`/devices/${id}/services`), refetchInterval: 30_000 });
-  const { data: allDevices = [] } = useQuery({ queryKey: ["devices"], queryFn: () => api<Device[]>("/devices"), refetchInterval: prefs.refreshMs(60_000) });
   const { data: plugins = [] } = useQuery({ queryKey: ["plugins"], queryFn: () => api<PluginInfo[]>("/plugins") });
   const { data: termAccess } = useQuery({ queryKey: ["terminal-access", id], queryFn: () => api<{ level: string; available: boolean }>(`/terminal/access/${id}`), staleTime: 60_000, retry: false });
   const canTerminal = !!termAccess?.available && termAccess.level !== "none";
@@ -164,12 +179,7 @@ export default function DevicePage() {
         <div className={`grid grid-cols-2 sm:grid-cols-3 ${["lg:grid-cols-6", "lg:grid-cols-7", "lg:grid-cols-8"][(hasApp(device) ? 1 : 0) + (device.hypervisor_id ? 1 : 0)]} gap-x-6 gap-y-3 mt-5`}>
           {hasApp(device) && <Meta label="Application"><AppLabel device={device} link /></Meta>}
           {device.hypervisor_id && (
-            <Meta label="Runs on">
-              <Link className="link" to={`/devices/${device.hypervisor_id}`}>
-                {(allDevices.find((d) => d.id === device.hypervisor_id)?.hostname ?? `#${device.hypervisor_id}`).split(".")[0]}
-              </Link>
-              {device.guest_id != null && <span className="text-muted text-xs"> · {device.virtualization === "lxc" ? "CT" : "VM"} {device.guest_id}</span>}
-            </Meta>
+            <Meta label="Runs on"><HypervisorLink device={device} short /></Meta>
           )}
           <Meta label="IP address">{device.ip}</Meta>
           <Meta label="Platform">{[device.vendor, device.hardware].filter(Boolean).join(" ")}</Meta>
@@ -306,12 +316,17 @@ function OverviewTab({ device, components, services, range }: { device: Device; 
         <Card title="Device">
           <table className="tbl"><tbody>
             {([
+              ["Application", hasApp(device) ? <AppLabel device={device} link /> : null],
+              ["Application URL", device.app_url
+                ? <a className="link break-all" href={device.app_url} target="_blank" rel="noopener noreferrer">{device.app_url}</a> : null],
+              ["Listen port", device.app_port != null ? String(device.app_port) : null],
+              ["Runs on", device.hypervisor_id ? <HypervisorLink device={device} /> : null],
               ["System name", device.sys_name], ["Hardware", device.hardware], ["Processor", cpuLine(components)],
               ["Kernel", device.kernel], ["Serial", device.serial],
-              ["Contact", device.sys_contact], ["Object ID", device.sys_object_id],
+              ["Location", device.sys_location], ["Contact", device.sys_contact], ["Object ID", device.sys_object_id],
               ["SNMP", `v${device.snmp_version} · port ${device.snmp_port}`],
               ["Poll time", device.poll_duration != null ? `${device.poll_duration.toFixed(2)} s` : null],
-            ] as [string, string | null][]).map(([k, v]) => (
+            ] as [string, ReactNode][]).filter(([k, v]) => v != null || !OPTIONAL_ROWS.has(k)).map(([k, v]) => (
               <tr key={k}><td className="text-muted w-32 whitespace-nowrap">{k}</td><td className="break-all text-fg">{v || "-"}</td></tr>
             ))}
           </tbody></table>
