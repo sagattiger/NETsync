@@ -6,6 +6,7 @@ from netsync.plugins.builtin import ai, crowdsec, latency
 from netsync.plugins.builtin.host_resources import HostResourcesModule
 from netsync.plugins.builtin.interfaces import InterfacesModule
 from netsync.plugins.builtin.netstats import NetstatsModule
+from netsync.plugins.builtin.proxmox import ProxmoxGuestsModule
 from netsync.plugins.builtin.notify import EmailChannel, TelegramChannel, WebhookChannel, WorkflowChannel
 from netsync.plugins.builtin.diskio import DiskIoModule
 from netsync.plugins.builtin.sensors import SensorsModule
@@ -20,7 +21,7 @@ BUILTIN_PLUGINS = [
         description="System, interfaces, CPU, memory, storage, sensors, disk I/O and the IP/TCP/UDP/SNMP stack "
                     "via standard MIBs",
         modules=[SystemModule(), InterfacesModule(), HostResourcesModule(), UcdModule(), NetstatsModule(),
-                 SensorsModule(), DiskIoModule()],
+                 SensorsModule(), DiskIoModule(), ProxmoxGuestsModule()],
         builtin=True,
     ),
     Plugin(

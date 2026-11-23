@@ -11,6 +11,9 @@ export interface Device {
   ip_addresses?: string[]; vendor: string | null; os: string | null; hardware: string | null; version: string | null;
   serial: string | null; device_type: string | null; virtualization: string | null; kernel: string | null;
   app_logo?: string | null; app_name?: string | null; // main application (Dashboard Icons logo or https URL)
+  app_url?: string | null; app_port?: number | null;
+  location_manual?: string | null; contact_manual?: string | null; // typed in NETsync, shown instead of SNMP's
+  hypervisor_id?: number | null; guest_id?: number | null; hypervisor_source?: "auto" | "manual" | null; // Proxmox host
   site_id?: number | null; lat?: number | null; lon?: number | null;
   status: number; status_reason: string | null; disabled: boolean;
   last_polled: string | null; last_discovered: string | null; poll_duration: number | null;

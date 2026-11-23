@@ -126,6 +126,13 @@ ADDED_COLUMNS = {
         "kernel VARCHAR(64)",
         "app_logo VARCHAR(600)",
         "app_name VARCHAR(64)",
+        "app_url VARCHAR(512)",
+        "app_port INTEGER",
+        "location_manual VARCHAR(255)",
+        "contact_manual VARCHAR(255)",
+        "hypervisor_id INTEGER REFERENCES devices(id) ON DELETE SET NULL",
+        "guest_id INTEGER",
+        "hypervisor_source VARCHAR(8)",
     ],
     "users": [
         "full_name VARCHAR(128)",

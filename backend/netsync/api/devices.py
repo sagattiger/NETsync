@@ -84,6 +84,23 @@ async def update_device(device_id: int, body: DeviceUpdate, session: Session, us
         await _set_groups(session, device, group_ids)
     if data.get("site_id") is not None and await session.get(Site, data["site_id"]) is None:
         raise HTTPException(400, "Site not found")
+    for key, col, snmp_col in (("location", "location_manual", "sys_location"), ("contact", "contact_manual", "sys_contact")):
+        if key in data:
+            value = data.pop(key)
+            setattr(device, col, value)
+            if value:
+                setattr(device, snmp_col, value)  # shown at once; the agent's value comes back at the next discovery
+    if data.pop("hypervisor_auto", None):
+        data.pop("hypervisor_id", None)
+        device.hypervisor_source = "auto"
+        from netsync.plugins.builtin.proxmox import link_guests
+
+        await link_guests(session, device)
+    elif "hypervisor_id" in data:
+        hid = data.pop("hypervisor_id")
+        if hid is not None and (hid == device.id or await session.get(Device, hid) is None):
+            raise HTTPException(400, "Hypervisor device not found")
+        device.hypervisor_id, device.hypervisor_source, device.guest_id = hid, "manual", None
     for k, v in data.items():
         setattr(device, k, v)
     await session.commit()

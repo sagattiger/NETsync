@@ -99,6 +99,12 @@ async def discover_device(session: AsyncSession, device: Device) -> None:
 
     device.last_discovered = now
     await session.flush()
+    try:
+        from netsync.plugins.builtin.proxmox import link_guests
+
+        await link_guests(session, device)  # which Proxmox host runs this guest (or this host's guests)
+    except Exception:
+        log.exception("%s: linking Proxmox guests failed", device.hostname)
     log.info("%s: discovered %d components", device.hostname, sum(not c.deleted for c in by_key.values()))
 
 

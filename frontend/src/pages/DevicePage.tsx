@@ -22,14 +22,28 @@ import { FORMATS } from "../presets";
 
 const RANGES: [string, string][] = [["1h", "1h"], ["6h", "6h"], ["24h", "24h"], ["7d", "7d"], ["30d", "30d"], ["1y", "1y"]];
 
-/** The device's main application: its logo (Dashboard Icons or https) and name. */
-export function AppLabel({ device, size = 20 }: { device: Pick<Device, "app_logo" | "app_name">; size?: number }) {
+const hasApp = (d: Device) => !!(d.app_logo || d.app_name || d.app_url || d.app_port);
+
+/** The device's main application: its logo (Dashboard Icons or https), name, link and port. */
+export function AppLabel({ device, size = 20, link }: {
+  device: Pick<Device, "app_logo" | "app_name" | "app_url" | "app_port">; size?: number; link?: boolean;
+}) {
   const src = logoSrc(device.app_logo);
-  return (
-    <span className="inline-flex items-center gap-2 min-w-0 align-middle" title={device.app_name ?? undefined}>
+  const name = device.app_name || (device.app_url ? device.app_url.replace(/^https?:\/\//, "").replace(/\/$/, "") : null);
+  const body = (
+    <>
       {src && <img src={src} alt="" width={size} height={size} className="object-contain shrink-0" style={{ width: size, height: size }}
         loading="lazy" referrerPolicy="no-referrer" />}
-      {device.app_name && <span className="truncate">{device.app_name}</span>}
+      {name && <span className="truncate">{name}</span>}
+      {link && device.app_url && <Icon name="external" className="w-3 h-3 shrink-0 opacity-70" />}
+    </>
+  );
+  return (
+    <span className="inline-flex items-center gap-2 min-w-0 align-middle" title={[device.app_name, device.app_url].filter(Boolean).join(" · ") || undefined}>
+      {link && device.app_url
+        ? <a className="inline-flex items-center gap-2 min-w-0 link" href={device.app_url} target="_blank" rel="noopener noreferrer">{body}</a>
+        : body}
+      {device.app_port != null && <span className="text-muted text-xs tabular-nums shrink-0">:{device.app_port}</span>}
     </span>
   );
 }
@@ -58,6 +72,7 @@ export default function DevicePage() {
   const { data: device } = useQuery({ queryKey: ["device", id], queryFn: () => api<Device>(`/devices/${id}`), refetchInterval: 30_000 });
   const { data: components = [] } = useQuery({ queryKey: ["components", id], queryFn: () => api<Component[]>(`/devices/${id}/components`), refetchInterval: 60_000 });
   const { data: services = [] } = useQuery({ queryKey: ["services", id], queryFn: () => api<Service[]>(`/devices/${id}/services`), refetchInterval: 30_000 });
+  const { data: allDevices = [] } = useQuery({ queryKey: ["devices"], queryFn: () => api<Device[]>("/devices"), refetchInterval: prefs.refreshMs(60_000) });
   const { data: plugins = [] } = useQuery({ queryKey: ["plugins"], queryFn: () => api<PluginInfo[]>("/plugins") });
   const { data: termAccess } = useQuery({ queryKey: ["terminal-access", id], queryFn: () => api<{ level: string; available: boolean }>(`/terminal/access/${id}`), staleTime: 60_000, retry: false });
   const canTerminal = !!termAccess?.available && termAccess.level !== "none";
@@ -146,8 +161,16 @@ export default function DevicePage() {
             </div>
           )}
         </div>
-        <div className={`grid grid-cols-2 sm:grid-cols-3 ${device.app_logo || device.app_name ? "lg:grid-cols-7" : "lg:grid-cols-6"} gap-x-6 gap-y-3 mt-5`}>
-          {(device.app_logo || device.app_name) && <Meta label="Application"><AppLabel device={device} /></Meta>}
+        <div className={`grid grid-cols-2 sm:grid-cols-3 ${["lg:grid-cols-6", "lg:grid-cols-7", "lg:grid-cols-8"][(hasApp(device) ? 1 : 0) + (device.hypervisor_id ? 1 : 0)]} gap-x-6 gap-y-3 mt-5`}>
+          {hasApp(device) && <Meta label="Application"><AppLabel device={device} link /></Meta>}
+          {device.hypervisor_id && (
+            <Meta label="Runs on">
+              <Link className="link" to={`/devices/${device.hypervisor_id}`}>
+                {(allDevices.find((d) => d.id === device.hypervisor_id)?.hostname ?? `#${device.hypervisor_id}`).split(".")[0]}
+              </Link>
+              {device.guest_id != null && <span className="text-muted text-xs"> · {device.virtualization === "lxc" ? "CT" : "VM"} {device.guest_id}</span>}
+            </Meta>
+          )}
           <Meta label="IP address">{device.ip}</Meta>
           <Meta label="Platform">{[device.vendor, device.hardware].filter(Boolean).join(" ")}</Meta>
           <Meta label="Operating system">{osLabel(device.os, device.version)}</Meta>
@@ -216,6 +239,35 @@ export default function DevicePage() {
   );
 }
 
+/** A Proxmox host's running guests (from its process table), each linked to its NETsync device when known. */
+function GuestsCard({ device, components }: { device: Device; components: Component[] }) {
+  const { data: devices = [] } = useQuery({ queryKey: ["devices"], queryFn: () => api<Device[]>("/devices") });
+  const guests = components.filter((c) => c.kind === "pve_guest")
+    .sort((a, b) => ((a.attrs.vmid as number) ?? 0) - ((b.attrs.vmid as number) ?? 0));
+  if (!guests.length) return null;
+  const mine = devices.filter((d) => d.hypervisor_id === device.id);
+  return (
+    <Card title={`Running guests · ${guests.length}`}>
+      <table className="tbl"><tbody>
+        {guests.map((g) => {
+          const lxc = g.attrs.type === "lxc";
+          const d = mine.find((x) => x.guest_id === g.attrs.vmid) ?? mine.find((x) => (x.hostname.split(".")[0] === (g.attrs.guest_name as string | null)?.split(".")[0]));
+          return (
+            <tr key={g.id}>
+              <td className="text-muted text-xs whitespace-nowrap w-16">{lxc ? "CT" : "VM"} {g.attrs.vmid as number}</td>
+              <td className="truncate max-w-[14rem]">
+                {d ? <Link className="link" to={`/devices/${d.id}`}>{d.hostname}</Link> : <span className="text-fg2">{g.name}</span>}
+              </td>
+              <td className="text-right">{d && <AppLabel device={d} size={16} />}</td>
+            </tr>
+          );
+        })}
+      </tbody></table>
+      <div className="px-4 py-2 text-xxs text-muted">From the host's process list; guests without a link aren't monitored in NETsync yet.</div>
+    </Card>
+  );
+}
+
 function OverviewTab({ device, components, services, range }: { device: Device; components: Component[]; services: Service[]; range: string }) {
   const ports = components.filter((c) => c.kind === "port");
   const up = ports.filter((p) => p.values.oper === 1).length;
@@ -264,6 +316,7 @@ function OverviewTab({ device, components, services, range }: { device: Device; 
             ))}
           </tbody></table>
         </Card>
+        {device.os === "proxmox" && <GuestsCard device={device} components={components} />}
         {(mem || storage.length > 0) && (
           <Card title="Memory & storage">
             <table className="tbl"><tbody>
@@ -322,10 +375,21 @@ function SettingsTab({ device, isAdmin }: { device: Device; isAdmin: boolean }) 
   const [ip, setIp] = useState(device.ip ?? "");
   const [appLogo, setAppLogo] = useState<string | null>(device.app_logo ?? null);
   const [appName, setAppName] = useState(device.app_name ?? "");
+  const [appUrl, setAppUrl] = useState(device.app_url ?? "");
+  const [appPort, setAppPort] = useState(device.app_port != null ? String(device.app_port) : "");
+  const [location, setLocation] = useState(device.location_manual ?? "");
+  const [contact, setContact] = useState(device.contact_manual ?? "");
+  const [hyper, setHyper] = useState<string>(device.hypervisor_source === "manual" ? (device.hypervisor_id ? String(device.hypervisor_id) : "none") : "auto");
+  const { data: devices = [] } = useQuery({ queryKey: ["devices"], queryFn: () => api<Device[]>("/devices") });
+  const hosts = devices.filter((d) => d.os === "proxmox" && d.id !== device.id);
   const [msg, setMsg] = useState("");
 
   async function save() {
-    const body: any = { ip: ip || null, app_logo: appLogo, app_name: appName.trim() || null };
+    const body: any = {
+      ip: ip || null, app_logo: appLogo, app_name: appName.trim() || null, app_url: appUrl.trim() || null,
+      app_port: appPort.trim() ? +appPort : null, location: location.trim(), contact: contact.trim(),
+      ...(hyper === "auto" ? { hypervisor_auto: true } : { hypervisor_id: hyper === "none" ? null : +hyper }),
+    };
     if (community) body.snmp_community = community;
     try {
       await api(`/devices/${device.id}`, { method: "PATCH", body });
@@ -352,7 +416,28 @@ function SettingsTab({ device, isAdmin }: { device: Device; isAdmin: boolean }) 
           <label className="label">Application (what runs on this device)</label>
           <input className="input w-full mb-2" maxLength={64} value={appName} onChange={(e) => setAppName(e.target.value)} placeholder="e.g. Observium" />
           <LogoPicker value={appLogo} onChange={setAppLogo} />
-          <div className="text-xs text-muted mt-1">Shown in the header and the device list. The OS logo stays as it is.</div>
+          <div className="grid grid-cols-[1fr_7rem] gap-2 mt-2">
+            <input className="input w-full" maxLength={512} value={appUrl} onChange={(e) => setAppUrl(e.target.value)} placeholder="https://observium.example.net" />
+            <input className="input w-full" inputMode="numeric" value={appPort} onChange={(e) => setAppPort(e.target.value.replace(/\D/g, "").slice(0, 5))} placeholder="Port" />
+          </div>
+          <div className="text-xs text-muted mt-1">Shown in the header (the address opens the app) and the device list. The OS logo stays as it is.</div>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-2">
+          <div><label className="label">SNMP location</label>
+            <input className="input w-full" maxLength={255} value={location} onChange={(e) => setLocation(e.target.value)} placeholder={device.sys_location || "e.g. DC1, rack 4"} /></div>
+          <div><label className="label">SNMP contact</label>
+            <input className="input w-full" maxLength={255} value={contact} onChange={(e) => setContact(e.target.value)} placeholder={device.sys_contact || "e.g. noc@example.net"} /></div>
+          <div className="sm:col-span-2 text-xs text-muted">Kept in NETsync and shown instead of what the SNMP agent reports. Empty: the agent's value. The agent's snmpd.conf is not changed.</div>
+        </div>
+        <div>
+          <label className="label">Runs on (Proxmox host)</label>
+          <select className="input w-full" value={hyper} onChange={(e) => setHyper(e.target.value)}>
+            <option value="auto">Automatic{device.hypervisor_source !== "manual" && device.hypervisor_id
+              ? ` (found: ${devices.find((d) => d.id === device.hypervisor_id)?.hostname ?? `#${device.hypervisor_id}`})` : " (from the Proxmox hosts' process lists)"}</option>
+            <option value="none">None</option>
+            {hosts.map((h) => <option key={h.id} value={h.id}>{h.hostname}</option>)}
+          </select>
+          <div className="text-xs text-muted mt-1">Automatic matches VMs by name and containers by their ID in the hostname (lxc100 → CT 100), at each discovery.</div>
         </div>
         <div><label className="label">New SNMP community (leave empty to keep the current one)</label>
           <input className="input w-full" type="password" value={community} onChange={(e) => setCommunity(e.target.value)} /></div>

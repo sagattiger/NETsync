@@ -75,7 +75,7 @@ export default function Devices() {
                         <div className="min-w-0">
                           <div className="font-medium text-strong group-hover:text-accent transition-colors truncate flex items-center gap-1.5">
                             <span className="truncate">{d.hostname}</span>
-                            {d.app_logo && logoSrc(d.app_logo) && <img src={logoSrc(d.app_logo)!} alt="" title={d.app_name ?? undefined}
+                            {d.app_logo && logoSrc(d.app_logo) && <img src={logoSrc(d.app_logo)!} alt="" title={[d.app_name, d.app_url].filter(Boolean).join(" · ") || undefined}
                               className="w-4 h-4 object-contain shrink-0" loading="lazy" referrerPolicy="no-referrer" />}
                           </div>
                           <div className="text-xs text-muted flex items-center gap-1.5">{d.ip ?? d.ip_addresses?.[0]}<VirtBadge virtualization={d.virtualization} /></div>

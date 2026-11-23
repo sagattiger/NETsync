@@ -43,6 +43,33 @@ class DeviceUpdate(BaseModel):
     # main application: "di:<slug>" (Dashboard Icons) or an https:// image URL; "" or null clears it
     app_logo: str | None = Field(None, max_length=600)
     app_name: str | None = Field(None, max_length=64)
+    app_url: str | None = Field(None, max_length=512)  # http:// or https://; "" clears
+    app_port: int | None = Field(None, ge=1, le=65535)
+    # SNMP location / contact kept in NETsync (shown instead of the agent's); "" clears and SNMP's comes back
+    location: str | None = Field(None, max_length=255)
+    contact: str | None = Field(None, max_length=255)
+    # Proxmox host: hypervisor_auto=true goes back to automatic detection; hypervisor_id (or null) sets it by hand
+    hypervisor_id: int | None = None
+    hypervisor_auto: bool | None = None
+
+    @field_validator("app_url")
+    @classmethod
+    def _app_url(cls, v: str | None) -> str | None:
+        if not v or not v.strip():
+            return None
+        from urllib.parse import urlsplit
+
+        v = v.strip()
+        u = urlsplit(v)
+        if u.scheme not in ("http", "https") or not u.hostname or u.username or u.password \
+                or any(c.isspace() or c in "\"'<>`" for c in v):
+            raise ValueError("the application URL must be an http:// or https:// address")
+        return v
+
+    @field_validator("location", "contact")
+    @classmethod
+    def _text(cls, v: str | None) -> str | None:
+        return " ".join(v.split()) or None if v else None
 
     @field_validator("app_logo")
     @classmethod
@@ -82,6 +109,13 @@ class DeviceOut(ORM):
     kernel: str | None = None
     app_logo: str | None = None
     app_name: str | None = None
+    app_url: str | None = None
+    app_port: int | None = None
+    location_manual: str | None = None
+    contact_manual: str | None = None
+    hypervisor_id: int | None = None
+    guest_id: int | None = None
+    hypervisor_source: str | None = None
     site_id: int | None = None
     lat: float | None = None
     lon: float | None = None

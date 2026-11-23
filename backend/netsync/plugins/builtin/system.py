@@ -106,9 +106,9 @@ class SystemModule(Module):
         r = await ctx.snmp.get(SYS_DESCR, SYS_OBJECT_ID, SYS_CONTACT, SYS_NAME, SYS_LOCATION)
         d.sys_descr = text(r.get(SYS_DESCR))
         d.sys_object_id = r.get(SYS_OBJECT_ID)
-        d.sys_contact = text(r.get(SYS_CONTACT))
+        d.sys_contact = getattr(d, "contact_manual", None) or text(r.get(SYS_CONTACT))  # typed in NETsync wins
         d.sys_name = text(r.get(SYS_NAME))
-        d.sys_location = text(r.get(SYS_LOCATION))
+        d.sys_location = getattr(d, "location_manual", None) or text(r.get(SYS_LOCATION))
 
         profile, version = detect(d.sys_object_id or "", d.sys_descr or "")
         if profile:

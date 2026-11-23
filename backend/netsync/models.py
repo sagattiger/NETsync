@@ -170,6 +170,15 @@ class Device(Base):
     # the main application on the device (set by hand): a Dashboard Icons logo ("di:observium") or https URL, and a name
     app_logo: Mapped[str | None] = mapped_column(String(600))
     app_name: Mapped[str | None] = mapped_column(String(64))
+    app_url: Mapped[str | None] = mapped_column(String(512))  # where the application is opened (http/https)
+    app_port: Mapped[int | None] = mapped_column(Integer)  # the port it listens on
+    # SNMP location / contact typed in NETsync: shown instead of what the agent reports (discovery keeps them)
+    location_manual: Mapped[str | None] = mapped_column(String(255))
+    contact_manual: Mapped[str | None] = mapped_column(String(255))
+    # the Proxmox host running this LXC container / VM (plugins/builtin/proxmox.py), its VMID/CTID, and how it was set
+    hypervisor_id: Mapped[int | None] = mapped_column(ForeignKey("devices.id", ondelete="SET NULL"))
+    guest_id: Mapped[int | None] = mapped_column(Integer)
+    hypervisor_source: Mapped[str | None] = mapped_column(String(8))  # "auto" | "manual"
     kernel: Mapped[str | None] = mapped_column(String(64))
     # position on the world map: the site's, or the device's own when it has no site
     site_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id", ondelete="SET NULL"))
