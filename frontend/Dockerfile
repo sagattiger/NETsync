@@ -3,6 +3,8 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci --no-audit --no-fund || npm install --no-audit --no-fund
 COPY . .
+# keep the build inside a small server's memory (4 GB hosts thrashed swap when it ran next to the database)
+ENV NODE_OPTIONS=--max-old-space-size=1024
 RUN npm run build
 
 FROM nginx:1.27-alpine

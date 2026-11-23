@@ -45,6 +45,13 @@ Open `http://<container-ip>:8080`.
 cd /opt/netsync && git pull && docker compose up -d --build
 ```
 
+On a small server (4 GB RAM or less) build the images one at a time, so the builds don't push the database into
+swap:
+
+```bash
+cd /opt/netsync && git pull && docker compose build api && docker compose build web && docker compose up -d
+```
+
 ## Troubleshooting
 
 - *Latency is empty / ping permission errors*: unprivileged LXCs sometimes block the
