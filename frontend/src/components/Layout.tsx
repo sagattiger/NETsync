@@ -10,6 +10,7 @@ import { Avatar } from "./Avatar";
 import { CommandPaletteProvider, useCommandPalette } from "./CommandPalette";
 import { Icon } from "./Icon";
 import { BrandMark, LogoIcon, useApplyBranding } from "./Brand";
+import { Footer } from "./Footer";
 import { BackLink, DocumentTitle, TabBar, TabsProvider, TabViews, useTabs } from "./Tabs";
 import { pageRoutes } from "../routes";
 import { useTerminalStatus } from "../pages/TerminalPage";
@@ -317,7 +318,11 @@ function Shell() {
           </div>
         </header>
         <DocumentTitle />
-        <TabViews>{pageRoutes}</TabViews>
+        {/* page then footer: the footer sits at the bottom even on short pages */}
+        <div className="flex flex-col min-h-[calc(100%-3.5rem)]">
+          <TabViews>{pageRoutes}</TabViews>
+          <Footer />
+        </div>
       </main>
 
       {/* AI coworker: docked on wide screens, full screen on phones */}
