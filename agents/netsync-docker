@@ -1,0 +1,29 @@
+#!/bin/sh
+# NETsync: the Docker containers of this host, for SNMP. See docs/DOCKER.md.
+#
+# Run by root's cron every minute. It writes /var/lib/netsync/docker.txt, which snmpd only reads:
+#   extend netsync-docker /bin/cat /var/lib/netsync/docker.txt
+# so snmpd never gets access to the Docker socket (that would be root on this host).
+#
+# Format (tab separated):
+#   # netsync-docker 1 <unix time>
+#   id  name  image  state  status  ports  compose project  compose service  coolify resource
+#   ---
+#   id  cpu %  memory used / limit  memory %
+# Nothing else is written: no environment variables, commands, labels or mounts.
+set -eu
+dir=/var/lib/netsync
+out=$dir/docker.txt
+mkdir -p "$dir"
+tmp=$(mktemp "$dir/.docker.XXXXXX")
+trap 'rm -f "$tmp"' EXIT
+{
+  echo "# netsync-docker 1 $(date +%s)"
+  docker ps -a --no-trunc --format \
+    '{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.State}}\t{{.Status}}\t{{.Ports}}\t{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.service"}}\t{{.Label "coolify.resourceName"}}'
+  echo "---"
+  docker stats --no-stream --no-trunc --format '{{.ID}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}'
+} > "$tmp"
+chmod 644 "$tmp"
+mv -f "$tmp" "$out"
+trap - EXIT

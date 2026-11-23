@@ -16,6 +16,7 @@ import NetstatTab from "./device/NetstatTab";
 import HealthTab, { cpuLine, HealthSub } from "./device/HealthTab";
 import GraphsTab from "./device/GraphsTab";
 import PortsTab from "./device/PortsTab";
+import ContainersTab from "./device/ContainersTab";
 import { TerminalView } from "../components/TerminalView";
 import { MEMORY_COLORS } from "./device/charts";
 import { FORMATS } from "../presets";
@@ -97,6 +98,7 @@ export default function DevicePage() {
   const ports = components.filter((c) => c.kind === "port");
   const health = components.filter((c) => ["processor", "mempool", "storage", "sensor", "disk"].includes(c.kind));
   const netstat = components.find((c) => c.kind === "netstat");
+  const containers = components.filter((c) => c.kind === "container").length;
   const pluginTabs = plugins.flatMap((p) => p.ui_tabs);
   const canEdit = me?.role !== "viewer";
   const tabs: [string, string, number?][] = [
@@ -106,6 +108,7 @@ export default function DevicePage() {
     ["graphs", "Graphs"],
     ["services", "Services", services.length],
     ...(netstat ? [["netstat", "Network stack"] as [string, string]] : []),
+    ...(containers ? [["containers", "Containers", containers] as [string, string, number]] : []),
     ...pluginTabs.map((t) => [t.id, t.label] as [string, string]),
     ...(canTerminal ? [["terminal", "Terminal"] as [string, string]] : []),
     ["events", "Events"],
@@ -220,6 +223,7 @@ export default function DevicePage() {
         {tab === "events" && <EventsTab deviceId={id} />}
         {tab === "notes" && <NotesTab deviceId={id} canEdit={canEdit} />}
         {tab === "netstat" && <NetstatTab deviceId={id} component={netstat} range={range} />}
+        {tab === "containers" && <ContainersTab deviceId={id} components={components} services={services} range={range} />}
         {tab === "settings" && <SettingsTab device={device} isAdmin={me?.role === "admin"} />}
         {pluginTabs.filter((t) => t.id === tab).map((t) =>
           t.view === "iframe" && t.url ? (

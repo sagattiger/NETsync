@@ -9,6 +9,7 @@ from netsync.plugins.builtin.netstats import NetstatsModule
 from netsync.plugins.builtin.proxmox import ProxmoxGuestsModule
 from netsync.plugins.builtin.notify import EmailChannel, TelegramChannel, WebhookChannel, WorkflowChannel
 from netsync.plugins.builtin.diskio import DiskIoModule
+from netsync.plugins.builtin.docker import DockerModule
 from netsync.plugins.builtin.sensors import SensorsModule
 from netsync.plugins.builtin.syslog import SyslogService
 from netsync.plugins.builtin.system import SystemModule
@@ -19,9 +20,9 @@ BUILTIN_PLUGINS = [
         name="snmp_core",
         version="0.1.0",
         description="System, interfaces, CPU, memory, storage, sensors, disk I/O and the IP/TCP/UDP/SNMP stack "
-                    "via standard MIBs",
+                    "via standard MIBs; Proxmox guests and Docker containers",
         modules=[SystemModule(), InterfacesModule(), HostResourcesModule(), UcdModule(), NetstatsModule(),
-                 SensorsModule(), DiskIoModule(), ProxmoxGuestsModule()],
+                 SensorsModule(), DiskIoModule(), ProxmoxGuestsModule(), DockerModule()],
         builtin=True,
     ),
     Plugin(
