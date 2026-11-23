@@ -167,6 +167,9 @@ class Device(Base):
     # Used to match syslog/traps that arrive from an interface other than the polled one.
     ip_addresses: Mapped[list] = mapped_column(JSON, default=list)
     virtualization: Mapped[str | None] = mapped_column(String(16))  # lxc, vm, or None
+    # the main application on the device (set by hand): a Dashboard Icons logo ("di:observium") or https URL, and a name
+    app_logo: Mapped[str | None] = mapped_column(String(600))
+    app_name: Mapped[str | None] = mapped_column(String(64))
     kernel: Mapped[str | None] = mapped_column(String(64))
     # position on the world map: the site's, or the device's own when it has no site
     site_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id", ondelete="SET NULL"))

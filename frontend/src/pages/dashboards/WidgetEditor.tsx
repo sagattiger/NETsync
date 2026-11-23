@@ -95,7 +95,7 @@ export const newWidgetId = () => Math.random().toString(36).slice(2, 10);
 
 interface IconHit { slug: string; name: string; logo: string; src: string; formats: string[] }
 
-function LogoPicker({ value, onChange }: { value: string | null | undefined; onChange: (v: string | null) => void }) {
+export function LogoPicker({ value, onChange }: { value: string | null | undefined; onChange: (v: string | null) => void }) {
   const [q, setQ] = useState("");
   const [debounced, setDebounced] = useState("");
   const [url, setUrl] = useState(value && !value.startsWith("di:") ? value : "");

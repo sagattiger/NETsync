@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, Device, fmtAgo, fmtUptime, Group, Me } from "../api";
+import { api, Device, fmtAgo, fmtUptime, Group, logoSrc, Me } from "../api";
 import { Icon } from "../components/Icon";
 import { Page, PageHeader } from "../components/Layout";
 import { osLabel, VendorLogo, VirtBadge } from "../components/VendorLogo";
@@ -73,7 +73,11 @@ export default function Devices() {
                       <Link to={`/devices/${d.id}`} className="flex items-center gap-3 group">
                         <VendorLogo device={d} size={34} />
                         <div className="min-w-0">
-                          <div className="font-medium text-strong group-hover:text-accent transition-colors truncate">{d.hostname}</div>
+                          <div className="font-medium text-strong group-hover:text-accent transition-colors truncate flex items-center gap-1.5">
+                            <span className="truncate">{d.hostname}</span>
+                            {d.app_logo && logoSrc(d.app_logo) && <img src={logoSrc(d.app_logo)!} alt="" title={d.app_name ?? undefined}
+                              className="w-4 h-4 object-contain shrink-0" loading="lazy" referrerPolicy="no-referrer" />}
+                          </div>
                           <div className="text-xs text-muted flex items-center gap-1.5">{d.ip ?? d.ip_addresses?.[0]}<VirtBadge virtualization={d.virtualization} /></div>
                         </div>
                       </Link>

@@ -2,7 +2,8 @@ import { BackLink } from "../components/Tabs";
 import { Fragment, ReactNode, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, Component, Device, fmtAgo, fmtUptime, Me, PluginInfo, prefs, Service, SyslogMsg } from "../api";
+import { api, Component, Device, fmtAgo, fmtUptime, logoSrc, Me, PluginInfo, prefs, Service, SyslogMsg } from "../api";
+import { LogoPicker } from "./dashboards/WidgetEditor";
 import { Icon } from "../components/Icon";
 import { MetricChart } from "../components/MetricChart";
 import ServiceTable from "../components/ServiceTable";
@@ -20,6 +21,18 @@ import { MEMORY_COLORS } from "./device/charts";
 import { FORMATS } from "../presets";
 
 const RANGES: [string, string][] = [["1h", "1h"], ["6h", "6h"], ["24h", "24h"], ["7d", "7d"], ["30d", "30d"], ["1y", "1y"]];
+
+/** The device's main application: its logo (Dashboard Icons or https) and name. */
+export function AppLabel({ device, size = 20 }: { device: Pick<Device, "app_logo" | "app_name">; size?: number }) {
+  const src = logoSrc(device.app_logo);
+  return (
+    <span className="inline-flex items-center gap-2 min-w-0 align-middle" title={device.app_name ?? undefined}>
+      {src && <img src={src} alt="" width={size} height={size} className="object-contain shrink-0" style={{ width: size, height: size }}
+        loading="lazy" referrerPolicy="no-referrer" />}
+      {device.app_name && <span className="truncate">{device.app_name}</span>}
+    </span>
+  );
+}
 
 function Meta({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -133,7 +146,8 @@ export default function DevicePage() {
             </div>
           )}
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-x-6 gap-y-3 mt-5">
+        <div className={`grid grid-cols-2 sm:grid-cols-3 ${device.app_logo || device.app_name ? "lg:grid-cols-7" : "lg:grid-cols-6"} gap-x-6 gap-y-3 mt-5`}>
+          {(device.app_logo || device.app_name) && <Meta label="Application"><AppLabel device={device} /></Meta>}
           <Meta label="IP address">{device.ip}</Meta>
           <Meta label="Platform">{[device.vendor, device.hardware].filter(Boolean).join(" ")}</Meta>
           <Meta label="Operating system">{osLabel(device.os, device.version)}</Meta>
@@ -306,14 +320,19 @@ function SettingsTab({ device, isAdmin }: { device: Device; isAdmin: boolean }) 
   const nav = useNavigate();
   const [community, setCommunity] = useState("");
   const [ip, setIp] = useState(device.ip ?? "");
+  const [appLogo, setAppLogo] = useState<string | null>(device.app_logo ?? null);
+  const [appName, setAppName] = useState(device.app_name ?? "");
   const [msg, setMsg] = useState("");
 
   async function save() {
-    const body: any = { ip: ip || null };
+    const body: any = { ip: ip || null, app_logo: appLogo, app_name: appName.trim() || null };
     if (community) body.snmp_community = community;
-    await api(`/devices/${device.id}`, { method: "PATCH", body });
-    setMsg("Saved");
+    try {
+      await api(`/devices/${device.id}`, { method: "PATCH", body });
+      setMsg("Saved");
+    } catch (e: any) { setMsg(e.message); }
     qc.invalidateQueries({ queryKey: ["device", device.id] });
+    qc.invalidateQueries({ queryKey: ["devices"] });
   }
   async function toggle() {
     await api(`/devices/${device.id}`, { method: "PATCH", body: { disabled: !device.disabled } });
@@ -329,6 +348,12 @@ function SettingsTab({ device, isAdmin }: { device: Device; isAdmin: boolean }) 
     <Card title="Device settings" flush={false}>
       <div className="grid gap-4 max-w-md">
         <div><label className="label">IP address</label><input className="input w-full" value={ip} onChange={(e) => setIp(e.target.value)} /></div>
+        <div>
+          <label className="label">Application (what runs on this device)</label>
+          <input className="input w-full mb-2" maxLength={64} value={appName} onChange={(e) => setAppName(e.target.value)} placeholder="e.g. Observium" />
+          <LogoPicker value={appLogo} onChange={setAppLogo} />
+          <div className="text-xs text-muted mt-1">Shown in the header and the device list. The OS logo stays as it is.</div>
+        </div>
         <div><label className="label">New SNMP community (leave empty to keep the current one)</label>
           <input className="input w-full" type="password" value={community} onChange={(e) => setCommunity(e.target.value)} /></div>
         <div className="flex flex-wrap gap-2 items-center">

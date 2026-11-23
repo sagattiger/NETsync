@@ -10,6 +10,7 @@ export interface Device {
   sys_location: string | null; sys_contact: string | null; uptime: number | null;
   ip_addresses?: string[]; vendor: string | null; os: string | null; hardware: string | null; version: string | null;
   serial: string | null; device_type: string | null; virtualization: string | null; kernel: string | null;
+  app_logo?: string | null; app_name?: string | null; // main application (Dashboard Icons logo or https URL)
   site_id?: number | null; lat?: number | null; lon?: number | null;
   status: number; status_reason: string | null; disabled: boolean;
   last_polled: string | null; last_discovered: string | null; poll_duration: number | null;

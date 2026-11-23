@@ -124,6 +124,8 @@ ADDED_COLUMNS = {
         "ip_addresses JSON NOT NULL DEFAULT '[]'",
         "virtualization VARCHAR(16)",
         "kernel VARCHAR(64)",
+        "app_logo VARCHAR(600)",
+        "app_name VARCHAR(64)",
     ],
     "users": [
         "full_name VARCHAR(128)",

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ORM(BaseModel):
@@ -40,6 +40,21 @@ class DeviceUpdate(BaseModel):
     site_id: int | None = None
     lat: float | None = Field(None, ge=-90, le=90)
     lon: float | None = Field(None, ge=-180, le=180)
+    # main application: "di:<slug>" (Dashboard Icons) or an https:// image URL; "" or null clears it
+    app_logo: str | None = Field(None, max_length=600)
+    app_name: str | None = Field(None, max_length=64)
+
+    @field_validator("app_logo")
+    @classmethod
+    def _app_logo(cls, v: str | None) -> str | None:
+        from netsync.api.dashboards import validate_logo
+
+        return validate_logo(v) if v and v.strip() else None
+
+    @field_validator("app_name")
+    @classmethod
+    def _app_name(cls, v: str | None) -> str | None:
+        return " ".join(v.split()) or None if v else None
 
 
 class DeviceOut(ORM):
@@ -65,6 +80,8 @@ class DeviceOut(ORM):
     device_type: str | None
     virtualization: str | None = None
     kernel: str | None = None
+    app_logo: str | None = None
+    app_name: str | None = None
     site_id: int | None = None
     lat: float | None = None
     lon: float | None = None
