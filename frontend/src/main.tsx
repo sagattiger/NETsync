@@ -7,6 +7,9 @@ import { auth } from "./api";
 import { ThemeProvider } from "./theme";
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
+import { registerPwa } from "./lib/pwa";
+
+registerPwa();
 
 const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 10_000, retry: 1 } } });
 

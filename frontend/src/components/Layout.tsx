@@ -1,4 +1,5 @@
 import { ReactNode, useCallback, useEffect, useState } from "react";
+import { useInstallPrompt } from "../lib/pwa";
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, auth, Me, prefs } from "../api";
@@ -120,6 +121,7 @@ function Sidebar({ me, collapsed, onToggle, onNavigate, mobile }: {
     toggleTheme();
     api<Me>("/auth/me", { method: "PATCH", body: { preferences: { theme: next } } }).then((m) => qc.setQueryData(["me"], m)).catch(() => {});
   };
+  const install = useInstallPrompt();
   const tool = "w-9 h-9 rounded-lg flex items-center justify-center text-fg2 hover:bg-active/60 hover:text-strong transition-colors";
 
   return (
@@ -192,6 +194,11 @@ function Sidebar({ me, collapsed, onToggle, onNavigate, mobile }: {
           <Icon name="bell" className="w-[18px] h-[18px]" />
           {problems > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-crit" />}
         </Link>
+        {install && (
+          <button onClick={install} className={tool} title="Install NETsync as an app">
+            <Icon name="download" className="w-[18px] h-[18px]" />
+          </button>
+        )}
         <button onClick={themeToggle} className={tool} title={theme === "dark" ? "Light mode" : "Dark mode"}>
           <Icon name={theme === "dark" ? "sun" : "moon"} className="w-[18px] h-[18px]" />
         </button>

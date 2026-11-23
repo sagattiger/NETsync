@@ -1,14 +1,26 @@
 {
+  "id": "/",
   "name": "NETsync",
   "short_name": "NETsync",
-  "description": "Network monitoring",
+  "description": "Network monitoring: devices, probes, problems and dashboards",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
   "background_color": "#101010",
   "theme_color": "#FF58AE",
+  "categories": ["utilities", "productivity"],
   "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
     { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ],
+  "shortcuts": [
+    { "name": "Problems", "url": "/problems", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Devices", "url": "/devices", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Dashboards", "url": "/dashboards", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Probes", "url": "/probes", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
   ]
 }

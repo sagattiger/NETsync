@@ -7,6 +7,7 @@ import { Page, PageHeader } from "../components/Layout";
 import { Card } from "../components/ui";
 import { LogoIcon } from "../components/Brand";
 import { useTheme } from "../theme";
+import { installBlocker, useInstallPrompt } from "../lib/pwa";
 
 interface About {
   product: string; version: string;
@@ -88,6 +89,14 @@ const THANKS: [string, string][] = [
   ["Simple Icons", "Vendor logos (CC0)"],
 ];
 
+/** Installed as an app, can be installed (button), or why not (HTTPS). */
+function InstallStatus() {
+  const install = useInstallPrompt();
+  if (window.matchMedia?.("(display-mode: standalone)").matches) return <span>Running as an installed app</span>;
+  if (install) return <button className="btn btn-sm" onClick={install}>Install NETsync as an app</button>;
+  return <span className="text-xs text-muted">{installBlocker() ?? "Installed already, or use the browser menu: Install NETsync…"}</span>;
+}
+
 export default function AboutPage() {
   const { theme } = useTheme();
   const { data: a } = useQuery({ queryKey: ["about"], queryFn: () => api<About>("/about"), refetchInterval: 60_000 });
@@ -143,6 +152,7 @@ export default function AboutPage() {
                 ["User agent", <span key="ua" className="text-xs">{navigator.userAgent}</span>],
                 ["Browser", browserName(navigator.userAgent)],
                 ["Screen", `${screen.width}×${screen.height}`],
+                ["App", <InstallStatus key="app" />],
                 ["Time zone", `${fromZ(r.timezone)} (server), ${r.db_timezone ?? "-"} (database), ${offset(new Date().getTimezoneOffset())} (you, ${tzUser})`],
               ]} />
             </Card>
