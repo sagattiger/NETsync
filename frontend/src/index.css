@@ -29,10 +29,10 @@
   --seg-edge: 219 219 219;    /* #DBDBDB */
   --seg-active: 26 26 26;
   --on-seg-active: 255 255 255;
-  --ok: 30 150 86;
-  --warn: 176 122 0;
+  --ok: 21 128 61;            /* #15803D: 4.5:1 as text on the light page */
+  --warn: 150 98 0;           /* #966200: 4.7:1 */
   --crit: 208 44 44;
-  --unknown: 107 114 128;    /* grey: no data / unknown */
+  --unknown: 90 96 110;      /* grey: no data / unknown, 5.7:1 */
   /* "Glow" UI kit palette (docs/design/netsync-ui-kit.svg): charts, gauges, pills */
   --ns-bg: 246 245 249;       /* #F6F5F9 */
   --ns-card: 255 255 255;
@@ -183,3 +183,7 @@ body { @apply bg-bg text-fg text-sm antialiased font-sans; }
 [data-corners="sharp"] { --r-sm: 0px; --r: 1px; --r-md: 2px; --r-lg: 2px; --r-xl: 3px; --r-2xl: 3px; }
 [data-pills="soft"] { --r-pill: 6px; }
 [data-pills="square"] { --r-pill: 3px; }
+
+/* The brand pink is 2.6:1 on the light page, too faint for text: pink text is a darker shade of it
+   (follows a custom accent colour from Settings → General too). Fills and tints keep the bright pink. */
+[data-theme="light"] .text-accent { color: color-mix(in srgb, rgb(var(--accent)) 70%, black); }

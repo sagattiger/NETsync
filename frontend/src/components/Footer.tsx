@@ -12,13 +12,14 @@ const LINKS: [string, string][] = [
 export function Footer() {
   const { theme } = useTheme();
   const mode = theme === "dark" ? "dark" : "light";
-  const link = "inline-flex items-center gap-1 rounded hover:text-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent";
+  // py-1/-my-1 makes each link a bigger target without making the footer taller
+  const link = "inline-flex items-center gap-1 rounded py-1 -my-1 underline-offset-2 hover:text-strong hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-strong";
   return (
     <footer className="mt-auto border-t border-line px-3 sm:px-5 py-2.5 text-xs text-muted">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="flex items-center gap-3 min-w-0">
-          <a href="https://qsync.net" target="_blank" rel="noopener noreferrer" title="qsync networks labs" className="shrink-0">
-            <img src={`/brand/qsync-labs-${mode}.svg`} alt="qsync networks labs" width={115} height={20} className="h-5 w-auto" />
+          <a href="https://qsync.net" target="_blank" rel="noopener noreferrer" title="qsync networks labs" className="shrink-0 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-strong">
+            <img src={`/brand/qsync-labs-${mode}.svg`} alt="qsync networks labs" width={138} height={24} className="h-6 w-auto" />
           </a>
           <span className="hidden sm:inline text-line" aria-hidden="true">|</span>
           <span className="hidden sm:inline whitespace-nowrap">
