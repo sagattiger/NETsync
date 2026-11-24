@@ -155,7 +155,7 @@ function Sidebar({ me, collapsed, onToggle, onNavigate, mobile }: {
         {me?.role !== "viewer" ? (
           <button onClick={() => { nav("/devices?add=1"); onNavigate?.(); }} title={collapsed ? "Add device" : undefined}
             className={`flex items-center gap-3 rounded-lg text-sm font-medium text-strong hover:bg-active/50 transition-colors ${collapsed ? "w-10 h-10 justify-center" : "w-full px-1.5 h-10"}`}>
-            <span className="w-7 h-7 rounded-lg bg-accent text-white flex items-center justify-center shrink-0"><Icon name="plus" className="w-4 h-4" strokeWidth={2.25} /></span>
+            <span className="w-7 h-7 rounded-lg bg-accent-solid text-white flex items-center justify-center shrink-0"><Icon name="plus" className="w-4 h-4" strokeWidth={2.25} /></span>
             {!collapsed && "Add device"}
           </button>
         ) : null}
@@ -241,7 +241,7 @@ function Notice({ me }: { me?: Me }) {
     <div className="hidden md:flex items-center gap-2.5 h-9 pl-1.5 pr-2 rounded-xl bg-surface border border-line text-sm max-w-full min-w-0">
       <span className="text-xxs font-bold px-1.5 py-0.5 rounded-md bg-accent/15 text-accent">NEW</span>
       <span className="text-strong truncate">{NOTICE.text}</span>
-      <Link to={NOTICE.to} className="text-xxs font-semibold px-2 py-1 rounded-md bg-accent text-white whitespace-nowrap hover:bg-accent/90">{NOTICE.cta}</Link>
+      <Link to={NOTICE.to} className="text-xxs font-semibold px-2 py-1 rounded-md bg-accent-solid text-white whitespace-nowrap hover:opacity-90">{NOTICE.cta}</Link>
       <button onClick={dismiss} className="text-muted hover:text-strong p-0.5" aria-label="Dismiss"><Icon name="x" className="w-3.5 h-3.5" /></button>
     </div>
   );

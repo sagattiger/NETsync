@@ -310,7 +310,7 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
           )}
           {msgs.map((m) => m.role === "user" ? (
             <div key={m.id} className="flex justify-end">
-              <div className="max-w-[85%] rounded-2xl rounded-br-md px-3 py-2 bg-accent text-white text-sm whitespace-pre-wrap break-words">{m.content}</div>
+              <div className="max-w-[85%] rounded-2xl rounded-br-md px-3 py-2 bg-accent-solid text-white text-sm whitespace-pre-wrap break-words">{m.content}</div>
             </div>
           ) : m.role === "tool" ? (
             <ToolStep key={m.id} m={m} />
@@ -342,7 +342,7 @@ export function ChatPanel({ onClose }: { onClose: () => void }) {
               className="w-8 h-8 rounded-lg bg-active text-strong flex items-center justify-center shrink-0"><Icon name="pause" className="w-4 h-4" /></button>
           ) : (
             <button type="submit" disabled={!input.trim()} title="Send"
-              className="w-8 h-8 rounded-lg bg-accent text-white flex items-center justify-center shrink-0 disabled:opacity-40"><Icon name="arrow" className="w-4 h-4" /></button>
+              className="w-8 h-8 rounded-lg bg-accent-solid text-white flex items-center justify-center shrink-0 disabled:opacity-40"><Icon name="arrow" className="w-4 h-4" /></button>
           )}
         </div>
         <div className="text-xxs text-faint mt-1.5 px-1">Small local model: check important numbers in the tool details.</div>

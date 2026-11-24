@@ -64,7 +64,7 @@ export function CommentSticker({ event }: { event: DeviceEvent }) {
   return (
     <span className="inline-flex items-center gap-1.5" onMouseEnter={show} onMouseLeave={() => setPos(null)}>
       {event.pinned && (
-        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-accent text-white" title="Pinned">
+        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-accent-solid text-white" title="Pinned">
           <Icon name="pin" className="w-3.5 h-3.5" />
         </span>
       )}

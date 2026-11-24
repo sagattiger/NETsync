@@ -121,7 +121,9 @@ body { @apply bg-bg text-fg text-sm antialiased font-sans; }
 
   .btn { @apply inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-edge text-fg text-xs font-medium hover:bg-inset transition-colors disabled:opacity-40; }
   .btn-primary { @apply bg-primary text-on-primary border-primary hover:bg-primary/90; }
-  .btn-accent { @apply bg-accent text-white border-accent hover:bg-accent/90; }
+  .btn-accent { @apply bg-accent-solid text-white border-transparent hover:opacity-90; }
+  /* deeper brand pink behind white text: the bright pink is only 2.9:1 with white, this is 5.4:1 */
+  .bg-accent-solid { background-color: color-mix(in srgb, rgb(var(--accent)) 70%, black); }
   .btn-ghost { @apply border-transparent hover:bg-inset; }
 
   .input { @apply bg-surface border border-edge rounded-lg px-3 py-2 text-sm text-fg placeholder:text-muted outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition; }
