@@ -104,7 +104,7 @@ export function Field({ f, plugin, config, set }: { f: SettingField; plugin: str
       <label className="label">{f.label}</label>
       {f.type === "color" ? (
         <div className="flex items-center gap-2">
-          <input type="color" className="w-10 h-9 rounded-md border border-line bg-transparent cursor-pointer" value={v || "#ff58ae"} onChange={(e) => set(f.key, e.target.value)} />
+          <input type="color" className="w-10 h-9 rounded-md border border-line bg-transparent cursor-pointer" value={v || "#12b8ff"} onChange={(e) => set(f.key, e.target.value)} />
           <input className="input w-32 font-mono" value={v ?? ""} placeholder="default" onChange={(e) => set(f.key, e.target.value.trim())} />
           {v && <button type="button" className="btn btn-ghost text-xs" onClick={() => set(f.key, "")}>Default</button>}
         </div>

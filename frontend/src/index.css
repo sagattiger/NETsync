@@ -22,7 +22,7 @@
   --muted: 97 97 97;          /* #616161 */
   --faint: 190 190 187;       /* #BEBEBB */
   --active: 224 223 219;      /* #E0DFDB */
-  --accent: 255 88 174;       /* #FF58AE */
+  --accent: 18 184 255;       /* #12B8FF primary */
   --primary: 26 26 26;        /* #1A1A1A buttons */
   --on-primary: 255 255 255;
   --seg: 255 255 255;         /* tab group */
@@ -67,7 +67,7 @@
   --muted: 140 138 150;       /* #8C8A96 */
   --faint: 88 86 98;
   --active: 54 53 62;
-  --accent: 255 88 174;       /* #FF58AE */
+  --accent: 18 184 255;       /* #12B8FF primary */
   --primary: 246 245 250;
   --on-primary: 18 17 22;
   --seg: 22 21 27;
@@ -122,8 +122,8 @@ body { @apply bg-bg text-fg text-sm antialiased font-sans; }
   .btn { @apply inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-edge text-fg text-xs font-medium hover:bg-inset transition-colors disabled:opacity-40; }
   .btn-primary { @apply bg-primary text-on-primary border-primary hover:bg-primary/90; }
   .btn-accent { @apply bg-accent-solid text-white border-transparent hover:opacity-90; }
-  /* deeper brand pink behind white text: the bright pink is only 2.9:1 with white, this is 5.4:1 */
-  .bg-accent-solid { background-color: color-mix(in srgb, rgb(var(--accent)) 70%, black); }
+  /* deeper primary blue behind white text: the bright blue is only 2.3:1 with white, this is 5.7:1 */
+  .bg-accent-solid { background-color: color-mix(in srgb, rgb(var(--accent)) 60%, black); }
   .btn-ghost { @apply border-transparent hover:bg-inset; }
 
   .input { @apply bg-surface border border-edge rounded-lg px-3 py-2 text-sm text-fg placeholder:text-muted outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition; }
@@ -186,6 +186,6 @@ body { @apply bg-bg text-fg text-sm antialiased font-sans; }
 [data-pills="soft"] { --r-pill: 6px; }
 [data-pills="square"] { --r-pill: 3px; }
 
-/* The brand pink is 2.6:1 on the light page, too faint for text: pink text is a darker shade of it
-   (follows a custom accent colour from Settings → General too). Fills and tints keep the bright pink. */
-[data-theme="light"] .text-accent { color: color-mix(in srgb, rgb(var(--accent)) 70%, black); }
+/* The primary blue is 2:1 on the light page, too faint for text: blue text is a darker shade of it (5.1:1)
+   (follows a custom accent colour from Settings → General too). Fills and tints keep the bright blue. */
+[data-theme="light"] :is(.text-accent, .md a, .link:hover, .hover\:text-accent:hover) { color: color-mix(in srgb, rgb(var(--accent)) 60%, black); }

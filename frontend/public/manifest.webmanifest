@@ -8,7 +8,7 @@
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone"],
   "background_color": "#101010",
-  "theme_color": "#FF58AE",
+  "theme_color": "#12B8FF",
   "categories": ["utilities", "productivity"],
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },

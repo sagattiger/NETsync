@@ -276,7 +276,7 @@ def check_regexes(label: str, text: str) -> None:
 
 def validate(cfg: dict[str, Any]) -> None:
     if cfg.get("accent_color") and not HEX.match(cfg["accent_color"]):
-        raise ValueError("Primary colour must look like #ff58ae")
+        raise ValueError("Primary colour must look like #12b8ff")
     for key in ("logo", "icon"):
         v = cfg.get(key) or ""
         if v and (len(v) > MAX_IMAGE or not IMAGE.match(v)):
