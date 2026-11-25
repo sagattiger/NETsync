@@ -108,3 +108,12 @@ def test_multi_field_coercion():
     with pytest.raises(ValueError):
         coerce(plugin, {"ip_ignore_types": ["nope"]}, {})
     assert coerce(plugin, {"snmp_timeout": "2.5"}, {})["snmp_timeout"] == 2.5
+
+
+def test_branding_logo_for_each_theme():
+    png = "data:image/png;base64,iVBORw0KGgo="
+    assert DEFAULTS["logo_dark"] == ""
+    validate({**DEFAULTS, "logo": png, "logo_dark": png})
+    for bad in ("https://example.com/logo.png", "data:text/html;base64,PGI+", "data:image/png;base64," + "A" * 400_000):
+        with pytest.raises(ValueError, match="Logo \(dark theme\)"):
+            validate({**DEFAULTS, "logo_dark": bad})

@@ -3,10 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { api, auth, Me } from "../api";
 import { Icon } from "../components/Icon";
 import { useTheme } from "../theme";
-import { appName, Art, LogoIcon, useApplyBranding } from "../components/Brand";
+import { appName, Art, LogoIcon, useApplyBranding, useBrandLogo } from "../components/Brand";
 
 export default function Login() {
   const branding = useApplyBranding();
+  const logo = useBrandLogo(branding);
   const nav = useNavigate();
   const { theme, toggle } = useTheme();
   const [username, setUsername] = useState("");
@@ -37,7 +38,7 @@ export default function Login() {
       </button>
       <form onSubmit={submit} className="card w-full max-w-sm p-7 space-y-5">
         <div className="flex items-center gap-3">
-          {branding?.logo ? <img src={branding.logo} alt={appName(branding)} className="h-10 max-w-[14rem] object-contain object-left" /> : <>
+          {logo ? <img src={logo} alt={appName(branding)} className="h-10 max-w-[14rem] object-contain object-left" /> : <>
             <LogoIcon className="w-10 h-10" />
             <div>
               <div className="text-lg font-semibold text-strong tracking-tight">{appName(branding)}</div>

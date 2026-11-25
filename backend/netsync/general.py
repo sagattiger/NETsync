@@ -81,9 +81,12 @@ REGEX_HELP = "One per line, like /^eth[0-9]+$/i (flags: i, m, s, x)."
 
 SETTINGS = [
     # ---- Branding
-    _f("accent_color", "Primary colour", "color", "Branding", "Branding", "Buttons, links, highlights. Empty = NETsync pink."),
-    _f("logo", "Logo", "image", "Branding", "Branding",
-       "Shown in the sidebar and on the sign-in page instead of the NETsync logo (PNG, SVG, JPG or WebP, up to 300 KB)."),
+    _f("accent_color", "Primary colour", "color", "Branding", "Branding", "Buttons, links, highlights. Empty = NETsync blue (#12B8FF)."),
+    _f("logo", "Logo (light theme)", "image", "Branding", "Branding",
+       "Shown in the sidebar and on the sign-in page instead of the NETsync logo, on the light theme "
+       "(PNG, SVG, JPG or WebP, up to 300 KB). Also used on the dark theme when there's no dark logo."),
+    _f("logo_dark", "Logo (dark theme)", "image", "Branding", "Branding",
+       "The same logo for the dark theme, e.g. with light text. Empty = the light-theme logo is used on both."),
     _f("icon", "Browser icon", "image", "Branding", "Branding", "The tab icon (favicon). Square images work best."),
     _f("app_name", "Name", "text", "Branding", "Branding", "Shown next to the logo and in the browser tab."),
     _f("time_format", "Time format", "select", "Branding", "Defaults", "For users who haven't chosen their own on their profile.",
@@ -175,7 +178,7 @@ SETTINGS = [
 TABS = ["Branding", "Discovery", "Entities", "Alerting", "Authentication", "Network"]
 
 DEFAULTS = {
-    "accent_color": "", "logo": "", "icon": "", "app_name": "", "time_format": "24h",
+    "accent_color": "", "logo": "", "logo_dark": "", "icon": "", "app_name": "", "time_format": "24h",
     "discover_ports": True, "discover_storage": True, "discover_memory": True, "discover_processors": True,
     "discover_ip_addresses": True,
     "ports_ignore_regex": "\n".join([r"/^ng[0-9]+$/i", r"/^sl[0-9]/i", r"/^lp0/", r"/^<(none|invalid)>$/i",
@@ -277,10 +280,10 @@ def check_regexes(label: str, text: str) -> None:
 def validate(cfg: dict[str, Any]) -> None:
     if cfg.get("accent_color") and not HEX.match(cfg["accent_color"]):
         raise ValueError("Primary colour must look like #12b8ff")
-    for key in ("logo", "icon"):
+    for key, label in (("logo", "Logo (light theme)"), ("logo_dark", "Logo (dark theme)"), ("icon", "Browser icon")):
         v = cfg.get(key) or ""
         if v and (len(v) > MAX_IMAGE or not IMAGE.match(v)):
-            raise ValueError(f"{key.capitalize()} must be a PNG, SVG, JPG or WebP image up to 300 KB")
+            raise ValueError(f"{label} must be a PNG, SVG, JPG or WebP image up to 300 KB")
     for f in SETTINGS:
         if "regular expression" in f["label"]:
             check_regexes(f["label"], cfg.get(f["key"], ""))
@@ -575,9 +578,9 @@ router = APIRouter()
 
 @router.get("/branding")
 async def branding():
-    """Public (the sign-in page needs it): colour, logo, icon, name, default time format."""
+    """Public (the sign-in page needs it): colour, logos (light and dark theme), icon, name, default time format."""
     cfg = await get()
-    return {k: cfg.get(k) or None for k in ("accent_color", "logo", "icon", "app_name", "time_format")}
+    return {k: cfg.get(k) or None for k in ("accent_color", "logo", "logo_dark", "icon", "app_name", "time_format")}
 
 
 @router.get("/autodiscovery", dependencies=[require(Role.ADMIN)])

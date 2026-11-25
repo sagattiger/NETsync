@@ -4,11 +4,18 @@ import { api } from "../api";
 import { useTheme } from "../theme";
 
 /** Settings → General → Branding (public, so the sign-in page can use it too). */
-export interface Branding { accent_color: string | null; logo: string | null; icon: string | null; app_name: string | null; time_format: string | null }
+export interface Branding { accent_color: string | null; logo: string | null; logo_dark: string | null; icon: string | null; app_name: string | null; time_format: string | null }
 export function useBranding(): Branding | undefined {
   return useQuery({ queryKey: ["branding"], queryFn: () => api<Branding>("/plugins/general/branding"), staleTime: 300_000, retry: false }).data;
 }
 export const appName = (b?: Branding) => b?.app_name || "NETsync";
+
+/** The custom logo for the current theme: each theme falls back to the other one's logo. */
+export function useBrandLogo(b?: Branding): string | null {
+  const { theme } = useTheme();
+  if (!b) return null;
+  return (theme === "dark" ? b.logo_dark || b.logo : b.logo || b.logo_dark) || null;
+}
 
 /** Applies the colour and the browser icon; call once near the root. */
 export function useApplyBranding(): Branding | undefined {
@@ -35,7 +42,8 @@ export function LogoIcon({ className = "w-8 h-8" }: { className?: string }) {
 /** Logo and name for the sidebar and the sign-in page: a custom logo replaces both. */
 export function BrandMark({ iconClass = "w-8 h-8", textClass = "text-lg" }: { iconClass?: string; textClass?: string }) {
   const b = useBranding();
-  if (b?.logo) return <img src={b.logo} alt={appName(b)} draggable={false} className="h-8 max-w-[11rem] object-contain object-left select-none" />;
+  const logo = useBrandLogo(b);
+  if (logo) return <img src={logo} alt={appName(b)} draggable={false} className="h-8 max-w-[11rem] object-contain object-left select-none" />;
   return (
     <>
       <LogoIcon className={iconClass} />
