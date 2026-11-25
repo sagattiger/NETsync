@@ -5,6 +5,8 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import and_, func, or_, select
 
+from netsync import notify_rules
+from netsync.api.collab import author_avatars, comment_out
 from netsync.api.deps import CurrentUser, Session, device_scope, get_device_for, require
 from netsync.api.schemas import (
     AckIn,
@@ -16,9 +18,17 @@ from netsync.api.schemas import (
     RuleIn,
     RuleOut,
 )
-from netsync.api.collab import author_avatars, comment_out
 from netsync.models import (
-    AIJob, Device, Downtime, EventComment, NotificationRule, Role, Service, State, StateChange, ThresholdRule,
+    AIJob,
+    Device,
+    Downtime,
+    EventComment,
+    NotificationRule,
+    Role,
+    Service,
+    State,
+    StateChange,
+    ThresholdRule,
     real_device,
 )
 from netsync.plugins.base import AlertEvent
@@ -257,19 +267,57 @@ async def channels(user: CurrentUser):
     return [{"name": c.name, "label": c.label, "fields": c.config_fields} for c in registry.channels.values()]
 
 
+@router.get("/notifications/problem-types")
+async def notification_problem_types(user: CurrentUser):
+    return [{"key": k, "label": label, "checks": sorted(checks)} for k, label, checks in notify_rules.PROBLEM_TYPES]
+
+
+def _rule_out(rule: NotificationRule) -> NotificationRuleOut:
+    ch = registry.channels.get(rule.channel)
+    config, secrets_set = notify_rules.public_config(ch.config_fields if ch else [], rule.config or {})
+    out = NotificationRuleOut.model_validate(rule)
+    return out.model_copy(update={"config": config, "secrets_set": secrets_set})
+
+
+def _apply_rule(rule: NotificationRule, body: NotificationRuleIn) -> None:
+    ch = registry.channels.get(body.channel)
+    if not ch:
+        raise HTTPException(400, f"Unknown channel {body.channel}")
+    if not body.name.strip():
+        raise HTTPException(400, "Name is required")
+    old = rule.config if rule.channel == body.channel else None
+    try:
+        config = notify_rules.clean_config(ch.config_fields, body.config, old)
+        types = notify_rules.clean_types(body.problem_types)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    rule.name, rule.channel, rule.config = body.name.strip(), body.channel, config
+    rule.min_state, rule.notify_recovery = body.min_state, body.notify_recovery
+    rule.device_group_id, rule.enabled, rule.problem_types = body.device_group_id, body.enabled, types
+
+
 @router.get("/notifications", response_model=list[NotificationRuleOut], dependencies=[require(Role.ADMIN)])
 async def list_notification_rules(session: Session):
-    return list(await session.scalars(select(NotificationRule).order_by(NotificationRule.name)))
+    return [_rule_out(r) for r in await session.scalars(select(NotificationRule).order_by(NotificationRule.name))]
 
 
 @router.post("/notifications", response_model=NotificationRuleOut, dependencies=[require(Role.ADMIN)])
 async def add_notification_rule(body: NotificationRuleIn, session: Session):
-    if body.channel not in registry.channels:
-        raise HTTPException(400, f"Unknown channel {body.channel}")
-    rule = NotificationRule(**body.model_dump())
+    rule = NotificationRule(config={}, sent_alert=0, sent_recovery=0, sent_failed=0)
+    _apply_rule(rule, body)
     session.add(rule)
     await session.commit()
-    return rule
+    return _rule_out(rule)
+
+
+@router.put("/notifications/{rule_id}", response_model=NotificationRuleOut, dependencies=[require(Role.ADMIN)])
+async def update_notification_rule(rule_id: int, body: NotificationRuleIn, session: Session):
+    rule = await session.get(NotificationRule, rule_id)
+    if not rule:
+        raise HTTPException(404)
+    _apply_rule(rule, body)
+    await session.commit()
+    return _rule_out(rule)
 
 
 @router.delete("/notifications/{rule_id}", dependencies=[require(Role.ADMIN)])
@@ -291,7 +339,7 @@ async def test_notification(rule_id: int, session: Session):
     try:
         await registry.channels[rule.channel].send(ev, rule.config)
     except Exception as e:
-        raise HTTPException(502, f"Sending failed: {e}") from e
+        raise HTTPException(502, f"Sending failed: {notify_rules.error_text(e, rule.config)}") from e
     return {"ok": True}
 
 

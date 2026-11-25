@@ -224,10 +224,17 @@ class NotificationRuleIn(BaseModel):
     notify_recovery: bool = True
     device_group_id: int | None = None
     enabled: bool = True
+    problem_types: list[str] | None = None  # empty = every problem type
 
 
 class NotificationRuleOut(NotificationRuleIn, ORM):
     id: int
+    secrets_set: list[str] = []  # secret fields that have a saved value (values are never sent back)
+    sent_alert: int = 0
+    sent_recovery: int = 0
+    sent_failed: int = 0
+    last_sent_at: datetime | None = None
+    last_error: str | None = None
 
 
 class UserIn(BaseModel):

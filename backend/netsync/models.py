@@ -489,6 +489,13 @@ class NotificationRule(Base):
     notify_recovery: Mapped[bool] = mapped_column(Boolean, default=True)
     device_group_id: Mapped[int | None] = mapped_column(ForeignKey("device_groups.id", ondelete="CASCADE"))
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    problem_types: Mapped[list | None] = mapped_column(JSON)  # notify_rules.PROBLEM_TYPES keys; empty = all
+    # how often this rule sent (tests not counted)
+    sent_alert: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    sent_recovery: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    sent_failed: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(String(300))
 
 
 class PluginSetting(Base):

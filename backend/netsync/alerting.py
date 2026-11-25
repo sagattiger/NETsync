@@ -5,8 +5,9 @@ import logging
 from datetime import datetime
 
 import redis.asyncio as aioredis
-from sqlalchemy import and_, select
+from sqlalchemy import and_, func, select, update
 
+from netsync import notify_rules
 from netsync.config import get_settings
 from netsync.db import SessionLocal
 from netsync.models import Device, Downtime, NotificationRule, Service, State
@@ -64,6 +65,7 @@ async def dispatch(events: list[tuple[int, AlertEvent]]) -> None:
             svc = await s.get(Service, service_id)
             if cfg.get("alert_skip_acknowledged", True) and svc and svc.acknowledged and ev.new_state != State.OK:
                 continue
+            check = svc.check if svc else None
             device = await s.get(Device, ev.device_id)
             group_ids = {g.id for g in device.groups} if device else set()
             recovery = ev.new_state == State.OK
@@ -75,14 +77,23 @@ async def dispatch(events: list[tuple[int, AlertEvent]]) -> None:
                         continue
                 elif ev.new_state < rule.min_state:
                     continue
+                if not notify_rules.wants(rule.problem_types, check):
+                    continue
                 channel = channels.get(rule.channel)
                 if not channel:
                     log.warning("notification rule %s uses unknown channel %s", rule.name, rule.channel)
                     continue
                 try:
                     await channel.send(ev, rule.config)
-                except Exception:
+                    values = ({"sent_recovery": NotificationRule.sent_recovery + 1} if recovery
+                              else {"sent_alert": NotificationRule.sent_alert + 1})
+                    values["last_sent_at"] = func.now()
+                except Exception as e:
                     log.exception("notification %s via %s failed", rule.name, rule.channel)
+                    values = {"sent_failed": NotificationRule.sent_failed + 1,
+                              "last_error": notify_rules.error_text(e, rule.config)}
+                await s.execute(update(NotificationRule).where(NotificationRule.id == rule.id).values(**values))
+                await s.commit()
     # plugins (e.g. the AI assistant) get every committed state change
     await registry.run_hooks("state_change", events)
 

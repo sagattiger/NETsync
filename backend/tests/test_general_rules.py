@@ -115,5 +115,5 @@ def test_branding_logo_for_each_theme():
     assert DEFAULTS["logo_dark"] == ""
     validate({**DEFAULTS, "logo": png, "logo_dark": png})
     for bad in ("https://example.com/logo.png", "data:text/html;base64,PGI+", "data:image/png;base64," + "A" * 400_000):
-        with pytest.raises(ValueError, match="Logo \(dark theme\)"):
+        with pytest.raises(ValueError, match=r"Logo \(dark theme\)"):
             validate({**DEFAULTS, "logo_dark": bad})

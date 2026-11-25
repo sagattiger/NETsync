@@ -73,6 +73,14 @@ FROM probe_beats GROUP BY probe_id, bucket WITH NO DATA
 # Columns added after a table first shipped. create_all() never alters existing tables,
 # so these are applied idempotently on startup until proper Alembic migrations land.
 ADDED_COLUMNS = {
+    "notification_rules": [
+        "problem_types JSON",
+        "sent_alert INTEGER NOT NULL DEFAULT 0",
+        "sent_recovery INTEGER NOT NULL DEFAULT 0",
+        "sent_failed INTEGER NOT NULL DEFAULT 0",
+        "last_sent_at TIMESTAMPTZ",
+        "last_error VARCHAR(300)",
+    ],
     "probes": [
         "port INTEGER",
         "config JSON NOT NULL DEFAULT '{}'",

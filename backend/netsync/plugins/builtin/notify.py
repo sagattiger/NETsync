@@ -7,6 +7,7 @@ import httpx
 
 from netsync.config import get_settings
 from netsync.models import State
+from netsync.notify_rules import clean_url
 from netsync.plugins.base import AlertEvent, NotificationChannel
 
 
@@ -70,7 +71,8 @@ class WebhookChannel(NotificationChannel):
     name = "webhook"
     label = "Webhook (JSON POST)"
     config_fields = [
-        {"key": "url", "label": "URL", "type": "text", "required": True},
+        {"key": "url", "label": "URL", "type": "text", "required": True,
+         "help": "http://, https:// or a host name / IP with an optional port and path (http:// is assumed)"},
         {"key": "secret", "label": "Bearer token (optional)", "type": "secret"},
     ]
 
@@ -87,7 +89,7 @@ class WebhookChannel(NotificationChannel):
             "url": event.url,
         }
         async with httpx.AsyncClient(timeout=10) as c:
-            r = await c.post(config["url"], json=payload, headers=headers)
+            r = await c.post(clean_url(config["url"]), json=payload, headers=headers)
             r.raise_for_status()
 
 
@@ -148,7 +150,8 @@ class WorkflowChannel(NotificationChannel):
     label = "Workflow (n8n, Make, Zapier, Node-RED…)"
     config_fields = [
         {"key": "url", "label": "Webhook URL", "type": "text", "required": True,
-         "help": "The URL of the workflow's webhook trigger, e.g. https://n8n.example.com/webhook/netsync"},
+         "help": "The workflow's webhook trigger: https://n8n.example.com/webhook/netsync, "
+                 "http://10.0.0.5:5678/webhook/netsync, or a host name / IP (http:// is assumed)"},
         {"key": "auth_header", "label": "Auth header name (optional)", "type": "text",
          "help": "e.g. Authorization or X-API-Key, for webhooks protected by header auth"},
         {"key": "auth_value", "label": "Auth header value (optional)", "type": "secret"},
@@ -161,6 +164,7 @@ class WorkflowChannel(NotificationChannel):
         import hmac
         import json
 
+        url = clean_url(config["url"])
         payload = await workflow_payload(event)
         body = json.dumps(payload, default=str).encode()
         headers = {"Content-Type": "application/json", "User-Agent": "NETsync", "X-NETsync-Event": payload["event"]}
@@ -173,7 +177,7 @@ class WorkflowChannel(NotificationChannel):
         for attempt in range(3):  # workflows restart; try a few times before giving up
             try:
                 async with httpx.AsyncClient(timeout=15) as c:
-                    r = await c.post(config["url"], content=body, headers=headers)
+                    r = await c.post(url, content=body, headers=headers)
                 if r.status_code < 500:
                     r.raise_for_status()
                     return
