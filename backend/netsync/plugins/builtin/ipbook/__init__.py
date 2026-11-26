@@ -13,6 +13,13 @@ SETTINGS = [
 ]
 DEFAULTS = {"interval_min": 5}
 
+
+def _router():
+    from netsync.plugins.builtin.ipbook.api import router
+
+    return router
+
+
 plugin = Plugin(
     name="ipbook",
     label="IP Book",
@@ -21,5 +28,6 @@ plugin = Plugin(
                 "pinged, with optional alerts, encrypted admin-only secrets and a spreadsheet import",
     settings=SETTINGS,
     defaults=DEFAULTS,
+    router=_router(),
     builtin=True,
 )
