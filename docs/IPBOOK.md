@@ -23,9 +23,9 @@ The left column lists IP books, then service books; the search box finds address
 
 | | Admin | Operator | Viewer |
 |---|---|---|---|
-| See entries and networks | all | not sensitive ones | not sensitive ones |
+| See books, entries and addresses | all | not sensitive entries | not sensitive entries |
 | See passwords and secrets | one at a time (show / copy, logged) | never | never |
-| Add, edit, delete entries, networks, columns; import | yes | no | no |
+| Add, edit, delete books, entries, addresses, columns; import | yes | no | no |
 | Press **Ping** | yes | yes | yes |
 
 Mark an entry **🔒 Sensitive** and only admins see it at all. Secrets are encrypted in the database with the server's
@@ -46,10 +46,8 @@ with **NAT = yes** never counts its IP Wan as a duplicate. Anything else sharing
 
 ## Warnings
 
-Overlapping networks · an IP on two entries · an IP that's also on a different discovered device · a private IP in no
-network · a learned entry no longer discovered · a network over 90 % used · a value discovery disagrees with.
-Warnings are badges only; they don't send notifications. Operators and viewers see a warning that involves a
-sensitive entry as "Conflict with a restricted entry".
+In service books: an IP on two entries (see Shared addresses), an IP that's also on a different discovered device,
+and a value discovery disagrees with after an import.
 
 ## Health and alerts
 
