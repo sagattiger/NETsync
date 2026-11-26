@@ -47,6 +47,9 @@ const PATHS: Record<string, string> = {
   palette: "M12 3a9 9 0 1 0 0 18c1 0 1.5-.8 1.5-1.5 0-1.2-1-1.5-1-2.5 0-.8.7-1.5 1.5-1.5H17a4 4 0 0 0 4-4c0-4.7-4-8.5-9-8.5zM7.5 12h.01M10 7.5h.01M15 7.5h.01",
 };
 
+/** Every icon name, e.g. for an icon picker. */
+export const ICON_NAMES = Object.keys(PATHS).sort();
+
 export function Icon({ name, className = "w-4 h-4", strokeWidth = 1.75 }: { name: keyof typeof PATHS | string; className?: string; strokeWidth?: number }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
