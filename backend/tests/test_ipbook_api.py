@@ -72,3 +72,15 @@ def test_delete_column_check():
 def test_custom_column_key():
     assert api.custom_key("OOB address!", {"c_oob_address"}) == "c_oob_address_2"
     assert api.custom_key("Rack", set()) == "c_rack"
+
+
+def test_new_import_columns_get_server_keys():
+    existing = [{"key": "c_vpn_password", "type": "text"}, {"key": "hostname", "type": "text"}]
+    mapping, specs = api.resolve_new_columns(
+        ["hostname", "c_vpn_password", "c_vpn_password"],
+        {"c_vpn_password": {"label": "VPN Password", "type": "secret"}}, existing)
+    # the client's key is taken by a text column: the secret gets a fresh key, never the plain-text one
+    assert mapping[1] == "c_vpn_password_2" and specs["c_vpn_password_2"]["type"] == "secret"
+    assert mapping[0] == "hostname" and mapping[2] == "c_vpn_password_2"
+    m2, s2 = api.resolve_new_columns(["c_a", None], {"c_a": {"label": "x" * 300, "type": "nope"}}, [])
+    assert len(m2[0]) <= 64 and s2[m2[0]]["type"] == "text" and len(s2[m2[0]]["label"]) <= 128

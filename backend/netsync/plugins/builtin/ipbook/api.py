@@ -51,6 +51,23 @@ def delete_column_check(col, rows) -> int:
     return sum(1 for r in rows if (r.values or {}).get(col.key) not in (None, "", []))
 
 
+def resolve_new_columns(mapping: list[str | None], new_columns: dict[str, dict],
+                        existing: list[dict]) -> tuple[list[str | None], dict[str, dict]]:
+    """New columns from an import get keys chosen here (never the client's, which may name an existing column of
+    another type); the mapping is rewritten to them. Unknown types become text."""
+    taken = {c["key"] for c in existing}
+    keys: dict[str, str] = {}
+    specs: dict[str, dict] = {}
+    for client_key, spec in new_columns.items():
+        label = str(spec.get("label") or client_key).strip()[:128] or "Column"
+        ctype = spec.get("type") if spec.get("type") in colmod.TYPES and spec.get("type") not in ("service", "device", "choice") else "text"
+        key = custom_key(label, taken)[:64]
+        taken.add(key)
+        keys[client_key] = key
+        specs[key] = {"label": label, "type": ctype}
+    return [keys.get(m, m) if m else None for m in mapping], specs
+
+
 def _filter_warnings(ws: list[dict], hidden_ids: set[int]) -> list[dict]:
     out = []
     for w in ws:
@@ -68,9 +85,13 @@ def network_view(network, networks, rows, columns, is_admin: bool, states: dict,
                  now: datetime, secret_key: str | None = None) -> dict:
     """A network (or None for "all rows") with usage, grid, warnings and the rows a role may see."""
     ip_cols = colmod.ip_keys(columns)
-    found = netlogic.warnings(networks, rows, ip_cols, device_ips, row_devices, now)
+    idx = netlogic.index(networks, rows, ip_cols)
+    found = netlogic.warnings(networks, rows, ip_cols, device_ips, row_devices, now, idx)
     hidden_ids = set() if is_admin else {r.id for r in rows if r.sensitive}
-    if network is not None:
+    if network is not None and not network.hidden:
+        members = idx["members"].get(network.id, [])
+        used = idx["used"].get(network.id, set())
+    elif network is not None:  # a hidden network (admins only): not in the index
         members = netlogic.rows_in_network(network, rows, ip_cols)
         net = ipaddress.ip_network(network.cidr, strict=False)
         used = {ip for r, _ in members for _, ip in netlogic.row_ips(r, ip_cols) if ipaddress.ip_address(ip) in net}
@@ -80,7 +101,7 @@ def network_view(network, networks, rows, columns, is_admin: bool, states: dict,
     grid_states: dict[str, str] = {}
     out_rows = []
     for r, keys in members:
-        r_ips = netlogic.row_ips(r, ip_cols)
+        r_ips = idx["parsed"].get(r.id, [])
         for _, ip in r_ips:
             if ip in used and grid_states.get(ip) != "used":
                 grid_states[ip] = "down" if (states.get(health.key(r.id, ip)) or {}).get("state") == "down" else "used"
@@ -122,6 +143,12 @@ async def _context(session):
     return cols, nets, rows, device_ips, row_devices
 
 
+def _in_any(idx: dict) -> set[int]:
+    """Rows with an IP in some network (hidden networks count: those IPs are known, just not shown)."""
+    return {rid for rid, ips in idx["parsed"].items()
+            if any(idx["in_net"].get(ip) or ip in idx["hidden_ips"] for _, ip in ips)}
+
+
 def _admin(user) -> bool:
     return user.role == Role.ADMIN
 
@@ -142,16 +169,17 @@ async def overview(session: Session, user: CurrentUser):
     await session.commit()  # seeded columns
     admin = _admin(user)
     ip_cols = colmod.ip_keys(cols)
-    found = netlogic.warnings(nets, rows, ip_cols, device_ips, row_devices, datetime.now(UTC))
+    idx = netlogic.index(nets, rows, ip_cols)
+    found = netlogic.warnings(nets, rows, ip_cols, device_ips, row_devices, datetime.now(UTC), idx)
     out = []
-    in_any: set[int] = set()
+    in_any = _in_any(idx)
     for n in nets:
-        members = netlogic.rows_in_network(n, rows, ip_cols)
-        in_any |= {r.id for r, _ in members}
         if n.hidden and not admin:
             continue
+        members = idx["members"].get(n.id, []) if not n.hidden else netlogic.rows_in_network(n, rows, ip_cols)
         net = ipaddress.ip_network(n.cidr, strict=False)
-        used = {ip for r, _ in members for _, ip in netlogic.row_ips(r, ip_cols) if ipaddress.ip_address(ip) in net}
+        used = idx["used"].get(n.id, set()) if not n.hidden else {
+            ip for r, _ in members for _, ip in idx["parsed"].get(r.id, []) if ipaddress.ip_address(ip) in net}
         out.append({**net_out(n), "usage": netlogic.usage(n.cidr, used),
                     "warning_count": len(found["networks"].get(n.id, [])) + sum(
                         1 for r, _ in members if found["rows"].get(r.id))})
@@ -169,8 +197,7 @@ async def network(network_id: str, session: Session, user: CurrentUser):
     if network_id == "all":
         return network_view(None, nets, rows, cols, admin, states, device_ips, row_devices, now)
     if network_id == "none":
-        ip_cols = colmod.ip_keys(cols)
-        in_any = {r.id for n in nets for r, _ in netlogic.rows_in_network(n, rows, ip_cols)}
+        in_any = _in_any(netlogic.index(nets, rows, colmod.ip_keys(cols)))
         view = network_view(None, nets, rows, cols, admin, states, device_ips, row_devices, now)
         view["rows"] = [r for r in view["rows"] if r["id"] not in in_any]
         return view
@@ -470,7 +497,7 @@ async def _existing(session, cols) -> list[dict]:
             for r in await session.scalars(select(IpbRow))]
 
 
-def _read(body: ImportIn):
+def _read(body: ImportIn, cols: list[dict]):
     try:
         data = base64.b64decode(body.content_b64, validate=True)
         table, sheets = importer.read_table(data, body.filename, body.sheet)
@@ -481,9 +508,11 @@ def _read(body: ImportIn):
     mapping = body.mapping if body.mapping is not None else importer.guess_mapping(header)
     if len(mapping) != len(header):
         raise HTTPException(400, "The mapping doesn't match the sheet's columns")
-    custom_types = {k: v.get("type", "text") for k, v in body.new_columns.items()}
-    rows, skipped = importer.sheet_rows(table, header_row, mapping, custom_types)
-    return sheets, header_row, header, mapping, rows, skipped
+    mapping, specs = resolve_new_columns(mapping, body.new_columns, cols)
+    known = {c["key"] for c in cols} | set(specs)
+    mapping = [m if m in known else None for m in mapping]  # only real columns can be written
+    rows, skipped = importer.sheet_rows(table, header_row, mapping, {k: v["type"] for k, v in specs.items()})
+    return sheets, header_row, header, mapping, rows, skipped, specs
 
 
 def _safe_plan(plan: dict, secret_keys: set[str]) -> dict:
@@ -500,11 +529,12 @@ def _safe_plan(plan: dict, secret_keys: set[str]) -> dict:
 @router.post("/import/preview", dependencies=[require(Role.ADMIN)])
 async def import_preview(body: ImportIn, session: Session):
     cols = await _columns(session)
-    sheets, header_row, header, mapping, rows, skipped = _read(body)
+    sheets, header_row, header, _, rows, skipped, specs = _read(body, cols)
     nets = [n.cidr for n in await session.scalars(select(IpbNetwork))]
     plan = importer.plan_import(rows, await _existing(session, cols), nets)
     plan["skip"] += skipped
-    secrets = colmod.secret_keys(cols) | {k for k, v in body.new_columns.items() if v.get("type") == "secret"}
+    secrets = colmod.secret_keys(cols) | {k for k, v in specs.items() if v["type"] == "secret"}
+    mapping = body.mapping if body.mapping is not None else importer.guess_mapping(header)
     return {"sheets": sheets, "header_row": header_row, "header": header, "mapping": mapping,
             "columns": [{"key": c["key"], "label": c["label"]} for c in cols], "plan": _safe_plan(plan, secrets)}
 
@@ -520,18 +550,14 @@ async def _hypervisor(session, name: str) -> dict | None:
 @router.post("/import/commit", dependencies=[require(Role.ADMIN)])
 async def import_commit(body: ImportIn, session: Session, user: CurrentUser):
     cols = await _columns(session)
-    taken = {c["key"] for c in cols}
-    for key, spec in body.new_columns.items():  # columns the admin chose to create from the sheet
-        if key in taken or not key.startswith("c_"):
-            continue
-        ctype = spec.get("type", "text") if spec.get("type") in colmod.TYPES else "text"
-        session.add(IpbColumn(key=key, label=str(spec.get("label") or key)[:128], type=ctype, builtin=False,
-                              position=len(taken) + 1))
-        taken.add(key)
+    _, _, _, _, rows, skipped, specs = _read(body, cols)
+    pos = max((c["position"] for c in cols), default=0)
+    for key, spec in specs.items():  # columns the admin chose to create from the sheet (keys chosen by the server)
+        pos += 1
+        session.add(IpbColumn(key=key, label=spec["label"], type=spec["type"], builtin=False, position=pos))
     await session.flush()
     cols = await _columns(session)
     secrets = colmod.secret_keys(cols)
-    _, _, _, _, rows, skipped = _read(body)
     nets = [n.cidr for n in await session.scalars(select(IpbNetwork))]
     plan = importer.plan_import(rows, await _existing(session, cols), nets)
 
@@ -553,7 +579,7 @@ async def import_commit(body: ImportIn, session: Session, user: CurrentUser):
     for m in plan["merge"]:
         r = await session.get(IpbRow, m["row_id"])
         vals, sec = await split(m["values"])
-        r.values = {**(r.values or {}), **vals}
+        r.values = importer.merge_sheet_values(r.values or {}, vals)
         r.secrets_enc = seal({**unseal(r.secrets_enc), **sec})
         r.manual_keys = sorted(set(r.manual_keys or []) | set(vals) | set(sec))
         r.conflicts = {**(r.conflicts or {}), **{k: v for k, v in m["conflicts"].items() if k not in secrets}}

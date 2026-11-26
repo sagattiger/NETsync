@@ -94,3 +94,21 @@ def test_missing_after_7_days():
 def test_unresolved_conflict_warns():
     r = row(1, conflicts={"ip_lan": {"manual": "10.0.0.5", "discovered": "10.0.0.6"}}, ip_lan="10.0.0.5")
     assert kinds(netlogic.warnings([net(1, "10.0.0.0/24")], [r], IPS, {}, {}, NOW), "rows", 1) == ["conflict"]
+
+
+def test_warnings_stay_fast_with_thousands_of_rows():
+    import time
+
+    nets = [net(i, f"10.{i}.0.0/24") for i in range(1, 61)]
+    rows = [row(i, ip_lan=f"10.{1 + i % 60}.0.{1 + i % 250}", ip_mgmt=f"10.200.{i // 250}.{i % 250}") for i in range(3000)]
+    t = time.perf_counter()
+    netlogic.warnings(nets, rows, IPS, {}, {}, NOW)
+    assert time.perf_counter() - t < 1.0
+
+
+def test_hidden_network_silences_its_addresses():
+    hidden = net(2, "172.17.0.0/16", hidden=True)
+    a, b = row(1, other_ips=["172.17.0.1"]), row(2, other_ips=["172.17.0.1"])
+    found = netlogic.warnings([net(1, "10.0.0.0/24"), hidden], [a, b], IPS, {}, {}, NOW)
+    assert found["rows"] == {}
+    assert netlogic.in_hidden("172.17.0.1", [hidden]) and not netlogic.in_hidden("10.0.0.5", [hidden])

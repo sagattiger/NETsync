@@ -94,16 +94,64 @@ def _w(kind: str, text: str, rows=(), networks=()) -> dict:
     return {"kind": kind, "text": text, "rows": sorted(set(rows)), "networks": sorted(set(networks))}
 
 
+def _ranges(networks, hidden: bool) -> list[tuple[Any, int, int, int]]:
+    out = []
+    for n in networks:
+        if bool(getattr(n, "hidden", False)) != hidden:
+            continue
+        net = ipaddress.ip_network(n.cidr, strict=False)
+        out.append((n, net.version, int(net.network_address), int(net.broadcast_address)))
+    return out
+
+
+def _within(addr, ranges) -> list:
+    v, i = addr.version, int(addr)
+    return [n for n, ver, lo, hi in ranges if ver == v and lo <= i <= hi]
+
+
+def in_hidden(ip: str, networks) -> bool:
+    """True when the IP is inside a network the admin hid (e.g. Docker bridges): such IPs are not checked or pinged."""
+    return bool(_within(ipaddress.ip_address(ip), _ranges(networks, hidden=True)))
+
+
+def index(networks, rows, ip_columns: set[str]) -> dict[str, Any]:
+    """One pass over every row's IPs: per visible network its rows (with the matching column keys) and used IPs,
+    which IPs fall in a hidden network, and each row's parsed IPs. Keeps the page cheap with thousands of rows."""
+    visible, hidden = _ranges(networks, hidden=False), _ranges(networks, hidden=True)
+    members: dict[int, dict[int, tuple[Any, set[str]]]] = defaultdict(dict)
+    used: dict[int, set[str]] = defaultdict(set)
+    parsed: dict[int, list[tuple[str, str]]] = {}
+    in_net: dict[str, list] = {}
+    hidden_ips: set[str] = set()
+    for r in rows:
+        ips = row_ips(r, ip_columns)
+        parsed[r.id] = ips
+        for key, ip in ips:
+            if ip not in in_net:
+                addr = ipaddress.ip_address(ip)
+                in_net[ip] = _within(addr, visible)
+                if _within(addr, hidden):
+                    hidden_ips.add(ip)
+            for n in in_net[ip]:
+                members[n.id].setdefault(r.id, (r, set()))[1].add(key)
+                used[n.id].add(ip)
+    return {"members": {nid: [(r, sorted(keys)) for r, keys in m.values()] for nid, m in members.items()},
+            "used": used, "parsed": parsed, "in_net": in_net, "hidden_ips": hidden_ips, "visible": visible}
+
+
 def warnings(networks, rows, ip_columns: set[str], device_ips: dict[str, int], row_devices: dict[int, int | None],
-             now: datetime) -> dict[str, dict[int, list[dict]]]:
+             now: datetime, idx: dict | None = None) -> dict[str, dict[int, list[dict]]]:
     """Warnings for the networks and rows given. ``device_ips``: discovered IP → device id; ``row_devices``: row id →
-    the device it was learned from."""
-    nets = [(n, ipaddress.ip_network(n.cidr, strict=False)) for n in networks if not getattr(n, "hidden", False)]
+    the device it was learned from. IPs inside a hidden network are left out of the duplicate and outside checks."""
+    idx = idx or index(networks, rows, ip_columns)
+    nets = [n for n, *_ in idx["visible"]]
     out_n: dict[int, list[dict]] = defaultdict(list)
     out_r: dict[int, list[dict]] = defaultdict(list)
 
-    for i, (a, na) in enumerate(nets):
-        for b, nb in nets[i + 1:]:
+    for i, a in enumerate(nets):
+        na = ipaddress.ip_network(a.cidr, strict=False)
+        for b in nets[i + 1:]:
+            nb = ipaddress.ip_network(b.cidr, strict=False)
             if na.version == nb.version and na.overlaps(nb):
                 w = _w("overlap", f"{a.cidr} overlaps {b.cidr}", networks=(a.id, b.id))
                 out_n[a.id].append(w)
@@ -112,15 +160,16 @@ def warnings(networks, rows, ip_columns: set[str], device_ips: dict[str, int], r
     by_ip: dict[str, list] = defaultdict(list)
     for r in rows:
         nat = bool((r.values or {}).get("nat"))
-        for key, ip in row_ips(r, ip_columns):
+        for key, ip in idx["parsed"].get(r.id, []):
+            if ip in idx["hidden_ips"]:
+                continue
             if not (nat and key == "ip_wan") and r not in by_ip[ip]:
                 by_ip[ip].append(r)
             dev = device_ips.get(ip)
             linked = row_devices.get(r.id)
             if dev is not None and linked is not None and dev != linked:
                 out_r[r.id].append(_w("device_conflict", f"{ip} is also on another discovered device", rows=(r.id,)))
-            if is_private(ip) and not any(ipaddress.ip_address(ip) in n for _, n in nets
-                                          if n.version == ipaddress.ip_address(ip).version):
+            if not idx["in_net"].get(ip) and is_private(ip):
                 out_r[r.id].append(_w("outside", f"{ip} is in no network", rows=(r.id,)))
         if r.source == "learned" and r.missing_since and now - r.missing_since > MISSING_AFTER:
             out_r[r.id].append(_w("missing", "Discovery no longer finds this device", rows=(r.id,)))
@@ -141,14 +190,11 @@ def warnings(networks, rows, ip_columns: set[str], device_ips: dict[str, int], r
             clash |= {m.id for m in (roots or members)}
         for rid in clash:
             out_r[rid].append(_w("duplicate", f"{ip} is used by another entry", rows=clash))
-        addr = ipaddress.ip_address(ip)
-        for n, na in nets:
-            if na.version == addr.version and addr in na:
-                out_n[n.id].append(_w("duplicate", f"{ip} is used by more than one entry", rows=clash, networks=(n.id,)))
+        for n in idx["in_net"].get(ip, []):
+            out_n[n.id].append(_w("duplicate", f"{ip} is used by more than one entry", rows=clash, networks=(n.id,)))
 
-    for n, _ in nets:
-        used = {ip for r, _keys in rows_in_network(n, rows, ip_columns) for k, ip in row_ips(r, ip_columns)}
-        u = usage(n.cidr, used)
+    for n in nets:
+        u = usage(n.cidr, idx["used"].get(n.id, set()))
         if u["pct"] > FULL_PCT:
             out_n[n.id].append(_w("full", f"{u['pct']} % used", networks=(n.id,)))
     return {"networks": dict(out_n), "rows": dict(out_r)}

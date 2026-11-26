@@ -13,6 +13,14 @@ from netsync.plugins.builtin.ipbook.netlogic import MISSING_AFTER, learnable_net
 
 log = logging.getLogger(__name__)
 TYPES = {"lxc": "LXC", "vm": "VM"}
+BRIDGES = ("docker", "br-", "veth", "cni", "flannel", "cali", "virbr", "lxcbr", "vxlan", "tap", "fwbr", "fwln", "fwpr", "lo")
+
+
+def lan_candidates(ports: list[tuple[str, str]]) -> list[str]:
+    """Port addresses (with prefix) that describe the host itself: container and VM bridges (docker0, br-…, veth…)
+    are left out, and ports are taken in name order so IP Lan doesn't change from one discovery to the next."""
+    return [cidr for name, cidr in sorted(ports, key=lambda p: (p[0] or "").lower())
+            if not (name or "").lower().startswith(BRIDGES)]
 
 
 def learned_values(device, hypervisor, port_ipv4: list[str]) -> dict[str, Any]:
@@ -77,8 +85,9 @@ async def learn_device(session, device) -> None:
     hypervisor = await session.get(Device, device.hypervisor_id) if device.hypervisor_id else None
     ports = await session.scalars(select(Component).where(
         Component.device_id == device.id, Component.kind == "port", Component.deleted.is_(False)))
-    port_ipv4 = [a for c in ports for a in ((c.attrs or {}).get("ipv4") or [])]
-    learned = learned_values(device, hypervisor, port_ipv4)
+    named = [(c.name or "", a) for c in ports for a in ((c.attrs or {}).get("ipv4") or [])]
+    port_ipv4 = [a for _, a in named]  # every port's networks are learned (the admin hides bridges they don't want)
+    learned = learned_values(device, hypervisor, lan_candidates(named))
 
     row = await session.scalar(select(IpbRow).where(IpbRow.device_id == device.id).order_by(IpbRow.id).limit(1))
     if row is None:

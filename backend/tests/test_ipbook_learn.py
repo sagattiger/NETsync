@@ -49,3 +49,9 @@ def test_conflict_only_after_import():
     assert none == {} and some == {"ip_lan": {"manual": "10.0.1.99", "discovered": "10.0.1.5"}}
     _, same = learn.merge_learned({"ip_lan": "10.0.1.5"}, {"ip_lan"}, {"ip_lan": "10.0.1.5"}, True)
     assert same == {}
+
+
+def test_bridge_addresses_are_not_row_ips():
+    ports = [("docker0", "172.17.0.1/16"), ("eth1", "10.0.1.5/24"), ("br-3f2a", "172.18.0.1/16"),
+             ("veth12", "169.254.3.3/16"), ("eth0", "10.0.0.5/24")]
+    assert learn.lan_candidates(ports) == ["10.0.0.5/24", "10.0.1.5/24"]

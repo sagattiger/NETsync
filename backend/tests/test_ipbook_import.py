@@ -112,3 +112,31 @@ def test_plan_import():
     assert plan["networks"] == ["10.0.5.0/24"]  # 198.51.100.2 is public: no network proposed
     assert plan["skip"] == 0
     assert importer.plan_import([{"description": "just a note"}], [], [])["skip"] == 1  # nothing to identify it
+
+
+def test_xlsx_with_formatted_empty_columns_stays_small():
+    openpyxl = pytest.importorskip("openpyxl")
+    from openpyxl.styles import Font
+
+    wb = openpyxl.Workbook()
+    for r in TABLE:
+        wb.active.append(r)
+    wb.active.cell(row=1, column=16000).font = Font(bold=True)  # declares a sheet 16000 columns wide
+    buf = io.BytesIO()
+    wb.save(buf)
+    table, _ = importer.read_table(buf.getvalue(), "wide.xlsx")
+    assert max(len(r) for r in table) <= len(HEADER) and importer.find_header(table) == 3
+
+
+def test_service_name_match_is_not_a_conflict_and_keeps_the_logo():
+    sheet = [{"hostname": "app01.example.test", "service": {"name": "Wiki", "logo": None}}]
+    existing = [{"id": 1, "hostname": "app01", "ips": [], "values": {"service": {"name": "Wiki", "logo": "di:x"}}}]
+    plan = importer.plan_import(sheet, existing, [])
+    assert plan["merge"][0]["conflicts"] == {}
+    merged = importer.merge_sheet_values({"service": {"name": "Wiki", "logo": "di:x"}, "vmid": 1}, sheet[0])
+    assert merged["service"] == {"name": "Wiki", "logo": "di:x"} and merged["vmid"] == 1
+
+
+def test_ip_cells_with_prefix_or_slash_are_read():
+    assert importer.clean_cell("ip_lan", "10.0.0.5/24") == "10.0.0.5"
+    assert importer.clean_cell("ip_lan", "10.0.0.5/10.0.0.6") == "10.0.0.5, 10.0.0.6"

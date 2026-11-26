@@ -16,6 +16,7 @@ from netsync.plugins.builtin.ipbook.values import clean_value
 
 MAX_BYTES = 5 * 1024 * 1024
 MAX_ROWS = 5000
+MAX_COLS = 256  # Excel sheets with formatted empty columns declare 16384 of them
 EMPTY = {"", "n/a", "na", "-", "--", "—"}
 BY_KEY = {c["key"]: c for c in BUILTIN}
 IP_KEYS = [c["key"] for c in BUILTIN if c["type"] == "ip"]
@@ -51,7 +52,8 @@ def read_table(data: bytes, filename: str, sheet: str | None = None) -> tuple[li
             raise ValueError(f"Not a readable Excel file ({type(e).__name__})") from e
         names = list(wb.sheetnames)
         ws = wb[sheet] if sheet in names else wb[names[0]]
-        rows = [[_cell(v) for v in row] for _, row in zip(range(MAX_ROWS), ws.iter_rows(values_only=True), strict=False)]
+        rows = [_trim([_cell(v) for v in row]) for _, row in
+                zip(range(MAX_ROWS), ws.iter_rows(values_only=True, max_col=MAX_COLS), strict=False)]
         wb.close()
         return rows, names
     try:
@@ -60,8 +62,17 @@ def read_table(data: bytes, filename: str, sheet: str | None = None) -> tuple[li
         text = data.decode("latin-1")
     first = "\n".join(text.splitlines()[:20])
     sep = max((";", ",", "\t"), key=first.count)
-    rows = [[_cell(c) for c in r] for _, r in zip(range(MAX_ROWS), csv.reader(io.StringIO(text), delimiter=sep), strict=False)]
+    rows = [_trim([_cell(c) for c in r][:MAX_COLS]) for _, r in
+            zip(range(MAX_ROWS), csv.reader(io.StringIO(text), delimiter=sep), strict=False)]
     return rows, []
+
+
+def _trim(row: list[str]) -> list[str]:
+    """Drop empty cells at the end of a row."""
+    end = len(row)
+    while end and not row[end - 1]:
+        end -= 1
+    return row[:end]
 
 
 def find_header(table: list[list[str]]) -> int:
@@ -108,6 +119,9 @@ def clean_cell(key: str, raw: str) -> Any:
     col = BY_KEY.get(key, {"key": key, "label": key, "type": "text"})
     if col["type"] in ("secret", "text", "longtext"):
         return text
+    if col["type"] == "ip":  # "10.0.0.5/24" and "10.0.0.5/10.0.0.6" are common in sheets
+        parts = [p for p in re.split(r"[\s,;/]+", text) if p and not p.isdigit()]
+        text = ", ".join(parts) or text
     try:
         return clean_value(col, text)
     except ValueError:
@@ -218,7 +232,7 @@ def plan_import(rows: list[dict], existing: list[dict], networks: list[str]) -> 
             taken.add(match)
             current = existing_by_id[match].get("values") or {}
             conflicts = {k: {"manual": v, "discovered": current[k]} for k, v in r.items()
-                         if k in current and current[k] not in (None, "") and current[k] != v}
+                         if k in current and current[k] not in (None, "") and not _same(k, current[k], v)}
             plan["merge"].append({"row_id": match, "values": r, "conflicts": conflicts})
         for ip in ips:
             addr = ipaddress.ip_address(ip)
@@ -226,3 +240,18 @@ def plan_import(rows: list[dict], existing: list[dict], networks: list[str]) -> 
                 proposed.add(str(ipaddress.ip_network(f"{ip}/24", strict=False)))
     plan["networks"] = sorted(proposed, key=lambda n: ipaddress.ip_network(n))
     return plan
+
+
+def _same(key: str, current: Any, sheet: Any) -> bool:
+    if key == "service" and isinstance(current, dict) and isinstance(sheet, dict):
+        return (current.get("name") or "") == (sheet.get("name") or "")  # a sheet has no logos
+    return current == sheet
+
+
+def merge_sheet_values(current: dict, sheet: dict) -> dict:
+    """An entry's values after an import: the sheet's win, but a service logo the sheet doesn't have is kept."""
+    out = {**current, **sheet}
+    old, new = current.get("service"), sheet.get("service")
+    if isinstance(old, dict) and isinstance(new, dict) and not new.get("logo") and old.get("logo"):
+        out["service"] = {**new, "logo": old["logo"]}
+    return out

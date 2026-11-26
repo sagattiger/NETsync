@@ -45,7 +45,7 @@ def test_sensitive_check_is_neutral():
     r = NS(id=7, sensitive=True, values={"service": {"name": "Vault", "logo": None}, "hostname": "vault01.example.test"})
     c = service.check_for(r, "10.0.0.9", {"state": "down", "rtt": None})
     text = f"{c.name} {c.output}"
-    assert c.name == "IP Book: sensitive entry #7" and c.output == "down"
+    assert c.name == "IP Book: sensitive entry #7 address 1" and c.output == "down"
     assert "10.0.0.9" not in text and "Vault" not in text and "vault01" not in text
 
 
@@ -55,3 +55,11 @@ def test_alert_off_removes_service():
 
 def test_notification_problem_type():
     assert problem_type("ipbook_ping") == "ipbook"
+
+
+def test_sensitive_row_with_two_ips_has_two_services():
+    r = NS(id=7, sensitive=True, values={})
+    a = service.check_for(r, "10.0.0.9", {"state": "down"}, 1)
+    b = service.check_for(r, "10.0.0.10", {"state": "up"}, 2)
+    assert a.name != b.name and a.name == "IP Book: sensitive entry #7 address 1"
+    assert "10.0.0" not in a.name + b.name

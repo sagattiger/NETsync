@@ -15,7 +15,7 @@ from netsync.models import Component, Device, IpbNetwork, IpbRow, Service, State
 from netsync.plugins.base import BackgroundService, CheckResult, MetricSample
 from netsync.plugins.builtin.ipbook import health
 from netsync.plugins.builtin.ipbook.columns import ip_keys
-from netsync.plugins.builtin.ipbook.netlogic import row_ips
+from netsync.plugins.builtin.ipbook.netlogic import in_hidden, row_ips
 
 log = logging.getLogger(__name__)
 KIND = "ipbook_ip"
@@ -32,12 +32,12 @@ def effective_alert(row, network_alerts: list[bool]) -> bool:
     return any(network_alerts)
 
 
-def check_for(row, ip: str, state: dict) -> CheckResult:
+def check_for(row, ip: str, state: dict, position: int = 1) -> CheckResult:
     """The alert service of one (row, IP). A sensitive row gets a neutral name and output (Problems are visible to
-    every role): no IP, no service or host name."""
+    every role): no IP, no service or host name - its IPs are told apart by their position ("address 2")."""
     st = STATES.get(state.get("state"), State.UNKNOWN)
     if row.sensitive:
-        name, output = f"IP Book: sensitive entry #{row.id}", "down" if st == State.CRIT else "up"
+        name, output = f"IP Book: sensitive entry #{row.id} address {position}", "down" if st == State.CRIT else "up"
     else:
         vals = row.values or {}
         label = (vals.get("service") or {}).get("name") or vals.get("hostname") or f"entry #{row.id}"
@@ -73,11 +73,18 @@ async def run_once(now: datetime | None = None) -> None:
     async with SessionLocal() as s:
         cols = await _columns(s)
         rows = list(await s.scalars(select(IpbRow)))
-        nets = [(ipaddress.ip_network(n.cidr, strict=False), n.alert_when_down)
-                for n in await s.scalars(select(IpbNetwork).where(IpbNetwork.hidden.is_(False)))]
+        all_nets = list(await s.scalars(select(IpbNetwork)))
         await s.commit()
+    nets = [(ipaddress.ip_network(n.cidr, strict=False), n.alert_when_down) for n in all_nets if not n.hidden]
     ip_cols = ip_keys(cols)
-    targets = [(r, ip) for r in rows for ip in sorted({ip for _, ip in row_ips(r, ip_cols)})]
+    # IPs in a hidden network (e.g. Docker bridges the admin hid) are not pinged
+    targets = [(r, ip) for r in rows for ip in sorted({ip for _, ip in row_ips(r, ip_cols)})
+               if not in_hidden(ip, all_nets)]
+    positions: dict[tuple[int, str], int] = {}
+    counts: dict[int, int] = {}
+    for r, ip in targets:  # 1, 2, ... per row, in IP order: names a sensitive row's services without its IPs
+        counts[r.id] = counts.get(r.id, 0) + 1
+        positions[(r.id, ip)] = counts[r.id]
     results = await health.ping(sorted({ip for _, ip in targets}))  # no DB connection held while pinging
 
     rd = redis()
@@ -116,7 +123,7 @@ async def run_once(now: datetime | None = None) -> None:
             addr = ipaddress.ip_address(ip)
             if effective_alert(r, [on for n, on in nets if n.version == addr.version and addr in n]):
                 alerting.add(idx)
-                checks.append(check_for(r, ip, st))
+                checks.append(check_for(r, ip, st, positions[(r.id, ip)]))
         # alert switched off, or the row/IP is gone: its service (and problem) goes away
         by_comp = {c.id: i for i, c in comps.items()}
         svcs = list(await s.scalars(select(Service).where(Service.device_id == dev.id)))
