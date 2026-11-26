@@ -8,6 +8,7 @@ import { Icon } from "../components/Icon";
 import { Page, PageHeader } from "../components/Layout";
 import Housekeeping from "./Housekeeping";
 import Tokens from "./Tokens";
+import { IgnorePickerButton, PICKER_SECTIONS } from "./settings/IgnorePicker";
 import { TimeChart } from "../components/MetricChart";
 import { Card, LevelBar, StateBadge } from "../components/ui";
 import { CHART_DEFAULTS, ChartPrefs, PALETTES, PaletteName, seriesPalette } from "../lib/chartTheme";
@@ -335,10 +336,12 @@ function GeneralForm({ tab, label, sub }: { tab: string; label: string; sub: str
   async function save() {
     setBusy(true); setMsg(null);
     try {
-      const saved = await api<PluginSettings>("/plugins/general/settings", { method: "PUT", body: { enabled: true, config } });
+      const saved = await api<PluginSettings & { notes?: string[] }>("/plugins/general/settings", { method: "PUT", body: { enabled: true, config } });
       qc.setQueryData(["plugin-settings", "general"], saved);
       qc.invalidateQueries({ queryKey: ["branding"] });
-      setMsg({ ok: true, text: tab === "Discovery" || tab === "Entities" ? "Saved. Applies at each device's next discovery." : "Saved." });
+      qc.invalidateQueries({ queryKey: ["discovered"] });
+      const notes = (saved.notes ?? []).join(" ");
+      setMsg({ ok: true, text: tab === "Discovery" || tab === "Entities" ? `Saved. ${notes || "Applies at each device's next discovery."}` : "Saved." });
     } catch (e: any) { setMsg({ ok: false, text: e.message }); }
     setBusy(false);
   }
@@ -352,6 +355,7 @@ function GeneralForm({ tab, label, sub }: { tab: string; label: string; sub: str
         {sections.map((sec) => (
           <Card key={sec} title={sec} flush={false}>
             <div className="space-y-4">
+              {PICKER_SECTIONS[sec] && <IgnorePickerButton kind={PICKER_SECTIONS[sec]} config={config} set={(k, v) => setConfig((c) => ({ ...c, [k]: v }))} />}
               {fields.filter((f) => (f.section ?? "Settings") === sec).map((f) => (
                 <Field key={f.key} f={f} plugin="general" config={config} set={(k, v) => setConfig((c) => ({ ...c, [k]: v }))} />
               ))}

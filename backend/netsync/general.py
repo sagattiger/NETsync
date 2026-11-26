@@ -603,6 +603,37 @@ async def ip_type_of(body: dict):
     return {"type": ip_type(str(body.get("address", "")))}
 
 
+async def remove_ignored(session, cfg: dict[str, Any]) -> str | None:
+    """After a save: remove at once the ports, storage, processors and sensors the ignore rules now leave out (with
+    their services), instead of waiting for two discoveries - an ignore rule is a deliberate choice."""
+    from sqlalchemy import delete
+
+    from netsync.models import Component, Service
+
+    rows = list(await session.scalars(select(Component).where(
+        Component.deleted.is_(False), Component.kind.in_(("port", "storage", "processor", "sensor")))))
+    gone = [c for c in rows if ignored(c, cfg)]
+    if not gone:
+        return None
+    for c in gone:
+        c.deleted = True
+    await session.execute(delete(Service).where(Service.component_id.in_([c.id for c in gone])))
+    await session.commit()
+    return f"Removed {len(gone)} ignored {'entity' if len(gone) == 1 else 'entities'} now."
+
+
+@router.get("/discovered", dependencies=[require(Role.ADMIN)])
+async def discovered(session: Session):
+    """Ports, storage, processors and sensors found on all devices, grouped for the "pick what to ignore" lists."""
+    from netsync.discovered import summarize
+    from netsync.models import Component
+
+    rows = list(await session.scalars(select(Component).where(
+        Component.deleted.is_(False), Component.kind.in_(("port", "storage", "processor", "sensor")))))
+    devices = dict((await session.execute(select(Device.id, Device.hostname))).all())
+    return summarize(rows, await get(), devices)
+
+
 plugin = Plugin(
     name=NAME,
     label="General",
@@ -613,6 +644,7 @@ plugin = Plugin(
     builtin=True,
     settings=SETTINGS,
     defaults=DEFAULTS,
+    hooks={"settings_saved": [remove_ignored]},
     validate=validate,
     actions=[{"id": "scan", "label": "Scan networks now", "method": "POST", "path": "/autodiscovery/run"}],
 )

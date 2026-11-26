@@ -1,5 +1,6 @@
 """Users, device groups, plugins and nodes."""
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -14,6 +15,7 @@ from netsync.plugins.registry import registry
 from netsync import terminal
 from netsync.security import hash_password
 
+log = logging.getLogger(__name__)
 router = APIRouter(tags=["admin"])
 
 
@@ -163,7 +165,15 @@ async def save_plugin_settings(name: str, body: PluginSettingsIn, session: Sessi
     row.config = {k: v for k, v in config.items() if k in {f["key"] for f in p.settings}}
     await session.commit()
     plugin_settings.invalidate(p.name)
-    return await get_plugin_settings(name, session)
+    notes = []
+    for fn in p.hooks.get("settings_saved", []):  # e.g. General removes what the new ignore rules leave out
+        try:
+            note = await fn(session, config)
+            if note:
+                notes.append(note)
+        except Exception:
+            log.exception("plugin %s: settings_saved hook failed", p.name)
+    return {**await get_plugin_settings(name, session), "notes": notes}
 
 
 @router.get("/nodes")
