@@ -25,6 +25,7 @@ from netsync import __version__
 from netsync.alerting import EVENTS_CHANNEL, redis
 from netsync.api.deps import CurrentUser, Session, require
 from netsync.api.tokens import LAST_USED_RESOLUTION, _rate_limited, hash_token, token_out, token_problem
+from netsync.db import SessionLocal
 from netsync.models import ApiToken, RemotePlugin, Role, ToolCall, ToolPolicy, User
 from netsync.probing.secrets import encrypt
 from netsync.tools import hub, remote
@@ -121,7 +122,7 @@ async def handle_rpc(msg: Any, actor: Actor) -> dict | None:
         if method in ("resources/list", "prompts/list"):
             return rpc_result(id_, {method.split("/")[0]: []})
         return rpc_error(id_, -32601, f"Method not found: {method}")
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         log.exception("MCP %s failed", method)
         return rpc_error(id_, -32603, f"Internal error: {e}")
 
@@ -355,12 +356,15 @@ async def delete_remote(plugin_id: int, session: Session):
 # --------------------------------------------------------------------------- plugin → NETsync
 
 
-async def calling_plugin(request: Request, session: Session) -> RemotePlugin:
+async def calling_plugin(request: Request) -> RemotePlugin:
+    """Its own short session: /plugin-api/events streams for hours, and a request-scoped session would stay
+    open (idle in transaction, one pool connection) for as long as the stream runs."""
     scheme, _, value = request.headers.get("authorization", "").partition(" ")
     value = value.strip()
     if scheme.lower() != "bearer" or not value.startswith(remote.SECRET_PREFIX):
         raise HTTPException(401, "Plugin secret required")
-    p = await session.scalar(select(RemotePlugin).where(RemotePlugin.secret_hash == remote.hash_secret(value)))
+    async with SessionLocal() as session:
+        p = await session.scalar(select(RemotePlugin).where(RemotePlugin.secret_hash == remote.hash_secret(value)))
     if p is None or not p.enabled:
         raise HTTPException(401, "Unknown or disabled plugin")
     return p

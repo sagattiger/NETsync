@@ -30,13 +30,20 @@ function useLiveEvents() {
     let ws: WebSocket | null = null;
     let retry: number | undefined;
     const connect = () => {
+      if (!auth.token) return;
       const proto = location.protocol === "https:" ? "wss" : "ws";
+      let opened = false;
       ws = new WebSocket(`${proto}://${location.host}/api/ws?token=${auth.token}`);
+      ws.onopen = () => { opened = true; };
       ws.onmessage = () => {
         // state changes and finished AI analyses: refresh lists, threads and stickers
         for (const key of ["overview", "problems", "services", "devices", "device", "history", "pinned", "syslog", "ai-insights"]) qc.invalidateQueries({ queryKey: [key] });
       };
-      ws.onclose = () => { retry = window.setTimeout(connect, 5000); };
+      ws.onclose = () => {
+        // Refused before it opened: most often the login expired. /auth/me answers 401 then, and api() goes to the login page.
+        if (!opened) api("/auth/me").catch(() => { /* server unreachable: keep retrying */ });
+        retry = window.setTimeout(connect, 5000);
+      };
     };
     connect();
     return () => { window.clearTimeout(retry); if (ws) { ws.onclose = null; ws.close(); } };
