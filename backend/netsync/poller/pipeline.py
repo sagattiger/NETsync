@@ -105,6 +105,13 @@ async def discover_device(session: AsyncSession, device: Device) -> None:
         await link_guests(session, device)  # which Proxmox host runs this guest (or this host's guests)
     except Exception:
         log.exception("%s: linking Proxmox guests failed", device.hostname)
+    try:
+        from netsync.plugins.builtin.ipbook.learn import learn_device
+
+        async with session.begin_nested():  # a failure here must not undo the discovery itself
+            await learn_device(session, device)  # IP Book: the device's learned row and its networks
+    except Exception:
+        log.exception("%s: IP Book learning failed", device.hostname)
     log.info("%s: discovered %d components", device.hostname, sum(not c.deleted for c in by_key.values()))
 
 
