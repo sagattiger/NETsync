@@ -617,7 +617,7 @@ class TerminalSession(Base):
     bytes_out: Mapped[int | None] = mapped_column(BigInteger)
 
 
-VIRTUAL_DEVICE_TYPES = ("probe", "crowdsec")  # devices that are never SNMP polled, pinged or listed as devices
+VIRTUAL_DEVICE_TYPES = ("probe", "crowdsec", "ipbook")  # devices that are never SNMP polled, pinged or listed as devices
 
 
 def real_device():
@@ -648,3 +648,77 @@ class CrowdSecSource(Base):
     last_ms: Mapped[float | None] = mapped_column(Float)
     # tracking (max_id, since, new_total) and the latest totals: aggregates and masked recent bans only
     state: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+# ------------------------------------------------------------------------------- IP Book (plugins/builtin/ipbook)
+
+
+class IpbNetwork(Base):
+    """A network in IP Book: added by an admin or learned from discovered addresses."""
+
+    __tablename__ = "ipbook_networks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    cidr: Mapped[str] = mapped_column(String(64), unique=True)
+    title: Mapped[str] = mapped_column(String(128), default="")
+    description: Mapped[str | None] = mapped_column(Text)
+    icon: Mapped[str | None] = mapped_column(String(32))
+    vlan: Mapped[str | None] = mapped_column(String(32))
+    gateway: Mapped[str | None] = mapped_column(String(64))
+    dns: Mapped[str | None] = mapped_column(String(255))
+    alert_when_down: Mapped[bool] = mapped_column(Boolean, default=False)
+    source: Mapped[str] = mapped_column(String(8), default="manual")  # learned | manual
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False)  # a learned network the admin removed
+    created_at: Mapped[datetime] = utcnow_col()
+    updated_at: Mapped[datetime] = utcnow_col()
+
+
+class IpbColumn(Base):
+    """A column of the IP Book list: built-in (seeded, can't be deleted) or added by an admin."""
+
+    __tablename__ = "ipbook_columns"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(64), unique=True)
+    label: Mapped[str] = mapped_column(String(128))
+    type: Mapped[str] = mapped_column(String(16))
+    icon: Mapped[str | None] = mapped_column(String(32))
+    options: Mapped[list | None] = mapped_column(JSON)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False)
+    builtin: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class IpbRow(Base):
+    """One service/host in IP Book. Secret column values live only in secrets_enc (Fernet), never in values."""
+
+    __tablename__ = "ipbook_rows"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    values: Mapped[dict] = mapped_column(JSON, default=dict)
+    secrets_enc: Mapped[str | None] = mapped_column(Text)
+    sensitive: Mapped[bool] = mapped_column(Boolean, default=False)
+    alert_when_down: Mapped[bool | None] = mapped_column(Boolean)  # None = as its networks say
+    source: Mapped[str] = mapped_column(String(8), default="manual")  # learned | manual | imported
+    device_id: Mapped[int | None] = mapped_column(ForeignKey("devices.id", ondelete="SET NULL"), index=True)
+    runs_on_id: Mapped[int | None] = mapped_column(ForeignKey("ipbook_rows.id", ondelete="SET NULL"))
+    learned: Mapped[dict] = mapped_column(JSON, default=dict)
+    manual_keys: Mapped[list] = mapped_column(JSON, default=list)
+    conflicts: Mapped[dict] = mapped_column(JSON, default=dict)
+    missing_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = utcnow_col()
+    updated_at: Mapped[datetime] = utcnow_col()
+    updated_by: Mapped[str | None] = mapped_column(String(64))
+
+
+class IpbReveal(Base):
+    """Audit: an admin revealed or copied one secret of one row."""
+
+    __tablename__ = "ipbook_reveals"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(String(64))
+    row_id: Mapped[int] = mapped_column(Integer, index=True)
+    column: Mapped[str] = mapped_column(String(64))
+    action: Mapped[str] = mapped_column(String(8))  # reveal | copy
+    time: Mapped[datetime] = utcnow_col()

@@ -2,7 +2,7 @@ from netsync import general, housekeeping, probes
 from netsync.tools import builtin as tool_builtin
 from netsync.tools.remote import RemotePluginService
 from netsync.plugins.base import Plugin
-from netsync.plugins.builtin import ai, crowdsec, latency
+from netsync.plugins.builtin import ai, crowdsec, ipbook, latency
 from netsync.plugins.builtin.host_resources import HostResourcesModule
 from netsync.plugins.builtin.interfaces import InterfacesModule
 from netsync.plugins.builtin.netstats import NetstatsModule
@@ -42,6 +42,7 @@ BUILTIN_PLUGINS = [
     latency.plugin,
     probes.plugin,
     crowdsec.plugin,
+    ipbook.plugin,
     housekeeping.plugin,
     general.plugin,
     Plugin(

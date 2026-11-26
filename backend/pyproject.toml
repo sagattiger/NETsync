@@ -19,6 +19,7 @@ dependencies = [
     "icmplib>=3.0",
     "dnspython>=2.6",
     "cryptography>=42",
+    "openpyxl>=3.1",
 ]
 
 [project.optional-dependencies]
