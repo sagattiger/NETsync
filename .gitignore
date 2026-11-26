@@ -10,3 +10,6 @@ frontend/dist/
 mibs/compiled/
 .DS_Store
 *.tsbuildinfo
+
+# brainstorming mockups
+.superpowers/
