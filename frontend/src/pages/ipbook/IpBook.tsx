@@ -7,6 +7,7 @@ import { NetworkHeader } from "./NetworkHeader";
 import { NetworkList } from "./NetworkList";
 import { RowsTable } from "./RowsTable";
 import { ColumnManager } from "./ColumnManager";
+import { ImportWizard } from "./ImportWizard";
 import { NetworkEditor } from "./NetworkEditor";
 import { RowEditor } from "./RowEditor";
 import { IPB, Network, NetworkView, Overview, Row } from "./types";
@@ -19,6 +20,7 @@ export default function IpBook() {
   const [editNet, setEditNet] = useState<Network | "new" | null>(null);
   const [editRow, setEditRow] = useState<Row | "new" | null>(null);
   const [colsOpen, setColsOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [query, setQuery] = useState("");
   const [q, setQ] = useState("");
   const [toast, setToast] = useState<{ ok: boolean; text: string } | null>(null);
@@ -41,6 +43,7 @@ export default function IpBook() {
     <Page>
       <PageHeader title="IP Book" sub="Networks, IP addresses and what uses each one"
         actions={admin ? <>
+          <button className="btn" onClick={() => setImporting(true)}>Import</button>
           <button className="btn" onClick={() => setColsOpen(true)}>Columns</button>
           <button className="btn btn-primary" onClick={() => setEditRow("new")}>+ New entry</button>
         </> : undefined} />
@@ -81,6 +84,7 @@ export default function IpBook() {
         onSaved={(id) => { setEditNet(null); refresh(); if (id && editNet === "new") pick(String(id)); }} />}
       {editRow && ov && <RowEditor row={editRow === "new" ? null : editRow} columns={ov.columns} rows={everything?.rows ?? []}
         onClose={() => setEditRow(null)} onSaved={() => { setEditRow(null); refresh(); }} />}
+      {importing && <ImportWizard onClose={() => setImporting(false)} onDone={refresh} />}
       {colsOpen && ov && <ColumnManager columns={ov.columns} onClose={() => setColsOpen(false)} onSaved={refresh} />}
     </Page>
   );
