@@ -293,7 +293,7 @@ const STATIC: [string, string, string][] = [
   ["/setup/terminal", "Terminal access", "lock"], ["/terminal", "Terminal", "terminal"],
   ["/settings", "Settings", "gear"], ["/settings/charts", "Chart settings", "palette"], ["/settings/appearance", "Appearance", "sliders"], ["/settings/sites", "Sites", "globe"], ["/settings/general", "General settings", "gear"], ["/settings/general/housekeeping", "Housekeeping", "list"], ["/settings/general/discovery", "Discovery settings", "search"],
   ["/setup/ai-tools", "AI tools & MCP", "terminal"], ["/settings/general/api-tokens", "API tokens", "lock"], ["/profile", "Profile", "user"],
-  ["/about", "About", "info"],
+  ["/ipbook", "IP Book", "network"], ["/about", "About", "info"],
 ];
 
 export interface TabInfo { title: string; icon: string; state?: number }
@@ -312,6 +312,7 @@ export function useTabInfo(path: string): TabInfo {
   if (probe) return { title: p?.name ?? "Probe", icon: "pulse", state: p?.enabled ? p.state : undefined };
   if (dash) return { title: b?.name ?? "Dashboard", icon: "palette" };
   if (pathname === "/setup/plugins" && search.includes("configure=ai")) return { title: "AI assistant", icon: "sparkles" };
+  if (pathname.startsWith("/ipbook/")) return { title: "IP Book", icon: "network" };
   const hit = STATIC.find(([p]) => p === pathname);
   return hit ? { title: hit[1], icon: hit[2] } : { title: pathname, icon: "grid" };
 }

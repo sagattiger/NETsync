@@ -108,6 +108,7 @@ function Sidebar({ me, collapsed, onToggle, onNavigate, mobile }: {
     { to: "/devices", label: "Devices", icon: "server" },
     { to: "/probes", label: "Probes", icon: "pulse" },
     { to: "/crowdsec", label: "CrowdSec", icon: "shield" },
+    { to: "/ipbook", label: "IP Book", icon: "network" },
     { to: "/syslog", label: "Syslog", icon: "list" },
     ...(terminal?.available ? [{ to: "/terminal", label: "Terminal", icon: "terminal" }] : []),
   ];
