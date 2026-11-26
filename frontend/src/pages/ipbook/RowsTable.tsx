@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { api, fmtAgo } from "../../api";
 import { Icon } from "../../components/Icon";
 import { WidgetLogo } from "../dashboards/WidgetView";
-import { WarningBadges } from "./NetworkHeader";
+import { WarningBadges } from "./Warnings";
 import { Column, IPB, Row, rowHealth } from "./types";
 
 const DOT = { up: "bg-ok", down: "bg-crit", unknown: "bg-unknown" } as Record<string, string>;

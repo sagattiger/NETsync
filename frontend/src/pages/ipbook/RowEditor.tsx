@@ -23,8 +23,8 @@ function toInput(col: Column, v: any): any {
 }
 
 /** Add or edit an entry (admins). Only fields you change are sent, so discovery keeps filling the others. */
-export function RowEditor({ row, columns, rows, onClose, onSaved }: {
-  row: Row | null; columns: Column[]; rows: Row[]; onClose: () => void; onSaved: () => void;
+export function RowEditor({ row, bookId, columns, rows, onClose, onSaved }: {
+  row: Row | null; bookId: number; columns: Column[]; rows: Row[]; onClose: () => void; onSaved: () => void;
 }) {
   const { data: devices = [] } = useQuery({ queryKey: ["devices"], queryFn: () => api<Device[]>("/devices") });
   const byKey = useMemo(() => Object.fromEntries(columns.map((c) => [c.key, c])), [columns]);
@@ -59,7 +59,7 @@ export function RowEditor({ row, columns, rows, onClose, onSaved }: {
   }
   async function save() {
     setBusy(true); setError("");
-    const body = { values: payload(), sensitive, alert_when_down: alert === "inherit" ? null : alert === "on", runs_on_id: runsOn };
+    const body = { book_id: bookId, values: payload(), sensitive, alert_when_down: alert === "inherit" ? null : alert === "on", runs_on_id: runsOn };
     try {
       await api(row ? `${IPB}/rows/${row.id}` : `${IPB}/rows`, { method: row ? "PUT" : "POST", body });
       onSaved();

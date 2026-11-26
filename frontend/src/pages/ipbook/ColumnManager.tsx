@@ -10,7 +10,7 @@ const CUSTOM_TYPES: [string, string][] = [
 ];
 
 /** Rename, re-icon, show/hide and reorder columns; add and delete your own (admins). */
-export function ColumnManager({ columns, onClose, onSaved }: { columns: Column[]; onClose: () => void; onSaved: () => void }) {
+export function ColumnManager({ kind, columns, onClose, onSaved }: { kind: "service" | "ip"; columns: Column[]; onClose: () => void; onSaved: () => void }) {
   const [cols, setCols] = useState(columns);
   const [error, setError] = useState("");
   const [add, setAdd] = useState({ label: "", type: "text", options: "" });
@@ -31,7 +31,7 @@ export function ColumnManager({ columns, onClose, onSaved }: { columns: Column[]
   async function create() {
     setError("");
     try {
-      await api(`${IPB}/columns`, { body: { label: add.label, type: add.type, options: add.type === "choice" ? add.options.split(",").map((s) => s.trim()).filter(Boolean) : null } });
+      await api(`${IPB}/columns`, { body: { kind, label: add.label, type: add.type, options: add.type === "choice" ? add.options.split(",").map((s) => s.trim()).filter(Boolean) : null } });
       setAdd({ label: "", type: "text", options: "" });
       onSaved();
       onClose();
@@ -49,7 +49,7 @@ export function ColumnManager({ columns, onClose, onSaved }: { columns: Column[]
   }
 
   return (
-    <Modal title="Columns" onClose={onClose} wide>
+    <Modal title={kind === "ip" ? "IP book columns" : "Service book columns"} onClose={onClose} wide>
       <ul className="divide-y divide-line border border-line rounded-lg max-h-[50vh] overflow-y-auto">
         {cols.map((c, i) => (
           <li key={c.id} className="flex flex-wrap items-center gap-2 px-3 py-2">
@@ -74,7 +74,7 @@ export function ColumnManager({ columns, onClose, onSaved }: { columns: Column[]
         <div className="grid sm:grid-cols-3 gap-2">
           <input className="input" placeholder="Name, e.g. Rack" value={add.label} onChange={(e) => setAdd({ ...add, label: e.target.value })} aria-label="New column name" />
           <select className="input" value={add.type} onChange={(e) => setAdd({ ...add, type: e.target.value })} aria-label="New column type">
-            {CUSTOM_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+            {CUSTOM_TYPES.filter(([v]) => kind === "service" || v !== "secret").map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
           {add.type === "choice" && <input className="input" placeholder="Options, comma separated" value={add.options} onChange={(e) => setAdd({ ...add, options: e.target.value })} aria-label="Choices" />}
         </div>
         <button className="btn btn-primary" disabled={!add.label.trim()} onClick={create}>Add column</button>

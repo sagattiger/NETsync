@@ -4,14 +4,20 @@ IP Book keeps your networks, the IP addresses in them and what uses each one: th
 reach it and how to log in. Discovery fills in most of it, you add the rest, and NETsync pings every address.
 It's a built-in plugin: **IP Book** in the sidebar (`/ipbook`).
 
-## The page
+## Books
 
-- **Left:** a search box (finds any IP, host name, service, URL or note, also by prefix `10.0.1.` or network
-  `10.0.1.0/24`), **All entries**, **No network** (entries whose IPs are in no known network), then every network
-  with how full it is and a ⚠ count.
-- **Right:** the chosen network's header (icon, title, description, VLAN, gateway, DNS, used/free, a map of its
-  addresses, warnings) and its entries. The column holding the address that's in this network is highlighted.
-- On phones the network list becomes a drop-down above the list.
+IP Book holds **books**, created with **+ New book** (admins). Nothing exists until you create it.
+
+- **IP book**: one network (up to /20). Every address is a row, like a range sheet: status (subnet, gateway,
+  available, used, reserved, down, broadcast), the address, Hostname, Internal ID, Device, Location, Interface Name,
+  Mac-Address, ISP Customer, End Customer, Private IP, Last Mile Provider, Info. and Last Change. Discovery fills
+  Hostname, Device, Interface Name and MAC for addresses it finds on your devices (anything you type wins); when a
+  device no longer has an address, what discovery wrote is removed and the address is available again. Mark an
+  address **Reserved** to keep it free. Filter All / Used / Available.
+- **Service book**: a list of services, the entries described below (logins, URLs, ports, encrypted passwords).
+  Have as many as you like, e.g. one per stack or customer.
+
+The left column lists IP books, then service books; the search box finds addresses and services across all books.
 
 ## Who sees what
 
@@ -27,17 +33,10 @@ Mark an entry **🔒 Sensitive** and only admins see it at all. Secrets are encr
 one is saved; every show or copy is recorded (who, which entry, which column, when). Editing an entry and leaving a
 password field empty keeps the saved password; **Clear** removes it.
 
-## Learned and manual
+## Service entries
 
-After each device discovery NETsync creates or refreshes a **learned** entry for the device: host name, service name
-and logo (from the device's application), hypervisor, type (LXC / VM / Device), VMID, OS, IP Mgmt (the address it's
-polled on), IP Lan and other addresses, URL and port. It also learns the IPv4 networks of the device's ports
-(not loopback, link-local, /32 or wider than /16). IPv6 networks are added by hand.
-
-Anything you type wins: discovery never changes a field you've set. When discovery disagrees with a value that came
-from an import, the entry shows **Discovery says something different** with **Keep mine** / **Use discovered**.
-An entry whose device isn't discovered for 7 days is flagged, never deleted. Deleting a learned network hides it so
-discovery doesn't bring it back.
+Service books are filled by you (or an import); discovery doesn't add service entries. Editing an entry saves only the
+fields you changed.
 
 ## Shared addresses
 
@@ -57,8 +56,8 @@ sensitive entry as "Conflict with a restricted entry".
 Every IP in the list is pinged every 5 minutes (Plugins → IP Book → settings, 1–60). An address is **down** after 3
 missed pings in a row and up again on the first answer. **Ping** on an entry pings it now.
 
-**Alert when down** is off by default. Turn it on for a network (all its entries) or for one entry (on / off / as
-its network says). Then an IP that stops answering becomes a problem in Problems and goes through your notification
+**Alert when down** is off by default. Turn it on for a book (all its entries or used addresses) or for one entry or
+address (on / off / as the book says). Then an IP that stops answering becomes a problem in Problems and goes through your notification
 rules (problem type **IP Book addresses**), with acknowledge and downtime like any other problem. A sensitive entry's
 problem is named only "IP Book: sensitive entry #N".
 
@@ -72,16 +71,15 @@ port, secret (encrypted, admins only), yes/no or a choice list. Deleting a colum
 
 ## Importing a spreadsheet
 
-**Import** takes a CSV or Excel (.xlsx) file up to 5 MB:
+**Import** (in a service book) takes a CSV or Excel (.xlsx) file up to 5 MB:
 
 1. Upload. A title or banner above the column names is fine; the first row naming at least three known columns is the
    header.
 2. Match each column to an IP Book column (pre-filled by name), make it a new column, or skip it.
-3. Preview: what will be added, merged with discovered entries, flagged for review, and networks to add for private
-   addresses in no known network (/24, untick what you don't want; public addresses never create networks).
+3. Preview: what will be added to the service book and which entries already in it are updated.
 4. Import.
 
 Clean-up on the way in: `N/A`, `-` and empty become blank; `S`/`N`, `Sim`/`Não`, `Y`/`N`, `yes`/`no` become yes/no;
 other text such as `default` is kept. An old Type column mixing kinds and systems is split: `LXC Container` → LXC,
 `VM Machine` → VM, `Docker` → Docker, anything else (`RouterOS`, `Debian 13`) → Type Device with that OS. Rows match
-discovered entries by host name (with or without the domain), or by IP when only one row has it.
+entries already in the book by host name (with or without the domain), or by IP when only one row has it.
