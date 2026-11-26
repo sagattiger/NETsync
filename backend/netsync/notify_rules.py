@@ -17,6 +17,7 @@ PROBLEM_TYPES: list[tuple[str, str, set[str]]] = [
     ("probe", "Probes (websites, TLS certificates)", {"probe_status", "probe_response", "tls_valid", "tls_days_left"}),
     ("container", "Docker containers", {"docker_container", "docker_data"}),
     ("crowdsec", "CrowdSec", {"crowdsec_lapi", "crowdsec_new_bans"}),
+    ("ipbook", "IP Book addresses (alert when down)", {"ipbook_ping"}),
     ("other", "Other checks", set()),
 ]
 TYPE_KEYS = {k for k, _, _ in PROBLEM_TYPES}

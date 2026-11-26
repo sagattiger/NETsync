@@ -14,6 +14,12 @@ SETTINGS = [
 DEFAULTS = {"interval_min": 5}
 
 
+def _service():
+    from netsync.plugins.builtin.ipbook.service import IpBookPingService
+
+    return IpBookPingService()
+
+
 def _router():
     from netsync.plugins.builtin.ipbook.api import router
 
@@ -29,5 +35,6 @@ plugin = Plugin(
     settings=SETTINGS,
     defaults=DEFAULTS,
     router=_router(),
+    services=[_service()],
     builtin=True,
 )
