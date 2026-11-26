@@ -84,3 +84,27 @@ def test_new_import_columns_get_server_keys():
     assert mapping[0] == "hostname" and mapping[2] == "c_vpn_password_2"
     m2, s2 = api.resolve_new_columns(["c_a", None], {"c_a": {"label": "x" * 300, "type": "nope"}}, [])
     assert len(m2[0]) <= 64 and s2[m2[0]]["type"] == "text" and len(s2[m2[0]]["label"]) <= 128
+
+
+def test_book_fields():
+    ip = api.book_fields("ip", {"title": " Servers ", "cidr": "192.0.2.9/24", "gateway": "192.0.2.1"})
+    assert ip["cidr"] == "192.0.2.0/24" and ip["title"] == "Servers" and ip["gateway"] == "192.0.2.1"
+    assert api.book_fields("ip", {"title": "", "cidr": "192.0.2.0/24"})["title"] == "192.0.2.0/24"
+    svc = api.book_fields("service", {"title": "Stack A", "cidr": "10.0.0.0/8"})
+    assert svc["cidr"] is None and svc["title"] == "Stack A"
+    for kind, body in [("ip", {"title": "x"}), ("ip", {"cidr": "10.0.0.0/16"}), ("ip", {"cidr": "10.0.0.0/24", "gateway": "10.0.1.1"}),
+                       ("service", {"title": " "}), ("other", {"title": "x"})]:
+        with pytest.raises(ValueError):
+            api.book_fields(kind, body)
+
+
+def test_ip_book_view():
+    book = NS(id=4, kind="ip", title="Servers", heading="RANGE IP Example", description=None, icon=None,
+              cidr="192.0.2.0/30", vlan="10", gateway="192.0.2.1", dns=None, alert_when_down=False, position=0)
+    addr = NS(ip="192.0.2.2", values={"addr_hostname": "app01.example.test"}, reserved=False, source="learned",
+              alert_when_down=None, updated_at=NOW, updated_by="discovery", id=1)
+    v = api.ip_book_view(book, {"192.0.2.2": addr}, {"a4:192.0.2.2": {"state": "up", "rtt": 1.0}})
+    assert v["book"]["heading"] == "RANGE IP Example" and v["counts"] == {"size": 2, "used": 2, "available": 0, "reserved": 0}
+    assert [(r["ip"], r["status"]) for r in v["addresses"]] == [
+        ("192.0.2.0", "subnet"), ("192.0.2.1", "gateway"), ("192.0.2.2", "used"), ("192.0.2.3", "broadcast")]
+    assert v["addresses"][2]["health"] == {"state": "up", "rtt": 1.0}

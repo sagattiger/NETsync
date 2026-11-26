@@ -1,65 +1,41 @@
-"""IP Book learning: after each device discovery, its learned row and the networks of its addresses are refreshed.
-Values a person set (``manual_keys``) are never written; nothing is deleted - a row whose device disappears is only
-marked ``missing_since``."""
+"""IP Book and discovery: after each device discovery, the addresses it found are filled into the IP books the admin
+created (hostname, device, interface, MAC). Service books are never touched; networks are never created here.
+Values a person set (``manual_keys``) are never written."""
 
 from __future__ import annotations
 
 import ipaddress
 import logging
-from datetime import datetime, timedelta
-from typing import Any
+from datetime import UTC, datetime
 
-from netsync.plugins.builtin.ipbook.netlogic import MISSING_AFTER, learnable_network
+from netsync.plugins.builtin.ipbook.addrlogic import books_for, learned_address_values
 
 log = logging.getLogger(__name__)
-TYPES = {"lxc": "LXC", "vm": "VM"}
-BRIDGES = ("docker", "br-", "veth", "cni", "flannel", "cali", "virbr", "lxcbr", "vxlan", "tap", "fwbr", "fwln", "fwpr", "lo")
 
 
-def lan_candidates(ports: list[tuple[str, str]]) -> list[str]:
-    """Port addresses (with prefix) that describe the host itself: container and VM bridges (docker0, br-…, veth…)
-    are left out, and ports are taken in name order so IP Lan doesn't change from one discovery to the next."""
-    return [cidr for name, cidr in sorted(ports, key=lambda p: (p[0] or "").lower())
-            if not (name or "").lower().startswith(BRIDGES)]
-
-
-def learned_values(device, hypervisor, port_ipv4: list[str]) -> dict[str, Any]:
-    """What discovery knows about a device, keyed by IP Book column. ``port_ipv4``: its ports' addresses with prefix."""
-    v: dict[str, Any] = {"hostname": device.hostname, "type": TYPES.get(device.virtualization or "", "Device")}
-    if device.app_name:
-        v["service"] = {"name": device.app_name, "logo": device.app_logo}
-    if hypervisor is not None:
-        v["hypervisor"] = {"id": hypervisor.id, "name": hypervisor.hostname}
-    if device.guest_id is not None:
-        v["vmid"] = device.guest_id
-    if device.os:
-        v["os"] = device.os
+def addresses_of(device, ports: list[tuple[str, str | None, list[str]]]) -> dict[str, tuple[str | None, str | None]]:
+    """Every address of a device → (interface name, MAC): its ports' IPv4 addresses, plus the address it's polled on."""
+    out: dict[str, tuple[str | None, str | None]] = {}
+    for name, mac, cidrs in sorted(ports, key=lambda p: (p[0] or "").lower()):
+        for cidr in cidrs or []:
+            try:
+                ip = ipaddress.ip_interface(cidr).ip
+            except ValueError:
+                continue
+            if not ip.is_loopback and str(ip) not in out:
+                out[str(ip)] = (name or None, mac or None)
     if device.ip:
-        v["ip_mgmt"] = device.ip
-    others = []
-    for cidr in port_ipv4:
         try:
-            ip = str(ipaddress.ip_interface(cidr).ip)
+            out.setdefault(str(ipaddress.ip_address(device.ip)), (None, None))
         except ValueError:
-            continue
-        if ip != device.ip and ip not in others and not ipaddress.ip_address(ip).is_loopback:
-            others.append(ip)
-    if others:
-        v["ip_lan"] = others[0]
-    if others[1:]:
-        v["other_ips"] = others[1:]
-    if device.app_url:
-        v["urls_internal"] = [device.app_url]
-    if device.app_port:
-        https = str(device.app_url or "").lower().startswith("https")
-        v["https_port" if https else "http_port"] = device.app_port
-    return v
+            pass
+    return out
 
 
 def merge_learned(row_values: dict, manual_keys: set[str], learned: dict, from_import: bool,
                   previous: dict | None = None) -> tuple[dict, dict]:
     """New values after discovery: learned keys are written unless a person set them; learned keys discovery no
-    longer reports are removed (unless manual). Conflicts are recorded only for rows that came from an import."""
+    longer reports are removed (unless manual). Conflicts are recorded only when ``from_import``."""
     new = dict(row_values or {})
     manual = set(manual_keys or ())
     for key in set(previous or {}) - set(learned) - manual:
@@ -75,50 +51,40 @@ def merge_learned(row_values: dict, manual_keys: set[str], learned: dict, from_i
 
 
 async def learn_device(session, device) -> None:
-    """Refresh the device's learned row and learn the networks of its ports' IPv4 addresses."""
+    """Fill the device's addresses into the IP books that hold them; addresses it no longer has lose what
+    discovery wrote (and become available again unless a person wrote something)."""
     from sqlalchemy import select
 
-    from netsync.models import VIRTUAL_DEVICE_TYPES, Component, Device, IpbNetwork, IpbRow
+    from netsync.models import VIRTUAL_DEVICE_TYPES, Component, IpbAddress, IpbBook
 
     if device.device_type in VIRTUAL_DEVICE_TYPES:
         return
-    hypervisor = await session.get(Device, device.hypervisor_id) if device.hypervisor_id else None
+    books = list(await session.scalars(select(IpbBook).where(IpbBook.kind == "ip")))
+    if not books:
+        return
     ports = await session.scalars(select(Component).where(
         Component.device_id == device.id, Component.kind == "port", Component.deleted.is_(False)))
-    named = [(c.name or "", a) for c in ports for a in ((c.attrs or {}).get("ipv4") or [])]
-    port_ipv4 = [a for _, a in named]  # every port's networks are learned (the admin hides bridges they don't want)
-    learned = learned_values(device, hypervisor, lan_candidates(named))
-
-    row = await session.scalar(select(IpbRow).where(IpbRow.device_id == device.id).order_by(IpbRow.id).limit(1))
-    if row is None:
-        row = IpbRow(device_id=device.id, source="learned", values={}, learned={}, manual_keys=[], conflicts={})
-        session.add(row)
-    values, conflicts = merge_learned(row.values, set(row.manual_keys or []), learned, row.source == "imported",
-                                      previous=row.learned)
-    row.values, row.learned, row.missing_since = values, learned, None
-    if conflicts:
-        row.conflicts = {**(row.conflicts or {}), **conflicts}
-
-    known = set(await session.scalars(select(IpbNetwork.cidr)))
-    for cidr in port_ipv4:
-        net = learnable_network(cidr)
-        if net and net not in known:
-            session.add(IpbNetwork(cidr=net, title=net, source="learned"))
-            known.add(net)
-    await session.flush()
-
-
-async def mark_missing(session, now: datetime) -> None:
-    """Learned rows whose device is gone, or wasn't discovered for 7 days, get ``missing_since``."""
-    from sqlalchemy import select
-
-    from netsync.models import Device, IpbRow
-
-    rows = list(await session.scalars(select(IpbRow).where(IpbRow.source == "learned", IpbRow.missing_since.is_(None))))
-    for row in rows:
-        dev = await session.get(Device, row.device_id) if row.device_id else None
-        if dev is None:
-            row.missing_since = now - MISSING_AFTER - timedelta(seconds=1)
-        elif dev.last_discovered and now - dev.last_discovered > MISSING_AFTER:
-            row.missing_since = dev.last_discovered
+    found = addresses_of(device, [(c.name, (c.attrs or {}).get("mac"), (c.attrs or {}).get("ipv4") or []) for c in ports])
+    now = datetime.now(UTC)
+    seen: set[tuple[int, str]] = set()
+    for ip, (iface, mac) in found.items():
+        for book in books_for(ip, books):
+            seen.add((book.id, ip))
+            addr = await session.scalar(select(IpbAddress).where(IpbAddress.book_id == book.id, IpbAddress.ip == ip))
+            if addr is None:
+                addr = IpbAddress(book_id=book.id, ip=ip, values={}, learned={}, manual_keys=[], source="learned")
+                session.add(addr)
+            learned = learned_address_values(device, iface, mac)
+            values, _ = merge_learned(addr.values, set(addr.manual_keys or []), learned, False, previous=addr.learned)
+            if values != (addr.values or {}) or addr.device_id != device.id:
+                addr.updated_at, addr.updated_by = now, "discovery"
+            addr.values, addr.learned, addr.device_id = values, learned, device.id
+    # addresses this device had before but no longer reports
+    for addr in list(await session.scalars(select(IpbAddress).where(IpbAddress.device_id == device.id))):
+        if (addr.book_id, addr.ip) in seen:
+            continue
+        values, _ = merge_learned(addr.values, set(addr.manual_keys or []), {}, False, previous=addr.learned)
+        addr.values, addr.learned, addr.device_id, addr.updated_at, addr.updated_by = values, {}, None, now, "discovery"
+        if not values and not addr.reserved and not addr.manual_keys:
+            await session.delete(addr)
     await session.flush()

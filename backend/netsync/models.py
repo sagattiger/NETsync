@@ -673,8 +673,48 @@ class IpbNetwork(Base):
     updated_at: Mapped[datetime] = utcnow_col()
 
 
+class IpbBook(Base):
+    """A book: an IP book (one network, a row per address) or a service book (a list of services)."""
+
+    __tablename__ = "ipbook_books"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(8))  # ip | service
+    title: Mapped[str] = mapped_column(String(128))
+    heading: Mapped[str | None] = mapped_column(String(255))  # banner over an IP book, e.g. "RANGE IP Example"
+    description: Mapped[str | None] = mapped_column(Text)
+    icon: Mapped[str | None] = mapped_column(String(32))
+    cidr: Mapped[str | None] = mapped_column(String(64))  # IP books only
+    vlan: Mapped[str | None] = mapped_column(String(32))
+    gateway: Mapped[str | None] = mapped_column(String(64))
+    dns: Mapped[str | None] = mapped_column(String(255))
+    alert_when_down: Mapped[bool] = mapped_column(Boolean, default=False)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = utcnow_col()
+
+
+class IpbAddress(Base):
+    """One address of an IP book that has something on it (the others are shown as available, not stored)."""
+
+    __tablename__ = "ipbook_addresses"
+    __table_args__ = (UniqueConstraint("book_id", "ip"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    book_id: Mapped[int] = mapped_column(ForeignKey("ipbook_books.id", ondelete="CASCADE"), index=True)
+    ip: Mapped[str] = mapped_column(String(64))
+    values: Mapped[dict] = mapped_column(JSON, default=dict)
+    learned: Mapped[dict] = mapped_column(JSON, default=dict)
+    manual_keys: Mapped[list] = mapped_column(JSON, default=list)
+    reserved: Mapped[bool] = mapped_column(Boolean, default=False)
+    alert_when_down: Mapped[bool | None] = mapped_column(Boolean)
+    source: Mapped[str] = mapped_column(String(8), default="manual")  # learned | manual
+    device_id: Mapped[int | None] = mapped_column(ForeignKey("devices.id", ondelete="SET NULL"))
+    updated_at: Mapped[datetime] = utcnow_col()  # "Last Change"
+    updated_by: Mapped[str | None] = mapped_column(String(64))
+
+
 class IpbColumn(Base):
-    """A column of the IP Book list: built-in (seeded, can't be deleted) or added by an admin."""
+    """A column of a book kind (service or ip): built-in (seeded, can't be deleted) or added by an admin."""
 
     __tablename__ = "ipbook_columns"
 
@@ -687,6 +727,7 @@ class IpbColumn(Base):
     position: Mapped[int] = mapped_column(Integer, default=0)
     hidden: Mapped[bool] = mapped_column(Boolean, default=False)
     builtin: Mapped[bool] = mapped_column(Boolean, default=False)
+    kind: Mapped[str] = mapped_column(String(8), default="service", server_default="service")  # service | ip
 
 
 class IpbRow(Base):
@@ -695,6 +736,7 @@ class IpbRow(Base):
     __tablename__ = "ipbook_rows"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    book_id: Mapped[int | None] = mapped_column(ForeignKey("ipbook_books.id", ondelete="CASCADE"), index=True)
     values: Mapped[dict] = mapped_column(JSON, default=dict)
     secrets_enc: Mapped[str | None] = mapped_column(Text)
     sensitive: Mapped[bool] = mapped_column(Boolean, default=False)

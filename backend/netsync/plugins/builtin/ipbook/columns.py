@@ -47,6 +47,24 @@ for _i, _col in enumerate(BUILTIN):
     _col["position"] = _i
 BUILTIN_KEYS = {c["key"] for c in BUILTIN}
 
+# Columns of IP books (one row per address), as in the owner's range sheet. Network (the IP), status and Last Change
+# are fixed fields of every address, not columns.
+IP_BUILTIN: list[dict[str, Any]] = [
+    _c("addr_hostname", "Hostname", "text", "router"),
+    _c("addr_internal_id", "Internal ID", "text", "list"),
+    _c("addr_device", "Device", "text", "server"),
+    _c("addr_location", "Location", "text", "pin"),
+    _c("addr_interface", "Interface Name", "text", "switch"),
+    _c("addr_mac", "Mac-Address", "text", "network"),
+    _c("addr_isp_customer", "ISP Customer", "text", "user"),
+    _c("addr_end_customer", "End Customer", "text", "users"),
+    _c("addr_private_ip", "Private IP", "ip", "lock"),
+    _c("addr_last_mile", "Last Mile Provider", "text", "globe"),
+    _c("addr_info", "Info.", "longtext", "info"),
+]
+for _i, _col in enumerate(IP_BUILTIN):
+    _col["position"] = _i
+
 
 def ip_keys(cols: list[dict]) -> set[str]:
     """Keys of every IP-bearing column (built-in and custom), plus the learned extra addresses."""
@@ -64,8 +82,9 @@ async def seed(session) -> None:
     from netsync.models import IpbColumn
 
     have = set(await session.scalars(select(IpbColumn.key)))
-    for c in BUILTIN:
-        if c["key"] not in have:
-            session.add(IpbColumn(key=c["key"], label=c["label"], type=c["type"], icon=c["icon"],
-                                  options=c.get("options"), position=c["position"], hidden=False, builtin=True))
+    for kind, cols in (("service", BUILTIN), ("ip", IP_BUILTIN)):
+        for c in cols:
+            if c["key"] not in have:
+                session.add(IpbColumn(key=c["key"], label=c["label"], type=c["type"], icon=c["icon"], kind=kind,
+                                      options=c.get("options"), position=c["position"], hidden=False, builtin=True))
     await session.flush()

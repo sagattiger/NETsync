@@ -63,3 +63,20 @@ def test_sensitive_row_with_two_ips_has_two_services():
     b = service.check_for(r, "10.0.0.10", {"state": "up"}, 2)
     assert a.name != b.name and a.name == "IP Book: sensitive entry #7 address 1"
     assert "10.0.0" not in a.name + b.name
+
+
+def test_targets_from_service_books_and_ip_books():
+    books = {1: NS(id=1, kind="service", title="Stack", alert_when_down=True),
+             2: NS(id=2, kind="ip", title="Servers", alert_when_down=False)}
+    rows = [NS(id=5, book_id=1, sensitive=False, alert_when_down=None, values={"hostname": "app01.example.test", "ip_lan": "10.0.0.5"}),
+            NS(id=6, book_id=1, sensitive=True, alert_when_down=False, values={"ip_lan": "10.0.0.6, 10.0.0.7"})]
+    addrs = [NS(book_id=2, ip="10.0.0.9", values={"addr_hostname": "sw01.example.test"}, reserved=False, alert_when_down=True),
+             NS(book_id=2, ip="10.0.0.10", values={}, reserved=True, alert_when_down=None),
+             NS(book_id=2, ip="10.0.0.11", values={"addr_info": "printer"}, reserved=False, alert_when_down=None)]
+    t = {x.key: x for x in service.targets(rows, books, addrs, {"ip_lan"})}
+    assert set(t) == {"5:10.0.0.5", "6:10.0.0.6", "6:10.0.0.7", "a2:10.0.0.9", "a2:10.0.0.11"}  # reserved: not pinged
+    assert t["5:10.0.0.5"].alert is True and t["6:10.0.0.6"].alert is False  # book switch / row override
+    assert t["a2:10.0.0.9"].alert is True and t["a2:10.0.0.11"].alert is False
+    assert t["6:10.0.0.7"].check({"state": "down"}).name == "IP Book: sensitive entry #6 address 2"
+    assert t["a2:10.0.0.9"].check({"state": "down"}).name == "sw01.example.test 10.0.0.9"
+    assert t["a2:10.0.0.11"].check({"state": "down"}).name == "10.0.0.11 (Servers)"

@@ -16,14 +16,15 @@ from sqlalchemy import select
 
 from netsync.alerting import redis
 from netsync.api.deps import CurrentUser, Session, require
-from netsync.models import Device, IpbColumn, IpbNetwork, IpbReveal, IpbRow, Role, real_device
+from netsync.models import Device, IpbAddress, IpbBook, IpbColumn, IpbReveal, IpbRow, Role, real_device
+from netsync.plugins.builtin.ipbook import addrlogic, health, importer, netlogic
 from netsync.plugins.builtin.ipbook import columns as colmod
-from netsync.plugins.builtin.ipbook import health, importer, netlogic
 from netsync.plugins.builtin.ipbook.values import apply_edit, public_row, reveal, seal, search_matches, unseal
 
 router = APIRouter()
-NET_FIELDS = ("id", "cidr", "title", "description", "icon", "vlan", "gateway", "dns", "alert_when_down", "source",
-              "hidden")
+NET_FIELDS = ("id", "cidr", "title", "description", "icon", "vlan", "gateway", "dns", "alert_when_down")
+BOOK_FIELDS = ("id", "kind", "title", "heading", "description", "icon", "cidr", "vlan", "gateway", "dns",
+               "alert_when_down", "position")
 RESTRICTED = "Conflict with a restricted entry"
 PING_EVERY_S = 5
 _last_ping: dict[str, float] = {}
@@ -77,6 +78,47 @@ def _filter_warnings(ws: list[dict], hidden_ids: set[int]) -> list[dict]:
     return out
 
 
+def book_out(b) -> dict:
+    return {f: getattr(b, f, None) for f in BOOK_FIELDS}
+
+
+def book_fields(kind: str, body: dict) -> dict:
+    """The stored fields of a new or edited book; ValueError with a message for the admin."""
+    if kind not in ("ip", "service"):
+        raise ValueError("A book is an IP book or a service book")
+    def text(k):
+        v = str(body.get(k) or "").strip()
+        return v or None
+    out = {"title": text("title"), "heading": text("heading"), "description": text("description"),
+           "icon": text("icon"), "alert_when_down": bool(body.get("alert_when_down")), "cidr": None, "vlan": None,
+           "gateway": None, "dns": None}
+    if kind == "service":
+        if not out["title"]:
+            raise ValueError("A service book needs a name")
+        return out
+    if not body.get("cidr"):
+        raise ValueError("An IP book needs a network, like 10.0.0.0/24")
+    cidr = addrlogic.book_cidr(body["cidr"])
+    out.update(cidr=cidr, vlan=text("vlan"), dns=text("dns"), title=out["title"] or cidr)
+    gw = text("gateway")
+    if gw:
+        try:
+            ok = ipaddress.ip_address(gw) in ipaddress.ip_network(cidr)
+        except ValueError:
+            ok = False
+        if not ok:
+            raise ValueError(f"The gateway {gw} is not in {cidr}")
+    out["gateway"] = gw
+    return out
+
+
+def ip_book_view(book, stored: dict, states: dict) -> dict:
+    """An IP book: its header, every address with status, values and last ping, and how it's used."""
+    by_ip = {k.split(":", 1)[1]: v for k, v in states.items() if k.startswith(f"a{book.id}:")}
+    rows = addrlogic.address_rows(book.cidr, book.gateway, stored, by_ip)
+    return {"book": book_out(book), "addresses": rows, "counts": addrlogic.counts(rows)}
+
+
 def net_out(n) -> dict:
     return {f: getattr(n, f, None) for f in NET_FIELDS}
 
@@ -123,17 +165,18 @@ def network_view(network, networks, rows, columns, is_admin: bool, states: dict,
 # ------------------------------------------------------------------------------- loading
 
 
-async def _columns(session) -> list[dict]:
+async def _columns(session, kind: str = "service") -> list[dict]:
     await colmod.seed(session)
-    cols = list(await session.scalars(select(IpbColumn).order_by(IpbColumn.position, IpbColumn.id)))
+    cols = list(await session.scalars(select(IpbColumn).where(IpbColumn.kind == kind)
+                                      .order_by(IpbColumn.position, IpbColumn.id)))
     return [{"id": c.id, "key": c.key, "label": c.label, "type": c.type, "icon": c.icon, "options": c.options,
-             "position": c.position, "hidden": c.hidden, "builtin": c.builtin} for c in cols]
+             "position": c.position, "hidden": c.hidden, "builtin": c.builtin, "kind": c.kind} for c in cols]
 
 
 async def _context(session):
     cols = await _columns(session)
-    nets = list(await session.scalars(select(IpbNetwork).order_by(IpbNetwork.cidr)))
-    rows = list(await session.scalars(select(IpbRow).order_by(IpbRow.id)))
+    nets = list(await session.scalars(select(IpbBook).where(IpbBook.kind == "ip").order_by(IpbBook.position, IpbBook.id)))
+    rows = list(await session.scalars(select(IpbRow).where(IpbRow.book_id.is_not(None)).order_by(IpbRow.id)))
     device_ips: dict[str, int] = {}
     for d in await session.scalars(select(Device).where(real_device())):
         for ip in [d.ip, *(d.ip_addresses or [])]:
@@ -141,12 +184,6 @@ async def _context(session):
                 device_ips.setdefault(str(ip).split("/")[0], d.id)
     row_devices = {r.id: r.device_id for r in rows}
     return cols, nets, rows, device_ips, row_devices
-
-
-def _in_any(idx: dict) -> set[int]:
-    """Rows with an IP in some network (hidden networks count: those IPs are known, just not shown)."""
-    return {rid for rid, ips in idx["parsed"].items()
-            if any(idx["in_net"].get(ip) or ip in idx["hidden_ips"] for _, ip in ips)}
 
 
 def _admin(user) -> bool:
@@ -165,119 +202,172 @@ async def _row_for(session, user, row_id: int) -> IpbRow:
 
 @router.get("/overview")
 async def overview(session: Session, user: CurrentUser):
-    cols, nets, rows, device_ips, row_devices = await _context(session)
+    """Every book (IP books with how they're used, service books with their entry count) and the columns."""
+    cols, ip_cols_ = await _columns(session, "service"), await _columns(session, "ip")
     await session.commit()  # seeded columns
-    admin = _admin(user)
-    ip_cols = colmod.ip_keys(cols)
-    idx = netlogic.index(nets, rows, ip_cols)
-    found = netlogic.warnings(nets, rows, ip_cols, device_ips, row_devices, datetime.now(UTC), idx)
-    out = []
-    in_any = _in_any(idx)
-    for n in nets:
-        if n.hidden and not admin:
-            continue
-        members = idx["members"].get(n.id, []) if not n.hidden else netlogic.rows_in_network(n, rows, ip_cols)
-        net = ipaddress.ip_network(n.cidr, strict=False)
-        used = idx["used"].get(n.id, set()) if not n.hidden else {
-            ip for r, _ in members for _, ip in idx["parsed"].get(r.id, []) if ipaddress.ip_address(ip) in net}
-        out.append({**net_out(n), "usage": netlogic.usage(n.cidr, used),
-                    "warning_count": len(found["networks"].get(n.id, [])) + sum(
-                        1 for r, _ in members if found["rows"].get(r.id))})
-    visible = [r for r in rows if can_see(r, user.role)]
-    return {"networks": out, "columns": cols, "is_admin": admin,
-            "counts": {"all": len(visible), "no_network": sum(1 for r in visible if r.id not in in_any)}}
-
-
-@router.get("/networks/{network_id}")
-async def network(network_id: str, session: Session, user: CurrentUser):
-    cols, nets, rows, device_ips, row_devices = await _context(session)
+    books = list(await session.scalars(select(IpbBook).order_by(IpbBook.kind, IpbBook.position, IpbBook.id)))
     states = await health.read(redis())
-    admin = _admin(user)
-    now = datetime.now(UTC)
-    if network_id == "all":
-        return network_view(None, nets, rows, cols, admin, states, device_ips, row_devices, now)
-    if network_id == "none":
-        in_any = _in_any(netlogic.index(nets, rows, colmod.ip_keys(cols)))
-        view = network_view(None, nets, rows, cols, admin, states, device_ips, row_devices, now)
-        view["rows"] = [r for r in view["rows"] if r["id"] not in in_any]
-        return view
-    n = next((x for x in nets if str(x.id) == network_id), None)
-    if n is None or (n.hidden and not admin):
-        raise HTTPException(404, "Network not found")
-    return network_view(n, nets, rows, cols, admin, states, device_ips, row_devices, now)
+    stored: dict[int, dict] = {}
+    for a in await session.scalars(select(IpbAddress)):
+        stored.setdefault(a.book_id, {})[a.ip] = a
+    rows = [r for r in await session.scalars(select(IpbRow).where(IpbRow.book_id.is_not(None))) if can_see(r, user.role)]
+    out = []
+    for b in books:
+        item = book_out(b)
+        if b.kind == "ip":
+            item["counts"] = ip_book_view(b, stored.get(b.id, {}), states)["counts"]
+        else:
+            item["entries"] = sum(1 for r in rows if r.book_id == b.id)
+        out.append(item)
+    return {"books": out, "columns": {"service": cols, "ip": ip_cols_}, "is_admin": _admin(user)}
+
+
+async def _book(session, book_id: int) -> IpbBook:
+    book = await session.get(IpbBook, book_id)
+    if book is None:
+        raise HTTPException(404, "Book not found")
+    return book
+
+
+@router.get("/books/{book_id}")
+async def book_view(book_id: int, session: Session, user: CurrentUser):
+    book = await _book(session, book_id)
+    states = await health.read(redis())
+    if book.kind == "ip":
+        stored = {a.ip: a for a in await session.scalars(select(IpbAddress).where(IpbAddress.book_id == book.id))}
+        return ip_book_view(book, stored, states)
+    cols, nets, rows, device_ips, row_devices = await _context(session)
+    view = network_view(None, nets, rows, cols, _admin(user), states, device_ips, row_devices, datetime.now(UTC))
+    in_book = {r.id for r in rows if r.book_id == book.id}
+    # "outside every network" isn't shown for services: IP books cover only the networks the admin added
+    view["rows"] = [{**r, "warnings": [w for w in r["warnings"] if w["kind"] != "outside"]}
+                    for r in view["rows"] if r["id"] in in_book]
+    view["book"] = book_out(book)
+    return view
 
 
 @router.get("/search")
 async def search(q: str, session: Session, user: CurrentUser):
+    """Service entries and IP book addresses matching an IP, host name or any visible text."""
     cols, nets, rows, device_ips, row_devices = await _context(session)
     view = network_view(None, nets, rows, cols, _admin(user), await health.read(redis()), device_ips, row_devices,
                         datetime.now(UTC))
     ip_cols = colmod.ip_keys(cols)
-    return {"rows": [r for r in view["rows"] if search_matches(r, q, ip_cols)][:500]}
+    books = {b.id: b for b in await session.scalars(select(IpbBook))}
+    book_of = {r.id: r.book_id for r in rows}
+    found = [{**r, "book_id": book_of[r["id"]]} for r in view["rows"] if search_matches(r, q, ip_cols)]
+    addresses = []
+    for a in await session.scalars(select(IpbAddress)):
+        pub = {"values": {"ip": a.ip, **(a.values or {})}}
+        if search_matches(pub, q, {"ip", "addr_private_ip"}):
+            b = books.get(a.book_id)
+            addresses.append({"book_id": a.book_id, "book": b.title if b else "", "ip": a.ip, "values": a.values or {}})
+    return {"rows": found[:500], "addresses": addresses[:500]}
 
 
-# ------------------------------------------------------------------------------- networks
+# ------------------------------------------------------------------------------- books
 
 
-class NetworkIn(BaseModel):
-    cidr: str
+class BookIn(BaseModel):
+    kind: str = "service"
     title: str = ""
+    heading: str | None = None
     description: str | None = None
     icon: str | None = None
+    cidr: str | None = None
     vlan: str | None = None
     gateway: str | None = None
     dns: str | None = None
     alert_when_down: bool = False
-    hidden: bool = False
 
 
-def _cidr(text: str) -> str:
+@router.post("/books", dependencies=[require(Role.ADMIN)])
+async def add_book(body: BookIn, session: Session):
     try:
-        return str(ipaddress.ip_network(text.strip(), strict=False))
-    except ValueError:
-        raise HTTPException(400, f"{text!r} is not a network like 10.0.0.0/24") from None
-
-
-@router.post("/networks", dependencies=[require(Role.ADMIN)])
-async def add_network(body: NetworkIn, session: Session):
-    cidr = _cidr(body.cidr)
-    if await session.scalar(select(IpbNetwork.id).where(IpbNetwork.cidr == cidr)):
-        raise HTTPException(409, f"{cidr} is already in IP Book")
-    n = IpbNetwork(**{**body.model_dump(), "cidr": cidr, "title": body.title.strip() or cidr}, source="manual")
-    session.add(n)
+        fields = book_fields(body.kind, body.model_dump())
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    if fields["cidr"] and await session.scalar(select(IpbBook.id).where(IpbBook.cidr == fields["cidr"])):
+        raise HTTPException(409, f"{fields['cidr']} already has an IP book")
+    last = await session.scalar(select(IpbBook.position).where(IpbBook.kind == body.kind).order_by(IpbBook.position.desc()))
+    book = IpbBook(kind=body.kind, position=(last or 0) + 1, **fields)
+    session.add(book)
     await session.commit()
-    return net_out(n)
+    return book_out(book)
 
 
-@router.put("/networks/{network_id}", dependencies=[require(Role.ADMIN)])
-async def update_network(network_id: int, body: NetworkIn, session: Session):
-    n = await session.get(IpbNetwork, network_id)
-    if n is None:
-        raise HTTPException(404)
-    cidr = _cidr(body.cidr)
-    if n.source == "learned" and cidr != n.cidr:
-        raise HTTPException(400, "A learned network's address can't change")
-    if cidr != n.cidr and await session.scalar(select(IpbNetwork.id).where(IpbNetwork.cidr == cidr)):
-        raise HTTPException(409, f"{cidr} is already in IP Book")
-    for k, v in {**body.model_dump(), "cidr": cidr, "title": body.title.strip() or cidr}.items():
-        setattr(n, k, v)
-    n.updated_at = datetime.now(UTC)
+@router.put("/books/{book_id}", dependencies=[require(Role.ADMIN)])
+async def update_book(book_id: int, body: BookIn, session: Session):
+    book = await _book(session, book_id)
+    try:
+        fields = book_fields(book.kind, {**body.model_dump(), "cidr": book.cidr if book.kind == "ip" else None})
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    for k, v in fields.items():
+        if k != "cidr":
+            setattr(book, k, v)
     await session.commit()
-    return net_out(n)
+    return book_out(book)
 
 
-@router.delete("/networks/{network_id}", dependencies=[require(Role.ADMIN)])
-async def delete_network(network_id: int, session: Session):
-    """A manual network is deleted; a learned one is hidden, so discovery doesn't bring it back."""
-    n = await session.get(IpbNetwork, network_id)
-    if n is None:
-        raise HTTPException(404)
-    if n.source == "learned":
-        n.hidden = True
-    else:
-        await session.delete(n)
+@router.delete("/books/{book_id}", dependencies=[require(Role.ADMIN)])
+async def delete_book(book_id: int, session: Session):
+    """Deletes the book with its entries or addresses (and their passwords)."""
+    book = await _book(session, book_id)
+    await session.delete(book)
     await session.commit()
     return {"ok": True}
+
+
+# ------------------------------------------------------------------------------- IP book addresses
+
+
+class AddressIn(BaseModel):
+    values: dict[str, Any] = {}
+    reserved: bool = False
+    alert_when_down: bool | None = None
+
+
+@router.put("/books/{book_id}/addresses/{ip}", dependencies=[require(Role.ADMIN)])
+async def update_address(book_id: int, ip: str, body: AddressIn, session: Session, user: CurrentUser):
+    book = await _book(session, book_id)
+    if book.kind != "ip" or not addrlogic.books_for(ip, [book]):
+        raise HTTPException(404, "Address not in this book")
+    ip = str(ipaddress.ip_address(ip))
+    cols = await _columns(session, "ip")
+    addr = await session.scalar(select(IpbAddress).where(IpbAddress.book_id == book.id, IpbAddress.ip == ip))
+    if addr is None:
+        addr = IpbAddress(book_id=book.id, ip=ip, values={}, learned={}, manual_keys=[], source="manual")
+        session.add(addr)
+    try:
+        vals, _, manual = apply_edit(addr.values, {}, cols, body.values, set(addr.manual_keys or []))
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    addr.values, addr.manual_keys = vals, sorted(manual)
+    addr.reserved, addr.alert_when_down = body.reserved, body.alert_when_down
+    addr.updated_at, addr.updated_by = datetime.now(UTC), user.username
+    if not vals and not addr.reserved and addr.alert_when_down is None and not addr.learned:
+        await session.delete(addr)  # nothing left on it: available again
+    await session.commit()
+    return {"ok": True}
+
+
+@router.post("/books/{book_id}/addresses/{ip}/ping")
+async def ping_address(book_id: int, ip: str, session: Session, user: CurrentUser):
+    book = await _book(session, book_id)
+    if book.kind != "ip" or not addrlogic.books_for(ip, [book]):
+        raise HTTPException(404, "Address not in this book")
+    _rate_limit(user.username)
+    await session.close()  # no database connection held while pinging
+    up, rtt = (await health.ping([ip])).get(ip, (False, None))
+    return {"ips": [{"ip": ip, "up": up, "rtt_ms": rtt}]}
+
+
+def _rate_limit(username: str) -> None:
+    now = time.monotonic()
+    if now - _last_ping.get(username, 0) < PING_EVERY_S:
+        raise HTTPException(429, "Wait a few seconds between pings")
+    _last_ping[username] = now
 
 
 # ------------------------------------------------------------------------------- columns
@@ -285,6 +375,7 @@ async def delete_network(network_id: int, session: Session):
 
 class ColumnIn(BaseModel):
     label: str
+    kind: str = "service"  # service | ip
     type: str = "text"
     icon: str | None = None
     options: list[str] | None = None
@@ -293,15 +384,20 @@ class ColumnIn(BaseModel):
 
 @router.post("/columns", dependencies=[require(Role.ADMIN)])
 async def add_column(body: ColumnIn, session: Session):
-    cols = await _columns(session)
+    if body.kind not in ("service", "ip"):
+        raise HTTPException(400, "Unknown book kind")
+    cols = await _columns(session, body.kind)
+    taken_all = set(await session.scalars(select(IpbColumn.key)))
     if body.type not in colmod.TYPES or body.type in ("service", "device"):
         raise HTTPException(400, "Unknown column type")
+    if body.kind == "ip" and body.type == "secret":
+        raise HTTPException(400, "Passwords belong in a service book (IP books hold no secrets)")
     if body.type == "choice" and not [o for o in body.options or [] if o.strip()]:
         raise HTTPException(400, "A choice column needs options")
     label = body.label.strip()
     if not label:
         raise HTTPException(400, "A column needs a name")
-    c = IpbColumn(key=custom_key(label, {c["key"] for c in cols}), label=label, type=body.type, icon=body.icon,
+    c = IpbColumn(key=custom_key(label, taken_all), label=label, type=body.type, icon=body.icon, kind=body.kind,
                   options=[o.strip() for o in body.options or [] if o.strip()] or None,
                   position=max((c["position"] for c in cols), default=0) + 1, hidden=body.hidden, builtin=False)
     session.add(c)
@@ -340,7 +436,8 @@ async def delete_column(column_id: int, session: Session, confirm: bool = False)
     c = await session.get(IpbColumn, column_id)
     if c is None:
         raise HTTPException(404)
-    rows = list(await session.scalars(select(IpbRow)))
+    rows = list(await session.scalars(select(IpbRow))) if c.kind == "service" else list(
+        await session.scalars(select(IpbAddress)))
     try:
         count = delete_column_check(c, rows)
     except ValueError as e:
@@ -352,7 +449,7 @@ async def delete_column(column_id: int, session: Session, confirm: bool = False)
     for r in rows:
         if c.key in (r.values or {}):
             r.values = {k: v for k, v in r.values.items() if k != c.key}
-        if c.type == "secret" and r.secrets_enc:
+        if c.type == "secret" and getattr(r, "secrets_enc", None):
             sec = unseal(r.secrets_enc)
             if c.key in sec:
                 sec.pop(c.key)
@@ -366,6 +463,7 @@ async def delete_column(column_id: int, session: Session, confirm: bool = False)
 
 
 class RowIn(BaseModel):
+    book_id: int | None = None  # required when adding; a service book
     values: dict[str, Any] = {}
     sensitive: bool = False
     alert_when_down: bool | None = None
@@ -381,6 +479,9 @@ def _check_runs_on(row_id: int | None, runs_on_id: int | None, rows_by_id: dict)
 
 @router.post("/rows", dependencies=[require(Role.ADMIN)])
 async def add_row(body: RowIn, session: Session, user: CurrentUser):
+    book = await session.get(IpbBook, body.book_id) if body.book_id else None
+    if book is None or book.kind != "service":
+        raise HTTPException(400, "Pick a service book for the entry")
     cols = await _columns(session)
     rows_by_id = {r.id: r for r in await session.scalars(select(IpbRow))}
     _check_runs_on(None, body.runs_on_id, rows_by_id)
@@ -389,7 +490,7 @@ async def add_row(body: RowIn, session: Session, user: CurrentUser):
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     r = IpbRow(values=vals, secrets_enc=seal(sec), manual_keys=sorted(manual), sensitive=body.sensitive,
-               alert_when_down=body.alert_when_down, runs_on_id=body.runs_on_id, source="manual", learned={},
+               alert_when_down=body.alert_when_down, runs_on_id=body.runs_on_id, source="manual", learned={}, book_id=book.id,
                conflicts={}, updated_by=user.username)
     session.add(r)
     await session.commit()
@@ -461,12 +562,10 @@ async def reveal_secret(row_id: int, body: RevealIn, session: Session, user=requ
 @router.post("/rows/{row_id}/ping")
 async def ping_row(row_id: int, session: Session, user: CurrentUser):
     r = await _row_for(session, user, row_id)
-    now = time.monotonic()
-    if now - _last_ping.get(user.username, 0) < PING_EVERY_S:
-        raise HTTPException(429, "Wait a few seconds between pings")
-    _last_ping[user.username] = now
+    _rate_limit(user.username)
     cols = await _columns(session)
     ips = sorted({ip for _, ip in netlogic.row_ips(r, colmod.ip_keys(cols))})
+    await session.close()  # no database connection held while pinging
     results = await health.ping(ips)
     states = await health.read(redis())
     at = datetime.now(UTC)
@@ -482,6 +581,7 @@ async def ping_row(row_id: int, session: Session, user: CurrentUser):
 
 
 class ImportIn(BaseModel):
+    book_id: int  # the service book the entries go into
     filename: str
     content_b64: str
     sheet: str | None = None
@@ -490,11 +590,18 @@ class ImportIn(BaseModel):
     networks: list[str] | None = None  # the proposed networks the admin kept (commit only)
 
 
-async def _existing(session, cols) -> list[dict]:
+async def _existing(session, cols, book_id: int) -> list[dict]:
     ip_cols = colmod.ip_keys(cols)
     return [{"id": r.id, "hostname": (r.values or {}).get("hostname"),
              "ips": [ip for _, ip in netlogic.row_ips(r, ip_cols)], "values": r.values or {}}
-            for r in await session.scalars(select(IpbRow))]
+            for r in await session.scalars(select(IpbRow).where(IpbRow.book_id == book_id))]
+
+
+async def _service_book(session, book_id: int) -> IpbBook:
+    book = await session.get(IpbBook, book_id)
+    if book is None or book.kind != "service":
+        raise HTTPException(400, "Pick a service book to import into")
+    return book
 
 
 def _read(body: ImportIn, cols: list[dict]):
@@ -530,8 +637,9 @@ def _safe_plan(plan: dict, secret_keys: set[str]) -> dict:
 async def import_preview(body: ImportIn, session: Session):
     cols = await _columns(session)
     sheets, header_row, header, _, rows, skipped, specs = _read(body, cols)
-    nets = [n.cidr for n in await session.scalars(select(IpbNetwork))]
-    plan = importer.plan_import(rows, await _existing(session, cols), nets)
+    await _service_book(session, body.book_id)
+    nets = [b.cidr for b in await session.scalars(select(IpbBook).where(IpbBook.kind == "ip"))]
+    plan = importer.plan_import(rows, await _existing(session, cols, body.book_id), nets)
     plan["skip"] += skipped
     secrets = colmod.secret_keys(cols) | {k for k, v in specs.items() if v["type"] == "secret"}
     mapping = body.mapping if body.mapping is not None else importer.guess_mapping(header)
@@ -558,8 +666,9 @@ async def import_commit(body: ImportIn, session: Session, user: CurrentUser):
     await session.flush()
     cols = await _columns(session)
     secrets = colmod.secret_keys(cols)
-    nets = [n.cidr for n in await session.scalars(select(IpbNetwork))]
-    plan = importer.plan_import(rows, await _existing(session, cols), nets)
+    await _service_book(session, body.book_id)
+    nets = [b.cidr for b in await session.scalars(select(IpbBook).where(IpbBook.kind == "ip"))]
+    plan = importer.plan_import(rows, await _existing(session, cols, body.book_id), nets)
 
     async def split(sheet: dict) -> tuple[dict, dict]:
         vals, sec = {}, {}
@@ -575,6 +684,7 @@ async def import_commit(body: ImportIn, session: Session, user: CurrentUser):
     for sheet in plan["create"]:
         vals, sec = await split(sheet)
         session.add(IpbRow(values=vals, secrets_enc=seal(sec), manual_keys=sorted(vals) + sorted(sec), source="imported",
+                           book_id=body.book_id,
                            learned={}, conflicts={}, updated_by=user.username))
     for m in plan["merge"]:
         r = await session.get(IpbRow, m["row_id"])
@@ -584,15 +694,7 @@ async def import_commit(body: ImportIn, session: Session, user: CurrentUser):
         r.manual_keys = sorted(set(r.manual_keys or []) | set(vals) | set(sec))
         r.conflicts = {**(r.conflicts or {}), **{k: v for k, v in m["conflicts"].items() if k not in secrets}}
         r.updated_at, r.updated_by = datetime.now(UTC), user.username
-    keep = plan["networks"] if body.networks is None else body.networks
-    have = set(nets)
-    added = 0
-    for text in keep:
-        cidr = _cidr(text)
-        if cidr not in have:
-            session.add(IpbNetwork(cidr=cidr, title=cidr, source="manual"))
-            have.add(cidr)
-            added += 1
+    added = 0  # IP books are only created by the admin
     await session.commit()
     return {"created": len(plan["create"]), "merged": len(plan["merge"]), "skipped": plan["skip"] + skipped,
             "networks": added}

@@ -5,17 +5,18 @@ becomes a normal problem (Problems, notification rules, acknowledge, downtime)."
 from __future__ import annotations
 
 import asyncio
-import ipaddress
 import logging
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, select
 
-from netsync.models import Component, Device, IpbNetwork, IpbRow, Service, State
+from netsync.models import Component, Device, IpbAddress, IpbBook, IpbRow, Service, State
 from netsync.plugins.base import BackgroundService, CheckResult, MetricSample
 from netsync.plugins.builtin.ipbook import health
 from netsync.plugins.builtin.ipbook.columns import ip_keys
-from netsync.plugins.builtin.ipbook.netlogic import in_hidden, row_ips
+from netsync.plugins.builtin.ipbook.netlogic import row_ips
 
 log = logging.getLogger(__name__)
 KIND = "ipbook_ip"
@@ -62,8 +63,51 @@ async def ensure_device(session) -> Device:
     return dev
 
 
+@dataclass
+class Target:
+    """One address to ping: a service entry's IP or a used address of an IP book."""
+
+    key: str  # health / component index: "<row id>:<ip>" or "a<book id>:<ip>"
+    ip: str
+    alert: bool
+    check: Callable[[dict], CheckResult]
+    label: str  # component name (no IP for sensitive entries)
+
+
+def targets(rows, books: dict, addresses, ip_cols: set[str]) -> list[Target]:
+    """Every address to ping, with its effective "Alert when down" (its own switch, else its book's)."""
+    out: list[Target] = []
+    for r in rows:
+        book = books.get(r.book_id)
+        if book is None:
+            continue
+        for pos, ip in enumerate(sorted({ip for _, ip in row_ips(r, ip_cols)}), start=1):
+            key = health.key(r.id, ip)
+            out.append(Target(key, ip, effective_alert(r, [book.alert_when_down]),
+                              lambda st, r=r, ip=ip, pos=pos: check_for(r, ip, st, pos),
+                              "sensitive entry" if r.sensitive else ip))
+    for a in addresses:
+        book = books.get(a.book_id)
+        if book is None or a.reserved or not any(v not in (None, "", []) for v in (a.values or {}).values()):
+            continue
+        key = f"a{a.book_id}:{a.ip}"
+        alert = a.alert_when_down if a.alert_when_down is not None else bool(book.alert_when_down)
+        name = (a.values or {}).get("addr_hostname")
+        label = f"{name} {a.ip}" if name else f"{a.ip} ({book.title})"
+        out.append(Target(key, a.ip, alert, lambda st, key=key, ip=a.ip, label=label: _address_check(key, ip, label, st), a.ip))
+    return out
+
+
+def _address_check(key: str, ip: str, label: str, state: dict) -> CheckResult:
+    st = STATES.get(state.get("state"), State.UNKNOWN)
+    rtt = state.get("rtt")
+    output = (f"{ip} answers in {rtt} ms" if st == State.OK and rtt is not None
+              else f"{ip} does not answer ping" if st == State.CRIT else f"{ip}: no answer yet")
+    return CheckResult(CHECK, label, output=output, state=st, kind=KIND, index=key)
+
+
 async def run_once(now: datetime | None = None) -> None:
-    """One round: ping everything, update health, metrics, alert services and missing rows."""
+    """One round: ping everything, update health, metrics and alert services."""
     from netsync.alerting import dispatch, redis
     from netsync.db import SessionLocal
     from netsync.plugins.builtin.ipbook.api import _columns
@@ -72,39 +116,29 @@ async def run_once(now: datetime | None = None) -> None:
     now = now or datetime.now(UTC)
     async with SessionLocal() as s:
         cols = await _columns(s)
-        rows = list(await s.scalars(select(IpbRow)))
-        all_nets = list(await s.scalars(select(IpbNetwork)))
+        books = {b.id: b for b in await s.scalars(select(IpbBook))}
+        rows = list(await s.scalars(select(IpbRow).where(IpbRow.book_id.is_not(None))))
+        addrs = list(await s.scalars(select(IpbAddress)))
         await s.commit()
-    nets = [(ipaddress.ip_network(n.cidr, strict=False), n.alert_when_down) for n in all_nets if not n.hidden]
-    ip_cols = ip_keys(cols)
-    # IPs in a hidden network (e.g. Docker bridges the admin hid) are not pinged
-    targets = [(r, ip) for r in rows for ip in sorted({ip for _, ip in row_ips(r, ip_cols)})
-               if not in_hidden(ip, all_nets)]
-    positions: dict[tuple[int, str], int] = {}
-    counts: dict[int, int] = {}
-    for r, ip in targets:  # 1, 2, ... per row, in IP order: names a sensitive row's services without its IPs
-        counts[r.id] = counts.get(r.id, 0) + 1
-        positions[(r.id, ip)] = counts[r.id]
-    results = await health.ping(sorted({ip for _, ip in targets}))  # no DB connection held while pinging
+    tlist = targets(rows, books, addrs, ip_keys(cols))
+    results = await health.ping(sorted({t.ip for t in tlist}))  # no DB connection held while pinging
 
     rd = redis()
     prev = await health.read(rd)
-    states = {health.key(r.id, ip): health.next_state(prev.get(health.key(r.id, ip)), *results.get(ip, (False, None)), now)
-              for r, ip in targets}
+    states = {t.key: health.next_state(prev.get(t.key), *results.get(t.ip, (False, None)), now) for t in tlist}
     await health.write(rd, states, drop=set(prev) - set(states))
 
     async with SessionLocal() as s:
         dev = await ensure_device(s)
         comps = {c.index: c for c in await s.scalars(select(Component).where(
             Component.device_id == dev.id, Component.kind == KIND))}
-        for r, ip in targets:
-            idx = health.key(r.id, ip)
-            c = comps.get(idx)
+        for t in tlist:
+            c = comps.get(t.key)
             if c is None:
-                c = Component(device_id=dev.id, module="ipbook", kind=KIND, index=idx, name=idx, attrs={}, values={})
+                c = Component(device_id=dev.id, module="ipbook", kind=KIND, index=t.key, name=t.label, attrs={}, values={})
                 s.add(c)
-                comps[idx] = c
-            c.name, c.deleted, c.last_seen = ("sensitive entry" if r.sensitive else ip), False, now
+                comps[t.key] = c
+            c.name, c.deleted, c.last_seen = t.label, False, now
         stale = [c.id for i, c in comps.items() if i not in states]
         if stale:
             await s.execute(delete(Service).where(Service.component_id.in_(stale)))
@@ -113,18 +147,16 @@ async def run_once(now: datetime | None = None) -> None:
         await s.flush()
 
         metrics, checks, alerting = [], [], set()
-        for r, ip in targets:
-            idx = health.key(r.id, ip)
-            st = states[idx]
+        for t in tlist:
+            st = states[t.key]
             loss = 0.0 if st["state"] == "up" and st["misses"] == 0 else 100.0
-            metrics.append(MetricSample("ping_loss", loss, kind=KIND, index=idx))
+            metrics.append(MetricSample("ping_loss", loss, kind=KIND, index=t.key))
             if st.get("rtt") is not None:
-                metrics.append(MetricSample("ping_rtt", st["rtt"], kind=KIND, index=idx))
-            addr = ipaddress.ip_address(ip)
-            if effective_alert(r, [on for n, on in nets if n.version == addr.version and addr in n]):
-                alerting.add(idx)
-                checks.append(check_for(r, ip, st, positions[(r.id, ip)]))
-        # alert switched off, or the row/IP is gone: its service (and problem) goes away
+                metrics.append(MetricSample("ping_rtt", st["rtt"], kind=KIND, index=t.key))
+            if t.alert:
+                alerting.add(t.key)
+                checks.append(t.check(st))
+        # alert switched off, or the entry/address is gone: its service (and problem) goes away
         by_comp = {c.id: i for i, c in comps.items()}
         svcs = list(await s.scalars(select(Service).where(Service.device_id == dev.id)))
         drop = services_to_remove({by_comp.get(v.component_id, "") for v in svcs}, alerting)
@@ -144,12 +176,10 @@ class IpBookPingService(BackgroundService):
     name = "ipbook"
 
     async def run(self, stop: asyncio.Event) -> None:
-        from netsync.db import SessionLocal
-        from netsync.plugins.builtin.ipbook import learn, plugin
+        from netsync.plugins.builtin.ipbook import plugin
         from netsync.plugins.settings import cached_settings
 
         last_run: datetime | None = None
-        last_missing: datetime | None = None
         while not stop.is_set():
             try:
                 enabled, cfg = await cached_settings(plugin)
@@ -158,11 +188,6 @@ class IpBookPingService(BackgroundService):
                 if enabled and (last_run is None or now - last_run >= every):
                     last_run = now
                     await run_once(now)
-                if enabled and (last_missing is None or now - last_missing >= timedelta(hours=1)):
-                    last_missing = now
-                    async with SessionLocal() as s:
-                        await learn.mark_missing(s, now)
-                        await s.commit()
             except Exception:
                 log.exception("IP Book ping round failed")
             try:

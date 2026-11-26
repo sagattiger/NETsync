@@ -73,6 +73,8 @@ FROM probe_beats GROUP BY probe_id, bucket WITH NO DATA
 # Columns added after a table first shipped. create_all() never alters existing tables,
 # so these are applied idempotently on startup until proper Alembic migrations land.
 ADDED_COLUMNS = {
+    "ipbook_rows": ["book_id INTEGER REFERENCES ipbook_books(id) ON DELETE CASCADE"],
+    "ipbook_columns": ["kind VARCHAR(8) NOT NULL DEFAULT 'service'"],
     "notification_rules": [
         "problem_types JSON",
         "sent_alert INTEGER NOT NULL DEFAULT 0",
