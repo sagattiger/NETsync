@@ -52,6 +52,21 @@ swap:
 cd /opt/netsync && git pull && docker compose build api && docker compose build web && docker compose up -d
 ```
 
+## Database memory
+
+The database is set up for a 4 GB server: 512 MB `shared_buffers`, 1.5 GB `effective_cache_size`, 8 MB `work_mem`,
+128 MB `maintenance_work_mem` (see the `db` service in `docker-compose.yml`). Inside an LXC container Postgres can't
+size itself: its tuning tool sees the whole Proxmox host's RAM and would take far more memory than the container has,
+filling RAM and swap until the container hangs. On a bigger server raise the values in `.env`, roughly a quarter of
+the RAM for shared buffers and three quarters for the cache size, then `docker compose up -d db`:
+
+```bash
+PG_SHARED_BUFFERS=2GB
+PG_EFFECTIVE_CACHE_SIZE=6GB
+PG_WORK_MEM=16MB
+PG_MAINTENANCE_WORK_MEM=512MB
+```
+
 ## Troubleshooting
 
 - *Latency is empty / ping permission errors*: unprivileged LXCs sometimes block the
