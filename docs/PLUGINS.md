@@ -71,6 +71,8 @@ Built-in plugins can also own a table, a page and a dashboard widget. The CrowdS
 (`netsync/plugins/builtin/crowdsec`, [CROWDSEC.md](CROWDSEC.md)) is the example: a background service reads its sources,
 stores metrics and services on a virtual device per source (`device_type = "crowdsec"`, see
 `models.VIRTUAL_DEVICE_TYPES`) and serves a `crowdsec` dashboard widget through the public API's allow-list.
+IP Book (`netsync/plugins/builtin/ipbook`, [IPBOOK.md](IPBOOK.md)) adds a discovery step (learned entries and
+networks), its own tables, encrypted admin-only secrets and one virtual device for its ping metrics and alerts.
 
 ## Notes
 

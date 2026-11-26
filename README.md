@@ -22,6 +22,8 @@ service states, threshold rules, problem views, acknowledgements, downtimes and 
 - **Service states and threshold rules** in the CheckMK style (per check, device group and item regex,
   with priorities), plus a problems dashboard and live updates over websocket
 - **Alerts**: email, Telegram, webhook; acknowledgements; scheduled downtimes
+- **IP Book**: networks, IPs and what uses each one, learned from discovery, pinged, with optional alerts,
+  encrypted admin-only passwords and a spreadsheet import, see [docs/IPBOOK.md](docs/IPBOOK.md)
 - **Syslog receiver** (UDP/TCP 514, RFC 3164 + RFC 5424) that links messages to devices
 - **SmokePing-style latency**: RTT min/avg/max, jitter, packet loss
 - **Users, roles** (admin / operator / viewer) and **device groups** that limit what each user sees
