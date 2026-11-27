@@ -10,6 +10,7 @@ export function BookEditor({ book, onClose, onSaved }: { book: Book | null; onCl
   const [f, setF] = useState({
     title: book?.title ?? "", heading: book?.heading ?? "", description: book?.description ?? "", icon: book?.icon ?? "",
     cidr: book?.cidr ?? "", vlan: book?.vlan ?? "", gateway: book?.gateway ?? "", dns: book?.dns ?? "", alert_when_down: book?.alert_when_down ?? false,
+    scan: book?.scan ?? true,
   });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -58,6 +59,8 @@ export function BookEditor({ book, onClose, onSaved }: { book: Book | null; onCl
               {field("dns", "DNS", { className: "input w-full font-mono" })}
             </div>
             <p className="text-xs text-muted">Up to /20 (4094 addresses). Discovery fills in the addresses it finds on your devices.</p>
+            <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={f.scan} onChange={(e) => set("scan", e.target.checked)} />
+              <span>Scan the network: ping every address each round, so addresses in use that no monitored device has show up as live, with their DNS name</span></label>
           </>
         ) : field("title", "Name", { placeholder: "Production stack" })}
         <div><label className="label" htmlFor="bk-desc">Description</label>

@@ -6,21 +6,27 @@ export interface Column {
 }
 export interface Book {
   id: number; kind: "ip" | "service"; title: string; heading: string | null; description: string | null; icon: string | null;
-  cidr: string | null; vlan: string | null; gateway: string | null; dns: string | null; alert_when_down: boolean; position: number;
+  cidr: string | null; vlan: string | null; gateway: string | null; dns: string | null; alert_when_down: boolean; scan: boolean; position: number;
 }
 export interface Counts { size: number; used: number; available: number; reserved: number }
 export interface BookSummary extends Book { counts?: Counts; entries?: number }
-export interface Health { state: "up" | "down" | "unknown"; rtt: number | null; at: string; misses?: number }
+export interface Health { state: "up" | "down" | "unknown"; rtt: number | null; at: string; misses?: number; name?: string | null }
 export interface Row {
   id: number; values: Record<string, any>; secrets: Record<string, { set: boolean }>; sensitive: boolean;
   source: "learned" | "manual" | "imported"; alert_when_down: boolean | null; runs_on_id: number | null;
   device_id: number | null; conflicts: Record<string, { manual: any; discovered: any }>; manual_keys: string[];
   missing_since: string | null; match_keys?: string[]; health?: Record<string, Health>; warnings?: Warning[]; book_id?: number;
 }
-export type AddressStatus = "subnet" | "broadcast" | "gateway" | "available" | "used" | "reserved" | "down";
+export type AddressStatus = "subnet" | "broadcast" | "gateway" | "available" | "used" | "live" | "reserved" | "down";
 export interface Address {
   ip: string; status: AddressStatus; values: Record<string, any>; reserved: boolean; learned: boolean;
   alert_when_down: boolean | null; updated_at: string | null; updated_by: string | null; health: Health | null;
+  device: AddressDevice | null;
+}
+/** The device discovery found an address on (for its OS logo and link). */
+export interface AddressDevice {
+  id: number; hostname: string; os: string | null; vendor: string | null; sys_descr: string | null; device_type: string | null;
+  virtualization: string | null;
 }
 export interface Overview { books: BookSummary[]; columns: { service: Column[]; ip: Column[] }; is_admin: boolean }
 export interface IpBookView { book: Book; addresses: Address[]; counts: Counts }

@@ -24,7 +24,7 @@ from netsync.plugins.builtin.ipbook.values import apply_edit, public_row, reveal
 router = APIRouter()
 NET_FIELDS = ("id", "cidr", "title", "description", "icon", "vlan", "gateway", "dns", "alert_when_down")
 BOOK_FIELDS = ("id", "kind", "title", "heading", "description", "icon", "cidr", "vlan", "gateway", "dns",
-               "alert_when_down", "position")
+               "alert_when_down", "scan", "position")
 RESTRICTED = "Conflict with a restricted entry"
 PING_EVERY_S = 5
 _last_ping: dict[str, float] = {}
@@ -99,7 +99,7 @@ def book_fields(kind: str, body: dict) -> dict:
     if not body.get("cidr"):
         raise ValueError("An IP book needs a network, like 10.0.0.0/24")
     cidr = addrlogic.book_cidr(body["cidr"])
-    out.update(cidr=cidr, vlan=text("vlan"), dns=text("dns"), title=out["title"] or cidr)
+    out.update(cidr=cidr, vlan=text("vlan"), dns=text("dns"), title=out["title"] or cidr, scan=body.get("scan", True) is not False)
     gw = text("gateway")
     if gw:
         try:
@@ -112,10 +112,17 @@ def book_fields(kind: str, body: dict) -> dict:
     return out
 
 
-def ip_book_view(book, stored: dict, states: dict) -> dict:
-    """An IP book: its header, every address with status, values and last ping, and how it's used."""
+DEVICE_FIELDS = ("id", "hostname", "os", "vendor", "sys_descr", "device_type", "virtualization")
+
+
+def device_out(d) -> dict:
+    return {f: getattr(d, f, None) for f in DEVICE_FIELDS}
+
+
+def ip_book_view(book, stored: dict, states: dict, devices: dict[int, dict] | None = None) -> dict:
+    """An IP book: its header, every address with status, values, last ping and device, and how it's used."""
     by_ip = {k.split(":", 1)[1]: v for k, v in states.items() if k.startswith(f"a{book.id}:")}
-    rows = addrlogic.address_rows(book.cidr, book.gateway, stored, by_ip)
+    rows = addrlogic.address_rows(book.cidr, book.gateway, stored, by_ip, devices)
     return {"book": book_out(book), "addresses": rows, "counts": addrlogic.counts(rows)}
 
 
@@ -235,7 +242,9 @@ async def book_view(book_id: int, session: Session, user: CurrentUser):
     states = await health.read(redis())
     if book.kind == "ip":
         stored = {a.ip: a for a in await session.scalars(select(IpbAddress).where(IpbAddress.book_id == book.id))}
-        return ip_book_view(book, stored, states)
+        ids = {a.device_id for a in stored.values() if a.device_id}
+        devices = {d.id: device_out(d) for d in await session.scalars(select(Device).where(Device.id.in_(ids)))} if ids else {}
+        return ip_book_view(book, stored, states, devices)
     cols, nets, rows, device_ips, row_devices = await _context(session)
     view = network_view(None, nets, rows, cols, _admin(user), states, device_ips, row_devices, datetime.now(UTC))
     in_book = {r.id for r in rows if r.book_id == book.id}
@@ -279,6 +288,7 @@ class BookIn(BaseModel):
     gateway: str | None = None
     dns: str | None = None
     alert_when_down: bool = False
+    scan: bool = True
 
 
 @router.post("/books", dependencies=[require(Role.ADMIN)])
@@ -361,6 +371,40 @@ async def ping_address(book_id: int, ip: str, session: Session, user: CurrentUse
     await session.close()  # no database connection held while pinging
     up, rtt = (await health.ping([ip])).get(ip, (False, None))
     return {"ips": [{"ip": ip, "up": up, "rtt_ms": rtt}]}
+
+
+MAX_PING = 256
+
+
+class PingIn(BaseModel):
+    ips: list[str]
+
+
+@router.post("/books/{book_id}/ping")
+async def ping_addresses(book_id: int, body: PingIn, session: Session, user: CurrentUser):
+    """Ping the chosen addresses of an IP book now (up to 256); their health on the sheet is updated too."""
+    book = await _book(session, book_id)
+    if book.kind != "ip":
+        raise HTTPException(400, "Only IP books have addresses to ping")
+    ips = sorted({ip.strip() for ip in body.ips if addrlogic.books_for(ip.strip(), [book])})
+    if not ips:
+        raise HTTPException(400, "Choose addresses of this book")
+    if len(ips) > MAX_PING:
+        raise HTTPException(400, f"Ping up to {MAX_PING} addresses at a time")
+    _rate_limit(user.username)
+    await session.close()  # no database connection held while pinging
+    results = await health.ping(ips, count=1, timeout=2)
+    rd = redis()
+    prev = await health.read(rd)
+    now = datetime.now(UTC)
+    states = {}
+    for ip in ips:
+        key = f"a{book.id}:{ip}"
+        up, rtt = results.get(ip, (False, None))
+        new = health.next_state(prev.get(key), up, rtt, now)
+        states[key] = {**{k: v for k, v in (prev.get(key) or {}).items() if k in ("name", "name_at")}, **new}
+    await health.write(rd, states)
+    return {"ips": [{"ip": ip, "up": results.get(ip, (False, None))[0], "rtt_ms": results.get(ip, (False, None))[1]} for ip in ips]}
 
 
 def _rate_limit(username: str) -> None:

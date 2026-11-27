@@ -689,6 +689,7 @@ class IpbBook(Base):
     gateway: Mapped[str | None] = mapped_column(String(64))
     dns: Mapped[str | None] = mapped_column(String(255))
     alert_when_down: Mapped[bool] = mapped_column(Boolean, default=False)
+    scan: Mapped[bool] = mapped_column(Boolean, default=True)  # ping every address, not only the used ones
     position: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = utcnow_col()
 

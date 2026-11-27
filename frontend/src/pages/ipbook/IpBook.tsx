@@ -23,7 +23,7 @@ export default function IpBook() {
   const [toast, setToast] = useState<{ ok: boolean; text: string } | null>(null);
   const [editBook, setEditBook] = useState<Book | "new" | null>(null);
   const [editRow, setEditRow] = useState<Row | "new" | null>(null);
-  const [editAddr, setEditAddr] = useState<Address | null>(null);
+  const [editAddr, setEditAddr] = useState<Address[] | null>(null);
   const [colsOpen, setColsOpen] = useState(false);
   const [importing, setImporting] = useState(false);
   useEffect(() => { const t = window.setTimeout(() => setQ(query.trim()), 250); return () => window.clearTimeout(t); }, [query]);
@@ -77,7 +77,7 @@ export default function IpBook() {
             ) : !current ? <div className="text-sm text-muted">This book doesn't exist any more. Pick one above.</div>
               : error ? <div className="text-sm text-crit">{(error as Error).message}</div> : !view ? <div className="text-sm text-muted">Loading…</div>
               : current.kind === "ip" ? (
-                <IpBookSheet view={view} columns={ov.columns.ip} admin={admin} onEdit={setEditAddr} onToast={onToast}
+                <IpBookSheet view={view} columns={ov.columns.ip} admin={admin} onEdit={setEditAddr} onToast={onToast} onChanged={refresh}
                   onEditBook={admin ? () => setEditBook(current) : undefined} />
               ) : (
                 <>
@@ -98,7 +98,7 @@ export default function IpBook() {
       {editRow && ov && current && (
         <RowEditor row={editRow === "new" ? null : editRow} bookId={editRow === "new" ? current.id : editRow.book_id ?? current.id}
           columns={ov.columns.service} rows={view?.rows ?? []} onClose={() => setEditRow(null)} onSaved={() => { setEditRow(null); refresh(); }} />)}
-      {editAddr && current && ov && <AddressEditor book={current} address={editAddr} columns={ov.columns.ip}
+      {editAddr && current && ov && <AddressEditor book={current} addresses={editAddr} columns={ov.columns.ip}
         onClose={() => setEditAddr(null)} onSaved={() => { setEditAddr(null); refresh(); }} />}
       {importing && current && <ImportWizard bookId={current.id} onClose={() => setImporting(false)} onDone={refresh} />}
       {colsOpen && ov && current && <ColumnManager kind={current.kind} columns={ov.columns[current.kind]} onClose={() => setColsOpen(false)} onSaved={refresh} />}

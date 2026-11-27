@@ -75,6 +75,7 @@ FROM probe_beats GROUP BY probe_id, bucket WITH NO DATA
 ADDED_COLUMNS = {
     "ipbook_rows": ["book_id INTEGER REFERENCES ipbook_books(id) ON DELETE CASCADE"],
     "ipbook_columns": ["kind VARCHAR(8) NOT NULL DEFAULT 'service'"],
+    "ipbook_books": ["scan BOOLEAN NOT NULL DEFAULT TRUE"],
     "notification_rules": [
         "problem_types JSON",
         "sent_alert INTEGER NOT NULL DEFAULT 0",

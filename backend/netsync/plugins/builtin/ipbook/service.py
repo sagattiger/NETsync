@@ -1,11 +1,16 @@
 """IP Book ping service: every few minutes pings every IP in the list, keeps its health, stores response times as
 metrics on one virtual device, and - only for IPs whose "Alert when down" is on - keeps a service so a down IP
-becomes a normal problem (Problems, notification rules, acknowledge, downtime)."""
+becomes a normal problem (Problems, notification rules, acknowledge, downtime).
+
+IP books with "scan" on also have every other address pinged once per round: one that answers shows as live (with
+its DNS name), without metrics, components or alerts."""
 
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
+import socket
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -23,6 +28,7 @@ KIND = "ipbook_ip"
 CHECK = "ipbook_ping"
 HOSTNAME = "ipbook.netsync"
 TICK = 30
+NAME_TTL = timedelta(hours=12)  # how long a reverse-DNS name is kept before it is looked up again
 STATES = {"up": State.OK, "down": State.CRIT}
 
 
@@ -98,6 +104,67 @@ def targets(rows, books: dict, addresses, ip_cols: set[str]) -> list[Target]:
     return out
 
 
+def scan_targets(books: dict, already: set[str]) -> list[tuple[str, str]]:
+    """(health key, ip) of every usable address of the IP books with scan on that isn't pinged as a target already."""
+    out = []
+    for b in sorted(books.values(), key=lambda b: b.id):
+        if b.kind != "ip" or not b.cidr or not getattr(b, "scan", True):
+            continue
+        net = ipaddress.ip_network(b.cidr, strict=False)
+        hosts = net.hosts() if net.version == 4 and net.prefixlen <= 30 else iter(net)
+        for ip in hosts:
+            key = f"a{b.id}:{ip}"
+            if key not in already:
+                out.append((key, str(ip)))
+    return out
+
+
+def scan_state(prev: dict | None, answered: bool, rtt: float | None, now: datetime) -> dict | None:
+    """A scanned address is kept while it answers, and dropped after 3 missed rounds (it isn't "down": nobody said
+    something should be there)."""
+    new = health.next_state(prev, answered, rtt, now)
+    return keep_name(prev, new) if new["state"] == "up" else None
+
+
+def keep_name(prev: dict | None, new: dict) -> dict:
+    """The reverse-DNS name found earlier stays on the address."""
+    if prev and prev.get("name_at"):
+        return {**new, "name": prev.get("name"), "name_at": prev["name_at"]}
+    return new
+
+
+def names_needed(states: dict[str, dict], now: datetime) -> dict[str, str]:
+    """{health key: ip} of addresses that answer and have no name, or one older than NAME_TTL."""
+    out = {}
+    for k, st in states.items():
+        if st.get("state") != "up":
+            continue
+        at = st.get("name_at")
+        try:
+            fresh = at and now - datetime.fromisoformat(at) < NAME_TTL
+        except ValueError:
+            fresh = False
+        if not fresh:
+            out[k] = k.split(":", 1)[1]
+    return out
+
+
+async def reverse_names(ips: list[str], timeout: float = 2.0, concurrency: int = 32) -> dict[str, str | None]:
+    """PTR name of each address (None when it has none or DNS doesn't answer in time)."""
+    loop = asyncio.get_running_loop()
+    sem = asyncio.Semaphore(concurrency)
+
+    async def one(ip: str) -> tuple[str, str | None]:
+        async with sem:
+            try:
+                host, _ = await asyncio.wait_for(loop.getnameinfo((ip, 0), socket.NI_NAMEREQD), timeout)
+                return ip, host.rstrip(".") or None
+            except (OSError, TimeoutError):
+                return ip, None
+
+    return dict(await asyncio.gather(*(one(ip) for ip in ips)))
+
+
 def _address_check(key: str, ip: str, label: str, state: dict) -> CheckResult:
     st = STATES.get(state.get("state"), State.UNKNOWN)
     rtt = state.get("rtt")
@@ -122,11 +189,26 @@ async def run_once(now: datetime | None = None) -> None:
         await s.commit()
     tlist = targets(rows, books, addrs, ip_keys(cols))
     results = await health.ping(sorted({t.ip for t in tlist}))  # no DB connection held while pinging
+    scanned = scan_targets(books, {t.key for t in tlist})
+    scan_results = await health.ping(sorted({ip for _, ip in scanned}), count=1, timeout=1)
 
     rd = redis()
     prev = await health.read(rd)
-    states = {t.key: health.next_state(prev.get(t.key), *results.get(t.ip, (False, None)), now) for t in tlist}
-    await health.write(rd, states, drop=set(prev) - set(states))
+    states = {t.key: keep_name(prev.get(t.key), health.next_state(prev.get(t.key), *results.get(t.ip, (False, None)), now))
+              for t in tlist}
+    live = {}
+    for key, ip in scanned:
+        st = scan_state(prev.get(key), *scan_results.get(ip, (False, None)), now)
+        if st is not None:
+            live[key] = st
+    # reverse DNS for addresses of IP books that answer (service entries have their own names)
+    want = {k: ip for k, ip in names_needed({**states, **live}, now).items() if k.startswith("a")}
+    if want:
+        found = await reverse_names(sorted(set(want.values())))
+        for k, ip in want.items():
+            target = states if k in states else live
+            target[k] = {**target[k], "name": found.get(ip), "name_at": now.isoformat()}
+    await health.write(rd, {**states, **live}, drop=set(prev) - set(states) - set(live))
 
     async with SessionLocal() as s:
         dev = await ensure_device(s)

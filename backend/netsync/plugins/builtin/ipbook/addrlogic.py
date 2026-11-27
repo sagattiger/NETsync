@@ -1,5 +1,6 @@
 """IP books: one network, one row per address (like a range sheet). Only addresses with data are stored; the rest
-are shown as available. Status: subnet, broadcast, gateway, reserved, down (ping), used or available."""
+are shown as available. Status: subnet, broadcast, gateway, reserved, down (ping), used, live (answers ping but
+nothing is written on it: found by the network scan) or available."""
 
 from __future__ import annotations
 
@@ -49,11 +50,16 @@ def _status(ip: str, net, gateway: str | None, addr, health: dict | None) -> str
     used = addr is not None and any(v not in (None, "", []) for v in (addr.values or {}).values())
     if used and (health or {}).get("state") == "down":
         return "down"
-    return "used" if used else "available"
+    if used:
+        return "used"
+    return "live" if (health or {}).get("state") == "up" else "available"
 
 
-def address_rows(cidr: str, gateway: str | None, stored: dict[str, Any], states: dict[str, dict]) -> list[dict]:
-    """Every address of the network in order, with its stored values (if any), status and last ping."""
+def address_rows(cidr: str, gateway: str | None, stored: dict[str, Any], states: dict[str, dict],
+                 devices: dict[int, dict] | None = None) -> list[dict]:
+    """Every address of the network in order, with its stored values (if any), status, last ping and the device
+    discovery found it on (for its OS logo and link)."""
+    devices = devices or {}
     net = ipaddress.ip_network(cidr, strict=False)
     gw = str(gateway).strip() if gateway else None
     rows = []
@@ -67,7 +73,8 @@ def address_rows(cidr: str, gateway: str | None, stored: dict[str, Any], states:
                "alert_when_down": addr.alert_when_down if addr is not None else None,
                "updated_at": addr.updated_at.isoformat() if addr is not None and addr.updated_at else None,
                "updated_by": addr.updated_by if addr is not None else None,
-               "health": states.get(ip)}
+               "health": states.get(ip),
+               "device": devices.get(getattr(addr, "device_id", None)) if addr is not None else None}
         rows.append(row)
     return rows
 
@@ -76,7 +83,7 @@ def counts(rows: list[dict]) -> dict[str, int]:
     """How the usable addresses are used (subnet and broadcast rows aren't counted)."""
     usable = [r for r in rows if r["status"] not in ("subnet", "broadcast")]
     return {"size": len(usable),
-            "used": sum(1 for r in usable if r["status"] in ("used", "down", "gateway")),
+            "used": sum(1 for r in usable if r["status"] in ("used", "live", "down", "gateway")),
             "available": sum(1 for r in usable if r["status"] == "available"),
             "reserved": sum(1 for r in usable if r["status"] == "reserved")}
 
