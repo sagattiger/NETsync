@@ -62,12 +62,13 @@ export function IpBookSheet({ view, columns, admin, onEdit, onEditBook, onToast 
         <span className="text-xs text-muted">{rows.length} rows</span>
       </div>
 
-      <div className="card overflow-x-auto">
+      {/* Scrolls inside the window, so the sideways scrollbar and the header stay in reach on a /24 or larger. */}
+      <div className="card overflow-auto max-h-[calc(100vh-13rem)] min-h-[16rem]">
         <table className="tbl text-xs">
-          <thead><tr>
-            <th className="w-24">Status</th><th>Network</th>
+          <thead className="sticky top-0 z-10 bg-surface"><tr>
+            <th className="w-24">Status</th><th>Network</th><th className="w-px"><span className="sr-only">Actions</span></th>
             {cols.map((c) => <th key={c.key}><span className="inline-flex items-center gap-1">{c.icon && <Icon name={c.icon} className="w-3.5 h-3.5" />}{c.label}</span></th>)}
-            <th>Last Change</th><th></th>
+            <th>Last Change</th>
           </tr></thead>
           <tbody>
             {rows.map((a) => (
@@ -75,15 +76,16 @@ export function IpBookSheet({ view, columns, admin, onEdit, onEditBook, onToast 
                 <td><span className={`inline-block w-full text-center rounded px-1.5 py-0.5 text-xxs font-medium ${STATUS[a.status]}`}
                   title={a.health ? `${a.health.state}${a.health.rtt != null ? ` ${a.health.rtt} ms` : ""}, ${fmtAgo(a.health.at)}` : undefined}>{a.status}</span></td>
                 <td className="font-mono whitespace-nowrap">{a.ip}{a.learned && <span className="ml-1 text-xxs text-accent" title="Filled by discovery">●</span>}</td>
+                <td className="whitespace-nowrap">
+                  {a.status !== "subnet" && a.status !== "broadcast" && <span className="inline-flex gap-1">
+                    <button type="button" className="btn h-6 px-1.5" disabled={pinging === a.ip} onClick={() => ping(a)} title={`Ping ${a.ip}`} aria-label={`Ping ${a.ip}`}>
+                      {pinging === a.ip ? <span className="text-xxs w-3.5 text-center">…</span> : <Icon name="pulse" className="w-3.5 h-3.5" />}</button>
+                    {admin && <button type="button" className="btn h-6 px-1.5" onClick={() => onEdit(a)} title={`Edit ${a.ip}`} aria-label={`Edit ${a.ip}`}><Icon name="edit" className="w-3.5 h-3.5" /></button>}
+                  </span>}
+                </td>
                 {cols.map((c) => <td key={c.key} className="whitespace-nowrap max-w-[16rem] truncate" title={a.values[c.key] != null ? String(a.values[c.key]) : undefined}>
                   {a.values[c.key] != null && a.values[c.key] !== "" ? (c.type === "bool" ? (a.values[c.key] ? "yes" : "no") : String(a.values[c.key])) : ""}</td>)}
                 <td className="whitespace-nowrap text-muted" title={a.updated_by ? `by ${a.updated_by}` : undefined}>{a.updated_at ? fmtAgo(a.updated_at) : ""}</td>
-                <td className="text-right whitespace-nowrap">
-                  {a.status !== "subnet" && a.status !== "broadcast" && <>
-                    <button type="button" className="btn h-6 text-xxs mr-1" disabled={pinging === a.ip} onClick={() => ping(a)}>{pinging === a.ip ? "…" : "Ping"}</button>
-                    {admin && <button type="button" className="btn h-6 text-xxs" onClick={() => onEdit(a)}>Edit</button>}
-                  </>}
-                </td>
               </tr>
             ))}
           </tbody>

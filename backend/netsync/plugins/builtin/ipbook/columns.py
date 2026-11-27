@@ -56,10 +56,10 @@ IP_BUILTIN: list[dict[str, Any]] = [
     _c("addr_location", "Location", "text", "pin"),
     _c("addr_interface", "Interface Name", "text", "switch"),
     _c("addr_mac", "Mac-Address", "text", "network"),
-    _c("addr_isp_customer", "ISP Customer", "text", "user"),
-    _c("addr_end_customer", "End Customer", "text", "users"),
-    _c("addr_private_ip", "Private IP", "ip", "lock"),
-    _c("addr_last_mile", "Last Mile Provider", "text", "globe"),
+    _c("addr_isp_customer", "ISP Customer", "text", "user", hidden=True),
+    _c("addr_end_customer", "End Customer", "text", "users", hidden=True),
+    _c("addr_private_ip", "Private IP", "ip", "lock", hidden=True),
+    _c("addr_last_mile", "Last Mile Provider", "text", "globe", hidden=True),
     _c("addr_info", "Info.", "longtext", "info"),
 ]
 for _i, _col in enumerate(IP_BUILTIN):
@@ -86,5 +86,5 @@ async def seed(session) -> None:
         for c in cols:
             if c["key"] not in have:
                 session.add(IpbColumn(key=c["key"], label=c["label"], type=c["type"], icon=c["icon"], kind=kind,
-                                      options=c.get("options"), position=c["position"], hidden=False, builtin=True))
+                                      options=c.get("options"), position=c["position"], hidden=c.get("hidden", False), builtin=True))
     await session.flush()

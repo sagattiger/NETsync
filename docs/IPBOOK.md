@@ -9,15 +9,17 @@ It's a built-in plugin: **IP Book** in the sidebar (`/ipbook`).
 IP Book holds **books**, created with **+ New book** (admins). Nothing exists until you create it.
 
 - **IP book**: one network (up to /20). Every address is a row, like a range sheet: status (subnet, gateway,
-  available, used, reserved, down, broadcast), the address, Hostname, Internal ID, Device, Location, Interface Name,
-  Mac-Address, ISP Customer, End Customer, Private IP, Last Mile Provider, Info. and Last Change. Discovery fills
+  available, used, reserved, down, broadcast), the address with its Ping and Edit buttons, Hostname, Internal ID,
+  Device, Location, Interface Name, Mac-Address, Info. and Last Change. ISP Customer, End Customer, Private IP and
+  Last Mile Provider exist too but start hidden: show them under **Columns**. Discovery fills
   Hostname, Device, Interface Name and MAC for addresses it finds on your devices (anything you type wins); when a
   device no longer has an address, what discovery wrote is removed and the address is available again. Mark an
   address **Reserved** to keep it free. Filter All / Used / Available.
 - **Service book**: a list of services, the entries described below (logins, URLs, ports, encrypted passwords).
   Have as many as you like, e.g. one per stack or customer.
 
-The left column lists IP books, then service books; the search box finds addresses and services across all books.
+The bar at the top lists IP books, then service books, and **+ New book**; its search box finds addresses and services
+across all books. Long books scroll inside the window, so the header and the sideways scrollbar stay in reach.
 
 ## Who sees what
 

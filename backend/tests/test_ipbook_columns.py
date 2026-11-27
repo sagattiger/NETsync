@@ -30,3 +30,10 @@ def test_ip_keys_include_custom_ip_columns():
 
 def test_ipbook_is_virtual():
     assert "ipbook" in VIRTUAL_DEVICE_TYPES
+
+
+def test_rarely_used_ip_columns_start_hidden():
+    from netsync.plugins.builtin.ipbook.columns import IP_BUILTIN
+
+    hidden = {c["key"] for c in IP_BUILTIN if c.get("hidden")}
+    assert hidden == {"addr_isp_customer", "addr_end_customer", "addr_private_ip", "addr_last_mile"}

@@ -53,20 +53,9 @@ export default function IpBook() {
         </> : undefined} />
       {toast && <div role="status" className={`text-sm ${toast.ok ? "text-ok" : "text-crit"}`}>{toast.text}</div>}
       {!ov ? <div className="text-sm text-muted">Loading…</div> : (
-        <div className="flex flex-col lg:flex-row gap-4 items-start">
-          <aside className="w-full lg:w-64 shrink-0">
-            <div className="lg:hidden mb-2 flex gap-2">
-              <select className="input flex-1" value={bookId ?? ""} onChange={(e) => pick(Number(e.target.value))} aria-label="Book">
-                {ov.books.map((b) => <option key={b.id} value={b.id}>{b.kind === "ip" ? `${b.title} · ${b.cidr}` : `${b.title} (services)`}</option>)}
-              </select>
-              {admin && <button className="btn" onClick={() => setEditBook("new")}>+ Book</button>}
-            </div>
-            <div className="hidden lg:block card p-2 lg:sticky lg:top-16">
-              <BookList books={ov.books} current={bookId} onPick={pick} query={query} setQuery={setQuery} onAdd={admin ? () => setEditBook("new") : undefined} />
-            </div>
-            <input className="input w-full text-xs lg:hidden" placeholder="Search IP, host, service…" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search IP Book" />
-          </aside>
-          <div className="min-w-0 flex-1 space-y-3 w-full">
+        <div className="space-y-3">
+          <BookList books={ov.books} current={bookId} onPick={pick} query={query} setQuery={setQuery} onAdd={admin ? () => setEditBook("new") : undefined} />
+          <div className="min-w-0 space-y-3 w-full">
             {q ? (
               !found ? <div className="text-sm text-muted">Searching…</div> : (
                 <>
@@ -85,7 +74,7 @@ export default function IpBook() {
                   A <b>service book</b> lists your services with their URLs, ports and logins.</p>
                 {admin ? <button className="btn btn-primary" onClick={() => setEditBook("new")}>+ New book</button> : <p className="text-xs text-muted">An admin can create the first book.</p>}
               </div>
-            ) : !current ? <div className="text-sm text-muted">This book doesn't exist any more. Pick one on the left.</div>
+            ) : !current ? <div className="text-sm text-muted">This book doesn't exist any more. Pick one above.</div>
               : error ? <div className="text-sm text-crit">{(error as Error).message}</div> : !view ? <div className="text-sm text-muted">Loading…</div>
               : current.kind === "ip" ? (
                 <IpBookSheet view={view} columns={ov.columns.ip} admin={admin} onEdit={setEditAddr} onToast={onToast}
